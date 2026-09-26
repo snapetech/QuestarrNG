@@ -42,11 +42,6 @@ The badges below report the upstream Questarr project's release, package, and CI
 ⭐ Star us on GitHub — your support motivates us a lot! 🙏😊
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-7289da?logo=discord&logoColor=white)](https://discord.gg/STkp86wP9F)
-[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20QuestarrNG%20for%20SeerrNG:%20https://github.com/snapetech/QuestarrNG%20%23gaming%20%23selfhosted)
-[![Share](https://img.shields.io/badge/share-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/snapetech/QuestarrNG)
-[![Share](https://img.shields.io/badge/share-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/snapetech/QuestarrNG)
-[![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=Check%20out%20QuestarrNG%20for%20SeerrNG:%20https://github.com/snapetech/QuestarrNG)
-[![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/snapetech/QuestarrNG&text=QuestarrNG%20for%20SeerrNG)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/doezer)
 
 ## Table of Contents
