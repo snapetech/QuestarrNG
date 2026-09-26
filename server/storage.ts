@@ -67,7 +67,7 @@ import {
 import { randomUUID } from "crypto";
 import { db } from "./db.js";
 import { normalizeDownloadHash } from "./download-hash.js";
-import { eq, like, or, sql, desc, and, not, inArray } from "drizzle-orm";
+import { eq, like, or, sql, desc, and, not, inArray, isNotNull } from "drizzle-orm";
 import { categorizeDownload } from "../shared/download-categorizer.js";
 import { firstOrThrow, stripUndefined } from "./object-utils.js";
 import {
@@ -201,6 +201,17 @@ export interface IStorage {
     availability: { updates: boolean; packs: boolean }
   ): Promise<void>;
   updateGame(id: string, updates: Partial<Game>): Promise<Game | undefined>;
+  recoverSeerrOperations(): Promise<number>;
+  claimSeerrOperation(gameId: string, options?: { allowRecovery?: boolean }): Promise<boolean>;
+  finishSeerrOperation(
+    gameId: string,
+    updates?: {
+      seerrCancelled?: boolean;
+      status?: Game["status"];
+      searchResultsAvailable?: boolean;
+      seerrRecoveryRequired?: boolean;
+    }
+  ): Promise<void>;
   updateGamesBatch(updates: { id: string; data: Partial<Game> }[]): Promise<void>;
   removeGame(id: string): Promise<boolean>;
   assignOrphanGamesToUser(userId: string): Promise<number>;
@@ -553,6 +564,11 @@ export class MemStorage implements IStorage {
       platforms: insertGame.platforms || null,
       targetPlatformId: insertGame.targetPlatformId ?? null,
       targetPlatformName: insertGame.targetPlatformName ?? null,
+      seerrExternalRequestId: insertGame.seerrExternalRequestId ?? null,
+      seerrVariant: insertGame.seerrVariant ?? null,
+      seerrCancelled: insertGame.seerrCancelled ?? false,
+      seerrDispatching: insertGame.seerrDispatching ?? false,
+      seerrRecoveryRequired: insertGame.seerrRecoveryRequired ?? false,
       genres: insertGame.genres || null,
       themes: insertGame.themes || null,
       publishers: insertGame.publishers || null,
@@ -685,6 +701,68 @@ export class MemStorage implements IStorage {
 
     this.games.set(id, updatedGame);
     return updatedGame;
+  }
+
+  async claimSeerrOperation(
+    gameId: string,
+    options: { allowRecovery?: boolean } = {}
+  ): Promise<boolean> {
+    const game = this.games.get(gameId);
+    if (
+      !game?.seerrExternalRequestId ||
+      game.seerrCancelled ||
+      game.seerrDispatching ||
+      (game.seerrRecoveryRequired && !options.allowRecovery)
+    ) {
+      return false;
+    }
+    this.games.set(gameId, { ...game, seerrDispatching: true });
+    return true;
+  }
+
+  async recoverSeerrOperations(): Promise<number> {
+    let recovered = 0;
+    for (const [gameId, game] of this.games) {
+      if (!game.seerrExternalRequestId || !game.seerrDispatching) continue;
+      const relatedDownloads = Array.from(this.gameDownloads.values()).filter(
+        (download) =>
+          download.gameId === gameId &&
+          download.seerrExternalRequestId === game.seerrExternalRequestId
+      );
+      const latestRelatedDownload = relatedDownloads.sort(
+        (left, right) => (right.addedAt?.getTime() ?? 0) - (left.addedAt?.getTime() ?? 0)
+      )[0];
+      const hasActiveDownload = relatedDownloads.some((download) =>
+        ["downloading", "queued", "paused"].includes(download.status.toLowerCase())
+      );
+      const handoffUncertain =
+        !latestRelatedDownload ||
+        ["failed", "error", "cancelled"].includes(latestRelatedDownload.status.toLowerCase());
+      this.games.set(gameId, {
+        ...game,
+        status: hasActiveDownload ? "downloading" : game.status,
+        seerrDispatching: false,
+        seerrRecoveryRequired: handoffUncertain,
+        searchResultsAvailable: handoffUncertain ? false : game.searchResultsAvailable,
+      });
+      recovered++;
+    }
+    return recovered;
+  }
+
+  async finishSeerrOperation(
+    gameId: string,
+    updates: {
+      seerrCancelled?: boolean;
+      status?: Game["status"];
+      searchResultsAvailable?: boolean;
+      seerrRecoveryRequired?: boolean;
+    } = {}
+  ): Promise<void> {
+    const game = this.games.get(gameId);
+    if (game) {
+      this.games.set(gameId, { ...game, ...updates, seerrDispatching: false });
+    }
   }
 
   async updateGamesBatch(updates: { id: string; data: Partial<Game> }[]): Promise<void> {
@@ -1027,6 +1105,8 @@ export class MemStorage implements IStorage {
       ...insertGameDownload,
       id,
       downloadHash: normalizeDownloadHash(insertGameDownload.downloadHash),
+      seerrExternalRequestId:
+        this.games.get(insertGameDownload.gameId)?.seerrExternalRequestId ?? null,
       status: insertGameDownload.status || "downloading",
       downloadType: insertGameDownload.downloadType || "torrent",
       errorMessage: insertGameDownload.errorMessage ?? null,
@@ -2033,6 +2113,11 @@ export class DatabaseStorage implements IStorage {
       platforms: insertGame.platforms ?? null,
       targetPlatformId: insertGame.targetPlatformId ?? null,
       targetPlatformName: insertGame.targetPlatformName ?? null,
+      seerrExternalRequestId: insertGame.seerrExternalRequestId ?? null,
+      seerrVariant: insertGame.seerrVariant ?? null,
+      seerrCancelled: insertGame.seerrCancelled ?? false,
+      seerrDispatching: insertGame.seerrDispatching ?? false,
+      seerrRecoveryRequired: insertGame.seerrRecoveryRequired ?? false,
       genres: insertGame.genres ?? null,
       themes: insertGame.themes ?? null,
       publishers: insertGame.publishers ?? null,
@@ -2159,6 +2244,70 @@ export class DatabaseStorage implements IStorage {
     const [updatedGame] = await db.update(games).set(updates).where(eq(games.id, id)).returning();
 
     return updatedGame || undefined;
+  }
+
+  async claimSeerrOperation(
+    gameId: string,
+    options: { allowRecovery?: boolean } = {}
+  ): Promise<boolean> {
+    const [claimed] = await db
+      .update(games)
+      .set({ seerrDispatching: true })
+      .where(
+        and(
+          eq(games.id, gameId),
+          isNotNull(games.seerrExternalRequestId),
+          eq(games.seerrCancelled, false),
+          eq(games.seerrDispatching, false),
+          ...(options.allowRecovery ? [] : [eq(games.seerrRecoveryRequired, false)])
+        )
+      )
+      .returning({ id: games.id });
+    return Boolean(claimed);
+  }
+
+  async recoverSeerrOperations(): Promise<number> {
+    const interrupted = await db
+      .select()
+      .from(games)
+      .where(and(isNotNull(games.seerrExternalRequestId), eq(games.seerrDispatching, true)));
+    for (const game of interrupted) {
+      const relatedDownloads = (await this.getDownloadsByGameId(game.id)).filter(
+        (download) => download.seerrExternalRequestId === game.seerrExternalRequestId
+      );
+      const latestRelatedDownload = relatedDownloads[0];
+      const hasActiveDownload = relatedDownloads.some((download) =>
+        ["downloading", "queued", "paused"].includes(download.status.toLowerCase())
+      );
+      const handoffUncertain =
+        !latestRelatedDownload ||
+        ["failed", "error", "cancelled"].includes(latestRelatedDownload.status.toLowerCase());
+      await db
+        .update(games)
+        .set({
+          status: hasActiveDownload ? "downloading" : game.status,
+          seerrDispatching: false,
+          seerrRecoveryRequired: handoffUncertain,
+          searchResultsAvailable: handoffUncertain ? false : game.searchResultsAvailable,
+        })
+        .where(and(eq(games.id, game.id), eq(games.seerrDispatching, true)));
+    }
+    return interrupted.length;
+  }
+
+  async finishSeerrOperation(
+    gameId: string,
+    updates: {
+      seerrCancelled?: boolean;
+      status?: Game["status"];
+      searchResultsAvailable?: boolean;
+      seerrRecoveryRequired?: boolean;
+    } = {}
+  ): Promise<void> {
+    await db
+      .update(games)
+      .set({ ...updates, seerrDispatching: false })
+      .where(eq(games.id, gameId));
   }
 
   async updateGamesBatch(updates: { id: string; data: Partial<Game> }[]): Promise<void> {
@@ -2415,6 +2564,7 @@ export class DatabaseStorage implements IStorage {
             "error",
             "failed",
             "imported",
+            "cancelled",
             "manual_review_required",
             GAME_LINK_REQUIRED_STATUS,
           ])
@@ -2490,6 +2640,7 @@ export class DatabaseStorage implements IStorage {
         downloadTitle: gameDownloads.downloadTitle,
         status: gameDownloads.status,
         errorMessage: gameDownloads.errorMessage,
+        seerrExternalRequestId: gameDownloads.seerrExternalRequestId,
         fileSize: gameDownloads.fileSize,
         addedAt: gameDownloads.addedAt,
         completedAt: gameDownloads.completedAt,
@@ -2588,12 +2739,17 @@ export class DatabaseStorage implements IStorage {
 
   async addGameDownload(insertGameDownload: InsertGameDownload): Promise<GameDownload | undefined> {
     const id = randomUUID();
+    const [game] = await db
+      .select({ seerrExternalRequestId: games.seerrExternalRequestId })
+      .from(games)
+      .where(eq(games.id, insertGameDownload.gameId));
     const [gameDownload] = await db
       .insert(gameDownloads)
       .values({
         ...insertGameDownload,
         id,
         downloadHash: normalizeDownloadHash(insertGameDownload.downloadHash),
+        seerrExternalRequestId: game?.seerrExternalRequestId ?? null,
       })
       .onConflictDoNothing()
       .returning();

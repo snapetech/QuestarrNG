@@ -77,6 +77,20 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 | Newznab protocol (Usenet)  | - Sabnzbd<br>- Nzbget                                                                   |
 | G4U.to                     | Same as Newznab                                                                         |
 
+### SeerrNG integration
+
+QuestarrNG provides SeerrNG with an IGDB catalog and request-scoped PC-game
+acquisition through a versioned, authenticated integration API. The contract
+keeps SeerrNG's request ID and selected OS/architecture attached to Questarr's
+tracked game and download records. See [docs/API.md](docs/API.md) for the
+catalog, status, retry, cancellation, and imported-file streaming routes.
+Cancellation stops only downloads safely correlated to the SeerrNG request;
+completed files remain on disk, and ambiguous active downloads are refused. If
+Questarr restarts during a handoff before recording its download, it pauses the
+request for a duplicate-download check before retrying or cancelling. The retry
+or cancel endpoint returns `409` with `confirmationRequired` until the caller
+checks the download queue/history and sends `confirmNoExistingDownload: true`.
+
 ## Installation
 
 Docker is the easiest way to deploy Questarr with all dependencies included. Questarr uses a SQLite database which is self-contained in the application container.

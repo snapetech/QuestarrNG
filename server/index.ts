@@ -54,6 +54,12 @@ process.on("unhandledRejection", (reason) => handleFatalError("unhandledRejectio
   try {
     // Ensure database is ready before starting server
     await ensureDatabase();
+    const recoveredSeerrOperations = await storage.recoverSeerrOperations();
+    if (recoveredSeerrOperations > 0) {
+      log(
+        `Recovered ${recoveredSeerrOperations} interrupted SeerrNG request operation(s); requests without tracked downloads require a queue check before retry.`
+      );
+    }
 
     // Seed default platform mappings (must run after migrations create the table)
     try {

@@ -4,6 +4,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage.js";
 import { stripUndefined } from "./object-utils.js";
 import { normalizeDownloadHash, normalizeTrackedKey } from "./download-hash.js";
+import { withGameOperationLock } from "./cron.js";
 import { igdbClient } from "./igdb.js";
 import type { IGDBGame } from "./igdb.js";
 import { db } from "./db.js";
@@ -4043,55 +4044,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // gameId comes from the request body, so verify ownership before
         // touching the downloader: otherwise a user who knows another user's
         // game UUID could link a download to that game and flip its status.
-        if (gameId && !(await resolveOwnedGame(gameId, req.user!.id, res))) return;
+        const ownedGame = gameId ? await resolveOwnedGame(gameId, req.user!.id, res) : undefined;
+        if (gameId && !ownedGame) return;
 
         const enabledDownloaders = await storage.getEnabledDownloaders();
         if (enabledDownloaders.length === 0) {
           return res.status(400).json({ error: "No downloaders configured" });
         }
 
-        // Try downloaders by priority order with automatic fallback
-        const result = await DownloaderManager.addDownloadWithFallback(enabledDownloaders, {
-          url,
-          title,
-          category,
-          downloadPath,
-          priority,
-          downloadType,
-          password,
-        });
-
-        if (result && result.success === false) {
-          // All downloaders failed, return 500 error
-          return res.status(500).json(result);
-        }
-
-        // If gameId is provided, track this download and update game status.
-        // For async qBittorrent adds (pending_count with no hash yet), the
-        // downloader returns a correlationTag we use as a temporary downloadHash
-        // so the tracking record exists upfront. The cron resolves the real hash.
-        const rawDownloadHash = result.id ?? result.correlationTag;
-        const downloadHash = rawDownloadHash
-          ? normalizeDownloadHash(rawDownloadHash)
-          : rawDownloadHash;
-        if (gameId && result.success && downloadHash && result.downloaderId) {
+        let result:
+          Awaited<ReturnType<typeof DownloaderManager.addDownloadWithFallback>> | undefined;
+        let requestError: { status: number; error: string } | undefined;
+        const dispatchDownload = async () => {
+          let claimedSeerrOperation = false;
           try {
-            await storage.addGameDownload({
-              gameId,
-              downloaderId: result.downloaderId,
-              downloadHash,
-              downloadTitle: title,
-              status: "downloading",
-              downloadType: downloadType || "torrent",
+            if (gameId) {
+              const currentGame = await storage.getGame(gameId);
+              if (!currentGame || currentGame.userId !== req.user!.id) {
+                requestError = { status: 404, error: "Game not found" };
+                return;
+              }
+              if (currentGame.seerrExternalRequestId) {
+                if (currentGame.seerrCancelled || currentGame.status === "shelved") {
+                  requestError = {
+                    status: 409,
+                    error: "This SeerrNG request was cancelled and cannot accept a download.",
+                  };
+                  return;
+                }
+                claimedSeerrOperation = await storage.claimSeerrOperation(gameId);
+                if (!claimedSeerrOperation) {
+                  requestError = {
+                    status: 409,
+                    error: "Another acquisition or cancellation operation is in progress.",
+                  };
+                  return;
+                }
+              }
+            }
+
+            // Try downloaders by priority order with automatic fallback.
+            result = await DownloaderManager.addDownloadWithFallback(enabledDownloaders, {
+              url,
+              title,
+              category,
+              downloadPath,
+              priority,
+              downloadType,
+              password,
             });
 
-            await storage.updateGameStatus(gameId, { status: "downloading" });
-            await storage.updateGameSearchResultsAvailable(gameId, false);
-          } catch (error) {
-            routesLogger.error({ error, gameId }, "Failed to link download to game");
-            // We don't fail the whole request since the download was added successfully
+            if (result.success === false) return;
+
+            // For async qBittorrent adds, the correlation tag creates a tracked
+            // record before the real torrent hash is available.
+            const rawDownloadHash = result.id ?? result.correlationTag;
+            const downloadHash = rawDownloadHash
+              ? normalizeDownloadHash(rawDownloadHash)
+              : rawDownloadHash;
+            if (gameId && result.success && downloadHash && result.downloaderId) {
+              try {
+                await storage.addGameDownload({
+                  gameId,
+                  downloaderId: result.downloaderId,
+                  downloadHash,
+                  downloadTitle: title,
+                  status: "downloading",
+                  downloadType: downloadType || "torrent",
+                });
+
+                await storage.updateGameStatus(gameId, { status: "downloading" });
+                await storage.updateGameSearchResultsAvailable(gameId, false);
+              } catch (error) {
+                routesLogger.error({ error, gameId }, "Failed to link download to game");
+                // The download succeeded; preserve the existing response contract.
+              }
+            }
+          } finally {
+            if (claimedSeerrOperation && gameId) {
+              await storage.finishSeerrOperation(gameId);
+            }
           }
-        }
+        };
+
+        if (gameId) await withGameOperationLock(gameId, dispatchDownload);
+        else await dispatchDownload();
+
+        if (requestError)
+          return res.status(requestError.status).json({ error: requestError.error });
+        if (!result) return res.status(500).json({ error: "Download could not be started" });
+        if (result.success === false) return res.status(500).json(result);
 
         return res.json(result);
       } catch (error) {

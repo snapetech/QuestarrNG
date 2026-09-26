@@ -34,14 +34,39 @@ export type QuickAddResult =
 export async function quickAddGameByTitle(
   userId: string,
   title: string,
-  options: { status?: "wanted" | "owned"; source?: Game["source"] } = {}
+  options: {
+    status?: "wanted" | "owned";
+    source?: Game["source"];
+    igdbId?: number;
+    seerrExternalRequestId?: string;
+    seerrVariant?: NonNullable<Game["seerrVariant"]>;
+  } = {}
 ): Promise<QuickAddResult> {
-  const [igdbResult] = await igdbClient.searchGames(title, 1);
+  const igdbResult = options.igdbId
+    ? await igdbClient.getGameById(options.igdbId)
+    : (await igdbClient.searchGames(title, 1))[0];
   if (!igdbResult) {
     return { outcome: "not_found" };
   }
 
   const match = igdbClient.formatGameData(igdbResult);
+  const platformTarget = options.seerrVariant
+    ? {
+        windows: { id: 6, name: "PC (Microsoft Windows)" },
+        linux: { id: 3, name: "Linux" },
+        macos: { id: 14, name: "Mac" },
+      }[options.seerrVariant.operatingSystem]
+    : undefined;
+  const matchedPlatform = platformTarget
+    ? (match.platformOptions as { id: number; name: string }[] | undefined)?.find(
+        (platform) =>
+          platform.id === platformTarget.id ||
+          platform.name.toLowerCase() === platformTarget.name.toLowerCase()
+      )
+    : undefined;
+  if (options.seerrVariant && !matchedPlatform) {
+    return { outcome: "not_found" };
+  }
   const filterFlags = await getContentFilterFlags(userId);
   if (
     isContentFiltered(match as { isAdultContent?: boolean; isAgeRestricted?: boolean }, filterFlags)
@@ -55,6 +80,16 @@ export async function quickAddGameByTitle(
     igdbId: match.igdbId,
     status: options.status ?? "wanted",
     platform: "PC", // Default platform, user can change later
+    ...(matchedPlatform
+      ? {
+          targetPlatformId: matchedPlatform.id,
+          targetPlatformName: matchedPlatform.name,
+        }
+      : {}),
+    ...(options.seerrExternalRequestId
+      ? { seerrExternalRequestId: options.seerrExternalRequestId }
+      : {}),
+    ...(options.seerrVariant ? { seerrVariant: options.seerrVariant } : {}),
     platforms: match.platforms,
     genres: match.genres,
     themes: match.themes,
@@ -77,6 +112,28 @@ export async function quickAddGameByTitle(
       : g.title.toLowerCase() === gameData.title.toLowerCase()
   );
   if (existingGame) {
+    if (
+      options.seerrExternalRequestId &&
+      (existingGame.seerrExternalRequestId === options.seerrExternalRequestId ||
+        !existingGame.seerrExternalRequestId ||
+        existingGame.seerrCancelled)
+    ) {
+      const linked = await storage.updateGame(existingGame.id, {
+        seerrExternalRequestId: options.seerrExternalRequestId,
+        seerrVariant: options.seerrVariant ?? null,
+        seerrCancelled: false,
+        ...(matchedPlatform
+          ? {
+              targetPlatformId: matchedPlatform.id,
+              targetPlatformName: matchedPlatform.name,
+            }
+          : {}),
+        ...(existingGame.seerrCancelled || existingGame.status === "shelved"
+          ? { status: options.status ?? "wanted" }
+          : {}),
+      });
+      return { outcome: "added", game: linked ?? existingGame };
+    }
     return { outcome: "duplicate", game: existingGame };
   }
 

@@ -1,0 +1,1 @@
+ALTER TABLE `games` ADD `seerr_dispatching` integer DEFAULT false NOT NULL;

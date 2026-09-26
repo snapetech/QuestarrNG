@@ -1,9 +1,13 @@
 import { Router, type Request, type Response } from "express";
+import { createReadStream, promises as fs } from "node:fs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { storage } from "../storage.js";
 import { routesLogger as logger } from "../logger.js";
+import { igdbClient } from "../igdb.js";
+import { checkAutoSearch, withGameOperationLock } from "../cron.js";
+import { DownloaderManager } from "../downloaders/manager.js";
 import { normalizeTitle } from "../../shared/title-utils.js";
 import { quickAddGameByTitle } from "../game-quick-add.js";
 // Relative path, not the "@shared" alias — see the comment in
@@ -24,6 +28,9 @@ export const INTEGRATION_API_VERSION = 1;
 
 /** Upper bound on a single library sync payload, to keep one request bounded. */
 const MAX_SYNC_GAMES = 5000;
+const MAX_CATALOG_RESULTS = 50;
+const INTERRUPTED_HANDOFF_MESSAGE =
+  "Questarr restarted during a download handoff. Check the download client's queue and history before retrying.";
 
 export const integrationRouter = Router();
 
@@ -39,6 +46,517 @@ integrationRouter.use((req, res, next) => {
   res.set("Cache-Control", "no-store");
   return next();
 });
+
+const seerrVariantSchema = z.object({
+  operatingSystem: z.enum(["windows", "linux", "macos"]),
+  architecture: z.enum(["x64", "arm64", "x86", "universal"]),
+});
+
+const seerrRequestIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(255)
+  .refine(
+    (value) =>
+      !Array.from(value).some(
+        (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127
+      )
+  );
+
+const catalogLimitSchema = z.coerce.number().int().min(1).max(MAX_CATALOG_RESULTS).default(20);
+
+const seerrGameSchema = (value: unknown) => {
+  const game = igdbClient.formatGameData(value as Parameters<typeof igdbClient.formatGameData>[0]);
+  return {
+    id: `igdb-${String(game.igdbId)}`,
+    igdbId: Number(game.igdbId),
+    title: String(game.title ?? ""),
+    summary: String(game.summary ?? ""),
+    coverUrl: String(game.coverUrl ?? ""),
+    releaseDate: String(game.releaseDate ?? ""),
+    platforms: Array.isArray(game.platforms) ? game.platforms : [],
+    platformOptions: Array.isArray(game.platformOptions) ? game.platformOptions : [],
+    genres: Array.isArray(game.genres) ? game.genres : [],
+  };
+};
+
+const findSeerrGame = async (userId: string, externalRequestId: string) =>
+  (await storage.getUserGames(userId, true)).find(
+    (game) => game.seerrExternalRequestId === externalRequestId
+  );
+
+const isContainedPath = (candidate: string, root: string): boolean =>
+  candidate === root || candidate.startsWith(`${root.replace(/[\\/]+$/, "")}${path.sep}`);
+
+const getSeerrAssets = async (userId: string, gameId: string) => {
+  const [files, config] = await Promise.all([
+    storage.getGameFiles(gameId),
+    storage.getImportConfig(userId),
+  ]);
+  let libraryRoot: string;
+  try {
+    libraryRoot = await fs.realpath(config.libraryRoot);
+  } catch {
+    return [];
+  }
+
+  const assets = [];
+  for (const file of files.slice(0, 100)) {
+    try {
+      const realPath = await fs.realpath(file.filePath);
+      if (!isContainedPath(realPath, libraryRoot)) continue;
+      const stats = await fs.stat(realPath);
+      if (!stats.isFile()) continue;
+      assets.push({
+        id: file.id,
+        name: path.basename(file.originalName || file.storedName || realPath),
+        size: stats.size,
+        path: realPath,
+      });
+    } catch {
+      // A stale import row or a removed file is not a deliverable asset.
+    }
+  }
+  return assets;
+};
+
+const getSeerrRequest = async (userId: string, externalRequestId: string) => {
+  const game = await findSeerrGame(userId, externalRequestId);
+  if (!game) return undefined;
+
+  const [assets, downloads] = await Promise.all([
+    getSeerrAssets(userId, game.id),
+    storage.getDownloadsByGameId(game.id),
+  ]);
+  const latestDownload = [...downloads].sort(
+    (a, b) => (b.addedAt?.getTime() ?? 0) - (a.addedAt?.getTime() ?? 0)
+  )[0];
+  const downloadStatus = latestDownload?.status.toLowerCase() ?? "";
+  let status:
+    "accepted" | "searching" | "downloading" | "importing" | "available" | "failed" | "cancelled";
+  if (game.seerrCancelled || game.status === "shelved") {
+    status = "cancelled";
+  } else if (["owned", "playing", "completed"].includes(game.status) || assets.length > 0) {
+    status = "available";
+  } else if (game.seerrRecoveryRequired) {
+    status = "failed";
+  } else if (["unpacking", "importing", "manual_review_required"].includes(downloadStatus)) {
+    status = "importing";
+  } else if (["downloading", "queued", "paused"].includes(downloadStatus)) {
+    status = "downloading";
+  } else if (["failed", "error", "import-failed"].includes(downloadStatus)) {
+    status = "failed";
+  } else if (game.status === "downloading") {
+    status = "downloading";
+  } else if (game.seerrDispatching) {
+    status = "searching";
+  } else if (game.searchResultsAvailable) {
+    status = "searching";
+  } else if (game.status === "wanted") {
+    status = "failed";
+  } else {
+    status = "accepted";
+  }
+
+  return {
+    externalRequestId,
+    status,
+    deliverable: assets.length > 0,
+    error:
+      status === "failed"
+        ? game.seerrRecoveryRequired
+          ? INTERRUPTED_HANDOFF_MESSAGE
+          : (latestDownload?.errorMessage ?? "No usable release was found.")
+        : null,
+    title: game.title,
+    game: { id: game.id, title: game.title, status: game.status },
+    variant: game.seerrVariant ?? undefined,
+  };
+};
+
+// ── SeerrNG software-provider contract ──────────────────────────────────────
+// This is intentionally separate from the general integration API above. It
+// is versioned because SeerrNG persists the external request identity and
+// expects provider-side retry and asset routes to remain idempotent.
+integrationRouter.get("/seerrng/v1/ping", (_req: Request, res: Response) => {
+  res.json({ service: "questarr", apiVersion: 1, requestContractVersion: 1 });
+});
+
+integrationRouter.get("/seerrng/v1/catalog/search", async (req: Request, res: Response) => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const limit = catalogLimitSchema.safeParse(req.query.limit ?? 20);
+  if (!query || query.length > 200 || !limit.success) {
+    return res.status(400).json({ error: "A valid search query and limit are required." });
+  }
+  try {
+    return res.json((await igdbClient.searchGames(query, limit.data)).map(seerrGameSchema));
+  } catch (error) {
+    logger.error({ error }, "SeerrNG catalog search failed");
+    return res.status(502).json({ error: "IGDB catalog search failed." });
+  }
+});
+
+integrationRouter.get("/seerrng/v1/catalog/popular", async (req: Request, res: Response) => {
+  const limit = catalogLimitSchema.safeParse(req.query.limit ?? 20);
+  if (!limit.success) return res.status(400).json({ error: "Invalid result limit." });
+  try {
+    return res.json((await igdbClient.getPopularGames(limit.data)).map(seerrGameSchema));
+  } catch (error) {
+    logger.error({ error }, "SeerrNG popular catalog fetch failed");
+    return res.status(502).json({ error: "IGDB catalog is unavailable." });
+  }
+});
+
+integrationRouter.get("/seerrng/v1/catalog/platforms", async (_req: Request, res: Response) => {
+  try {
+    return res.json(await igdbClient.getPlatforms());
+  } catch (error) {
+    logger.error({ error }, "SeerrNG platform catalog fetch failed");
+    return res.status(502).json({ error: "IGDB platform catalog is unavailable." });
+  }
+});
+
+integrationRouter.get("/seerrng/v1/catalog/games/:igdbId", async (req: Request, res: Response) => {
+  const igdbId = Number(req.params.igdbId);
+  if (!Number.isSafeInteger(igdbId) || igdbId <= 0) {
+    return res.status(400).json({ error: "Invalid IGDB game ID." });
+  }
+  try {
+    const game = await igdbClient.getGameById(igdbId);
+    return game
+      ? res.json(seerrGameSchema(game))
+      : res.status(404).json({ error: "Game not found." });
+  } catch (error) {
+    logger.error({ error, igdbId }, "SeerrNG catalog game fetch failed");
+    return res.status(502).json({ error: "IGDB catalog is unavailable." });
+  }
+});
+
+const seerrCreateRequestSchema = z.object({
+  externalRequestId: seerrRequestIdSchema,
+  title: z.string().trim().min(1).max(500),
+  igdbId: z.number().int().positive().optional(),
+  variant: seerrVariantSchema,
+});
+
+integrationRouter.post("/seerrng/v1/requests", async (req: Request, res: Response) => {
+  const parsed = seerrCreateRequestSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid software request payload." });
+  const { externalRequestId, title, igdbId, variant } = parsed.data;
+  try {
+    const existing = await findSeerrGame(req.user!.id, externalRequestId);
+    if (existing) {
+      const current = await getSeerrRequest(req.user!.id, externalRequestId);
+      return res.status(200).json(current);
+    }
+
+    const result = await quickAddGameByTitle(req.user!.id, title, {
+      status: "wanted",
+      source: "api",
+      ...(igdbId ? { igdbId } : {}),
+      seerrExternalRequestId: externalRequestId,
+      seerrVariant: variant,
+    });
+    if (result.outcome === "not_found") {
+      return res.status(404).json({ error: "No matching PC game was found." });
+    }
+    if (result.outcome === "duplicate") {
+      return res.status(409).json({ error: "Game is already linked to another request." });
+    }
+    if (!result.game.seerrCancelled && result.game.status === "wanted") {
+      await checkAutoSearch({ userId: req.user!.id, gameId: result.game.id, force: true });
+    }
+    return res.status(201).json(await getSeerrRequest(req.user!.id, externalRequestId));
+  } catch (error) {
+    logger.error({ error, externalRequestId }, "SeerrNG software request failed");
+    return res.status(500).json({ error: "Software request could not be started." });
+  }
+});
+
+integrationRouter.get(
+  "/seerrng/v1/requests/:externalRequestId",
+  async (req: Request, res: Response) => {
+    const externalRequestId = seerrRequestIdSchema.safeParse(req.params.externalRequestId);
+    if (!externalRequestId.success) return res.status(400).json({ error: "Invalid request ID." });
+    try {
+      const request = await getSeerrRequest(req.user!.id, externalRequestId.data);
+      return request ? res.json(request) : res.status(404).json({ error: "Request not found." });
+    } catch (error) {
+      logger.error({ error }, "SeerrNG software request status failed");
+      return res.status(500).json({ error: "Request status is unavailable." });
+    }
+  }
+);
+
+integrationRouter.post(
+  "/seerrng/v1/requests/:externalRequestId/retry",
+  async (req: Request, res: Response) => {
+    const externalRequestId = seerrRequestIdSchema.safeParse(req.params.externalRequestId);
+    if (!externalRequestId.success) return res.status(400).json({ error: "Invalid request ID." });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    if (
+      "confirmNoExistingDownload" in body &&
+      typeof body.confirmNoExistingDownload !== "boolean"
+    ) {
+      return res.status(400).json({ error: "Invalid retry confirmation." });
+    }
+    const confirmNoExistingDownload = body.confirmNoExistingDownload === true;
+    try {
+      const game = await findSeerrGame(req.user!.id, externalRequestId.data);
+      if (!game) return res.status(404).json({ error: "Request not found." });
+      let retryError: { status: number; error: string } | undefined;
+      let confirmationRequired = false;
+      await withGameOperationLock(game.id, async () => {
+        const currentGame = await storage.getGame(game.id);
+        if (!currentGame) {
+          retryError = { status: 404, error: "Request not found." };
+          return;
+        }
+        if (currentGame.seerrCancelled || currentGame.status === "shelved") {
+          retryError = { status: 409, error: "Cancelled requests cannot be retried." };
+          return;
+        }
+        if (currentGame.seerrDispatching) {
+          retryError = {
+            status: 409,
+            error: "Another acquisition or cancellation operation is in progress.",
+          };
+          return;
+        }
+        if (currentGame.seerrRecoveryRequired && !confirmNoExistingDownload) {
+          confirmationRequired = true;
+          return;
+        }
+        const assets = await getSeerrAssets(req.user!.id, currentGame.id);
+        if (["owned", "playing", "completed"].includes(currentGame.status) || assets.length > 0) {
+          retryError = { status: 409, error: "The game is already available." };
+          return;
+        }
+        await storage.updateGame(currentGame.id, {
+          status: "wanted",
+          seerrRecoveryRequired: false,
+          searchResultsAvailable: false,
+        });
+      });
+      if (retryError) return res.status(retryError.status).json({ error: retryError.error });
+      if (confirmationRequired) {
+        return res.status(409).json({
+          confirmationRequired: "confirmNoExistingDownload",
+          error: INTERRUPTED_HANDOFF_MESSAGE,
+        });
+      }
+      await checkAutoSearch({ userId: req.user!.id, gameId: game.id, force: true });
+      return res.json(await getSeerrRequest(req.user!.id, externalRequestId.data));
+    } catch (error) {
+      logger.error({ error }, "SeerrNG software request retry failed");
+      return res.status(500).json({ error: "Request could not be retried." });
+    }
+  }
+);
+
+integrationRouter.post(
+  "/seerrng/v1/requests/:externalRequestId/cancel",
+  async (req: Request, res: Response) => {
+    const externalRequestId = seerrRequestIdSchema.safeParse(req.params.externalRequestId);
+    if (!externalRequestId.success) return res.status(400).json({ error: "Invalid request ID." });
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    if (
+      "confirmNoExistingDownload" in body &&
+      typeof body.confirmNoExistingDownload !== "boolean"
+    ) {
+      return res.status(400).json({ error: "Invalid cancellation confirmation." });
+    }
+    const confirmNoExistingDownload = body.confirmNoExistingDownload === true;
+    try {
+      const game = await findSeerrGame(req.user!.id, externalRequestId.data);
+      if (!game) return res.status(404).json({ error: "Request not found." });
+      return await withGameOperationLock(game.id, async () => {
+        const currentGame = await storage.getGame(game.id);
+        if (!currentGame) return res.status(404).json({ error: "Request not found." });
+        if (currentGame.seerrCancelled)
+          return res.json(await getSeerrRequest(req.user!.id, externalRequestId.data));
+        if (currentGame.seerrRecoveryRequired && !confirmNoExistingDownload) {
+          return res.status(409).json({
+            confirmationRequired: "confirmNoExistingDownload",
+            error: INTERRUPTED_HANDOFF_MESSAGE,
+          });
+        }
+
+        const assets = await getSeerrAssets(req.user!.id, currentGame.id);
+        if (["owned", "playing", "completed"].includes(currentGame.status) || assets.length > 0) {
+          return res.status(409).json({ error: "An available game cannot be cancelled." });
+        }
+        if (
+          !(await storage.claimSeerrOperation(currentGame.id, {
+            allowRecovery: confirmNoExistingDownload,
+          }))
+        ) {
+          return res.status(409).json({
+            error: "Another acquisition or cancellation operation is in progress.",
+          });
+        }
+
+        try {
+          const downloads = await storage.getDownloadsByGameId(currentGame.id);
+          const terminalDownloadStatuses = new Set([
+            "completed",
+            "imported",
+            "manual_review_required",
+            "cancelled",
+            "failed",
+            "error",
+          ]);
+          const activeDownloads = downloads.filter(
+            (download) => !terminalDownloadStatuses.has(download.status.toLowerCase())
+          );
+          if (
+            currentGame.status === "downloading" &&
+            activeDownloads.length === 0 &&
+            !currentGame.seerrRecoveryRequired
+          ) {
+            return res.status(409).json({
+              error:
+                "Questarr reports an active download but cannot identify a tracked download to stop.",
+            });
+          }
+          if (
+            activeDownloads.some(
+              (download) => download.seerrExternalRequestId !== externalRequestId.data
+            )
+          ) {
+            return res.status(409).json({
+              error:
+                "An active download is not safely linked to this request. Stop it in the download client before cancelling.",
+            });
+          }
+          if (
+            activeDownloads.some((download) => download.downloadHash.startsWith("questarr-add-"))
+          ) {
+            return res.status(409).json({
+              error:
+                "The download client is still confirming this download. Try cancelling again after its tracking ID is available.",
+            });
+          }
+          for (const download of activeDownloads) {
+            const downloader = await storage.getDownloader(download.downloaderId);
+            if (!downloader)
+              return res
+                .status(409)
+                .json({ error: "The active download client is no longer configured." });
+            const removed = await DownloaderManager.removeDownload(
+              downloader,
+              download.downloadHash,
+              false
+            );
+            if (!removed.success)
+              return res.status(502).json({ error: "The active download could not be cancelled." });
+            await storage.updateGameDownloadStatus(
+              download.id,
+              "cancelled",
+              "Cancelled through SeerrNG."
+            );
+          }
+          await storage.finishSeerrOperation(currentGame.id, {
+            status: "shelved",
+            seerrCancelled: true,
+            seerrRecoveryRequired: false,
+            searchResultsAvailable: false,
+          });
+          return res.json(await getSeerrRequest(req.user!.id, externalRequestId.data));
+        } finally {
+          await storage.finishSeerrOperation(currentGame.id);
+        }
+      });
+    } catch (error) {
+      logger.error({ error }, "SeerrNG software request cancellation failed");
+      return res.status(500).json({ error: "Request could not be cancelled." });
+    }
+  }
+);
+
+integrationRouter.get(
+  "/seerrng/v1/requests/:externalRequestId/assets",
+  async (req: Request, res: Response) => {
+    const externalRequestId = seerrRequestIdSchema.safeParse(req.params.externalRequestId);
+    if (!externalRequestId.success) return res.status(400).json({ error: "Invalid request ID." });
+    const game = await findSeerrGame(req.user!.id, externalRequestId.data);
+    if (!game) return res.status(404).json({ error: "Request not found." });
+    try {
+      const assets = await getSeerrAssets(req.user!.id, game.id);
+      return res.json({
+        assets: assets.map(({ id, name, size }) => ({ id, name, size, url: "" })),
+        bundleSupported: false,
+      });
+    } catch (error) {
+      logger.error({ error }, "SeerrNG software assets lookup failed");
+      return res.status(500).json({ error: "Assets are unavailable." });
+    }
+  }
+);
+
+integrationRouter.get(
+  "/seerrng/v1/requests/:externalRequestId/assets/:assetId",
+  async (req: Request, res: Response) => {
+    const externalRequestId = seerrRequestIdSchema.safeParse(req.params.externalRequestId);
+    const assetId = z.string().min(1).max(256).safeParse(req.params.assetId);
+    if (!externalRequestId.success || !assetId.success)
+      return res.status(400).json({ error: "Invalid asset request." });
+    const game = await findSeerrGame(req.user!.id, externalRequestId.data);
+    if (!game) return res.status(404).json({ error: "Request not found." });
+    try {
+      const asset = (await getSeerrAssets(req.user!.id, game.id)).find(
+        (item) => item.id === assetId.data
+      );
+      if (!asset) return res.status(404).json({ error: "Asset not found." });
+      const size = asset.size;
+      let start = 0;
+      let end = size - 1;
+      let statusCode = 200;
+      const range = req.header("Range");
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+        if (!match || size === 0) {
+          res.set("Content-Range", `bytes */${size}`);
+          return res.status(416).end();
+        }
+        if (!match[1]) {
+          const suffix = Number(match[2]);
+          if (!suffix) {
+            res.set("Content-Range", `bytes */${size}`);
+            return res.status(416).end();
+          }
+          start = Math.max(0, size - suffix);
+        } else {
+          start = Number(match[1]);
+          if (match[2]) end = Math.min(size - 1, Number(match[2]));
+        }
+        if (!Number.isSafeInteger(start) || start < 0 || start >= size || end < start) {
+          res.set("Content-Range", `bytes */${size}`);
+          return res.status(416).end();
+        }
+        statusCode = 206;
+        res.set("Content-Range", `bytes ${start}-${end}/${size}`);
+      }
+      res.set({
+        "Accept-Ranges": "bytes",
+        "Content-Length": String(end - start + 1),
+        "Content-Type": "application/octet-stream",
+        "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(asset.name)}`,
+      });
+      const stream = createReadStream(asset.path, { start, end });
+      stream.on("error", (error) => {
+        logger.warn({ error }, "SeerrNG asset stream failed");
+        if (!res.headersSent) res.status(404).end();
+        else res.destroy(error);
+      });
+      return stream.pipe(res.status(statusCode));
+    } catch (error) {
+      logger.error({ error }, "SeerrNG software asset stream failed");
+      return res.status(500).json({ error: "Asset could not be streamed." });
+    }
+  }
+);
 
 /** The library shape handed to external clients — a stable subset of Game. */
 function toIntegrationGame(game: Game) {

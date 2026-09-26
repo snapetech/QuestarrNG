@@ -1,0 +1,1 @@
+ALTER TABLE `games` ADD `seerr_recovery_required` integer DEFAULT false NOT NULL;

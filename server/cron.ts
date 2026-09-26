@@ -41,6 +41,32 @@ const DOWNLOAD_CHECK_INTERVAL_MS = 60 * 1000; // 1 minute
 const downloadMissCount = new Map<string, number>();
 const DOWNLOAD_MISS_THRESHOLD = 3;
 
+const gameOperationLocks = new Map<string, Promise<void>>();
+
+/** Serialize tracked handoff and cancellation operations for one game. */
+export async function withGameOperationLock<T>(
+  gameId: string,
+  operation: () => Promise<T>
+): Promise<T> {
+  const previous = gameOperationLocks.get(gameId);
+  let release: () => void = () => {};
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queued = previous ? previous.then(() => current) : current;
+  gameOperationLocks.set(gameId, queued);
+  if (previous) await previous;
+
+  try {
+    return await operation();
+  } finally {
+    release();
+    if (gameOperationLocks.get(gameId) === queued) {
+      gameOperationLocks.delete(gameId);
+    }
+  }
+}
+
 // Track consecutive unresolved tag-resolution attempts per download
 // so an async qBittorrent add that never resolves doesn't stay
 // "downloading" forever.
@@ -1097,12 +1123,19 @@ export async function checkDownloadStatus() {
   }
 }
 
-export async function checkAutoSearch() {
+export async function checkAutoSearch(
+  options: { userId?: string; gameId?: string; force?: boolean } = {}
+) {
   igdbLogger.debug("Checking auto-search for wanted games...");
 
   try {
     // Get wanted games grouped by user directly from storage (optimized)
-    const gamesByUser = await storage.getWantedGamesGroupedByUser();
+    const allGamesByUser = await storage.getWantedGamesGroupedByUser();
+    const gamesByUser = options.userId
+      ? new Map(
+          Array.from(allGamesByUser.entries()).filter(([userId]) => userId === options.userId)
+        )
+      : allGamesByUser;
 
     // Build an indexer-priority map once for the whole run so duplicate releases from
     // multiple indexers can be de-duplicated using the user-configured indexer order.
@@ -1114,7 +1147,7 @@ export async function checkAutoSearch() {
         const settings = await storage.getUserSettings(userId);
 
         // Skip if auto-search is disabled
-        if (!settings || !settings.autoSearchEnabled) {
+        if (!settings || (!settings.autoSearchEnabled && !options.force)) {
           continue;
         }
 
@@ -1127,19 +1160,25 @@ export async function checkAutoSearch() {
         const timeSinceLastSearch = Date.now() - lastSearch;
         const intervalMs = settings.searchIntervalHours * 60 * 60 * 1000;
 
-        if (timeSinceLastSearch < intervalMs) {
+        if (timeSinceLastSearch < intervalMs && !options.force) {
           continue;
         }
 
         // Games are already filtered for wanted and not hidden by the storage query
-        const wantedGames = userGames;
+        const wantedGames = userGames.filter(
+          (game) => !game.seerrRecoveryRequired && (!options.gameId || game.id === options.gameId)
+        );
         const OWNED_STATUSES_ARRAY = Array.from(OWNED_STATUSES);
-        const ownedGames = await storage.getUserGames(userId, false, OWNED_STATUSES_ARRAY);
+        const ownedGames = options.gameId
+          ? []
+          : await storage.getUserGames(userId, false, OWNED_STATUSES_ARRAY);
 
         if (wantedGames.length === 0 && ownedGames.length === 0) {
           igdbLogger.debug({ userId }, "No wanted or owned games found");
           // Update last search time even if no games found, to avoid checking again too soon
-          await storage.updateUserSettings(userId, { lastAutoSearch: new Date() });
+          if (!options.force) {
+            await storage.updateUserSettings(userId, { lastAutoSearch: new Date() });
+          }
           continue;
         }
 
@@ -1212,48 +1251,66 @@ export async function checkAutoSearch() {
                 const downloaders = await storage.getEnabledDownloaders();
 
                 if (item && downloaders.length > 0) {
-                  try {
-                    const result = await DownloaderManager.addDownloadWithFallback(downloaders, {
-                      url: item.link,
-                      title: item.title,
-                    });
-
-                    if (result && result.success && result.id && result.downloaderId) {
-                      // Track download
-                      await storage.addGameDownload({
-                        gameId: game.id,
-                        downloaderId: result.downloaderId,
-                        downloadHash: result.id,
-                        downloadTitle: item.title,
-                        status: "downloading",
-                        downloadType: item.downloadType,
+                  await withGameOperationLock(game.id, async () => {
+                    const currentGame = await storage.getGame(game.id);
+                    if (
+                      !currentGame ||
+                      currentGame.status !== "wanted" ||
+                      currentGame.seerrCancelled
+                    ) {
+                      return;
+                    }
+                    const isSeerrRequest = Boolean(currentGame.seerrExternalRequestId);
+                    if (isSeerrRequest && !(await storage.claimSeerrOperation(game.id))) {
+                      return;
+                    }
+                    try {
+                      const result = await DownloaderManager.addDownloadWithFallback(downloaders, {
+                        url: item.link,
+                        title: item.title,
                       });
 
-                      // Update game status
-                      await storage.updateGameStatus(game.id, { status: "downloading" });
-
-                      // Notify success
-                      const groupSuffix = item.group ? ` [${item.group}]` : "";
-                      if (prefs.autoDownload.inApp) {
-                        const notification = await storage.addNotification({
-                          userId,
-                          type: "success",
-                          title: "Download Started",
-                          message: `Started downloading ${game.title}${groupSuffix} via ${item.downloadType === "usenet" ? "Usenet" : "Torrent"}`,
-                          link: "/",
+                      const rawDownloadHash = result?.id ?? result?.correlationTag;
+                      const downloadHash = rawDownloadHash
+                        ? normalizeDownloadHash(rawDownloadHash)
+                        : rawDownloadHash;
+                      if (result && result.success && downloadHash && result.downloaderId) {
+                        await storage.addGameDownload({
+                          gameId: game.id,
+                          downloaderId: result.downloaderId,
+                          downloadHash,
+                          downloadTitle: item.title,
+                          status: "downloading",
+                          downloadType: item.downloadType,
                         });
-                        notifyUser("notification", notification);
-                        if (prefs.autoDownload.apprise) appriseClient.send(notification);
-                      }
+                        await storage.updateGameStatus(game.id, { status: "downloading" });
 
-                      igdbLogger.info(
-                        { gameTitle: game.title, type: item.downloadType },
-                        "Auto-downloaded result"
-                      );
+                        const groupSuffix = item.group ? ` [${item.group}]` : "";
+                        if (prefs.autoDownload.inApp) {
+                          const notification = await storage.addNotification({
+                            userId,
+                            type: "success",
+                            title: "Download Started",
+                            message: `Started downloading ${game.title}${groupSuffix} via ${item.downloadType === "usenet" ? "Usenet" : "Torrent"}`,
+                            link: "/",
+                          });
+                          notifyUser("notification", notification);
+                          if (prefs.autoDownload.apprise) appriseClient.send(notification);
+                        }
+
+                        igdbLogger.info(
+                          { gameTitle: game.title, type: item.downloadType },
+                          "Auto-downloaded result"
+                        );
+                      }
+                    } finally {
+                      if (isSeerrRequest) {
+                        await storage.finishSeerrOperation(game.id);
+                      }
                     }
-                  } catch (error) {
+                  }).catch((error) => {
                     igdbLogger.error({ gameTitle: game.title, error }, "Failed to auto-download");
-                  }
+                  });
                 }
               } else {
                 // Just notify about availability (only on the false→true transition)
@@ -1373,7 +1430,9 @@ export async function checkAutoSearch() {
         );
 
         // Update last search time
-        await storage.updateUserSettings(userId, { lastAutoSearch: new Date() });
+        if (!options.force) {
+          await storage.updateUserSettings(userId, { lastAutoSearch: new Date() });
+        }
       } catch (error) {
         igdbLogger.error({ userId, error }, "Error processing auto-search for user");
       }

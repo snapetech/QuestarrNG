@@ -172,6 +172,18 @@ export const games = sqliteTable("games", {
   platforms: text("platforms", { mode: "json" }).$type<string[]>(),
   targetPlatformId: integer("target_platform_id"),
   targetPlatformName: text("target_platform_name"),
+  // Stable request identity for SeerrNG. Nullable and unique so ordinary
+  // Questarr games remain unaffected while provider retries stay idempotent.
+  seerrExternalRequestId: text("seerr_external_request_id").unique(),
+  seerrVariant: text("seerr_variant", { mode: "json" }).$type<{
+    operatingSystem: "windows" | "linux" | "macos";
+    architecture: "x64" | "arm64" | "x86" | "universal";
+  }>(),
+  seerrCancelled: integer("seerr_cancelled", { mode: "boolean" }).notNull().default(false),
+  seerrDispatching: integer("seerr_dispatching", { mode: "boolean" }).notNull().default(false),
+  seerrRecoveryRequired: integer("seerr_recovery_required", { mode: "boolean" })
+    .notNull()
+    .default(false),
   genres: text("genres", { mode: "json" }).$type<string[]>(),
   themes: text("themes", { mode: "json" }).$type<string[]>(),
   publishers: text("publishers", { mode: "json" }).$type<string[]>(),
@@ -292,13 +304,19 @@ export const gameDownloads = sqliteTable(
     downloadTitle: text("download_title").notNull(),
     status: text("status").notNull().default("downloading"),
     errorMessage: text("error_message"),
+    // Correlates only downloads created while a SeerrNG request owns the game.
+    // Cancellation must never infer request ownership from gameId alone.
+    seerrExternalRequestId: text("seerr_external_request_id"),
     fileSize: integer("file_size"),
     addedAt: integer("added_at", { mode: "timestamp_ms" }).default(
       sql`(strftime('%s', 'now') * 1000)`
     ),
     completedAt: integer("completed_at", { mode: "timestamp_ms" }),
   },
-  (t) => [uniqueIndex("game_downloads_downloader_hash_idx").on(t.downloaderId, t.downloadHash)]
+  (t) => [
+    uniqueIndex("game_downloads_downloader_hash_idx").on(t.downloaderId, t.downloadHash),
+    index("game_downloads_seerr_request_idx").on(t.seerrExternalRequestId),
+  ]
 );
 
 // Legacy table name for backward compatibility during migration

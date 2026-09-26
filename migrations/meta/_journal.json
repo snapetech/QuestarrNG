@@ -267,6 +267,34 @@
       "when": 1789924116306,
       "tag": "0036_gray_mimic",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1790450666451,
+      "tag": "0037_cloudy_penance",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1790451935622,
+      "tag": "0038_rich_smasher",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1790453161457,
+      "tag": "0039_watery_red_ghost",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1790453511332,
+      "tag": "0040_small_peter_parker",
+      "breakpoints": true
     }
   ]
 }
