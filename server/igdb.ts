@@ -1416,7 +1416,7 @@ class IGDBClient {
       // For Discovery games, don't set a status since they're not in collection yet
       status: null,
       isReleased,
-      releaseYear: releaseDate ? releaseDate.getFullYear() : null,
+      releaseYear: releaseDate ? releaseDate.getUTCFullYear() : null,
       earlyAccess: igdbGame.status === 4,
       category: mapIGDBGameType(igdbGame.game_type),
       gameType: igdbGame.game_type,

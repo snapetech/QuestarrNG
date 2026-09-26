@@ -24,7 +24,7 @@ describe("Version Service", () => {
 
       expect(version).toBe(mockVersion);
       expect(global.fetch).toHaveBeenCalledWith(
-        "https://api.github.com/repos/Doezer/Questarr/releases/latest",
+        "https://api.github.com/repos/snapetech/QuestarrNG/releases/latest",
         {
           headers: {
             Accept: "application/vnd.github+json",

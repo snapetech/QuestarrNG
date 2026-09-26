@@ -961,6 +961,7 @@ export default function GameDetailsModal({ game, open, onOpenChange }: GameDetai
                       year: "numeric",
                       month: "short",
                       day: "numeric",
+                      timeZone: "UTC",
                     })}
                   </span>
                 </div>
@@ -1256,7 +1257,9 @@ export default function GameDetailsModal({ game, open, onOpenChange }: GameDetai
                   <div>
                     <h4 className="font-medium text-sm text-muted-foreground mb-1">Release Date</h4>
                     <p className="text-sm" data-testid={`text-full-release-date-${game.id}`}>
-                      {new Date(game.releaseDate).toLocaleDateString()}
+                      {new Date(game.releaseDate).toLocaleDateString(undefined, {
+                        timeZone: "UTC",
+                      })}
                     </p>
                   </div>
                 )}
