@@ -35,6 +35,25 @@ QuestarrNG user.
 SeerrNG should reject an unknown request contract version before dispatching
 requests.
 
+## Catalog
+
+These read-only routes let SeerrNG use the IGDB credentials already configured
+in QuestarrNG without exposing them to the browser. Responses use the same
+normalized game shape as QuestarrNG's discovery API, including the stable IGDB
+ID, artwork, release date, genres, and platform IDs and names. The authenticated
+QuestarrNG account's content filters apply to game search and detail results.
+
+| Method | Path                                                 | Query                                                   | Result                      |
+| ------ | ---------------------------------------------------- | ------------------------------------------------------- | --------------------------- |
+| GET    | `/api/integration/seerrng/v1/catalog/search`         | `q` required, 1–200 characters; `limit` optional, 1–100 | Matching catalog games      |
+| GET    | `/api/integration/seerrng/v1/catalog/popular`        | `limit` optional, 1–100                                 | Popular catalog games       |
+| GET    | `/api/integration/seerrng/v1/catalog/platforms`      | —                                                       | IGDB platform IDs and names |
+| GET    | `/api/integration/seerrng/v1/catalog/games/{igdbId}` | Positive IGDB game ID in path                           | One catalog game            |
+
+The platform list is metadata only. SeerrNG owns its Retro and Modern group
+classification and decides which platform IDs are requestable through each
+configured acquisition provider.
+
 ## Submit and reconcile a request
 
 `POST /api/integration/seerrng/v1/requests`
@@ -76,14 +95,14 @@ release download URL.
 current status. SeerrNG may poll this route to reconcile after either service
 restarts. Status values are:
 
-| Status | Meaning |
-| --- | --- |
-| `accepted` | The request record exists but has not been dispatched. |
-| `searching` | Questarr is waiting for its normal search pipeline. |
-| `downloading` | A tracked download is active. |
-| `importing` | A completed download is being imported. |
-| `available` | At least one imported game file is present and deliverable. |
-| `failed` | The request or latest acquisition failed or could not be safely reconciled. |
+| Status        | Meaning                                                                     |
+| ------------- | --------------------------------------------------------------------------- |
+| `accepted`    | The request record exists but has not been dispatched.                      |
+| `searching`   | Questarr is waiting for its normal search pipeline.                         |
+| `downloading` | A tracked download is active.                                               |
+| `importing`   | A completed download is being imported.                                     |
+| `available`   | At least one imported game file is present and deliverable.                 |
+| `failed`      | The request or latest acquisition failed or could not be safely reconciled. |
 
 `POST /api/integration/seerrng/v1/requests/{externalRequestId}/retry` starts a
 new attempt only for a failed request. Replays of the original POST never

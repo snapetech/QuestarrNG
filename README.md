@@ -73,7 +73,7 @@ The badges below report the upstream Questarr project's release, package, and CI
 | **Statistics**              | Visualize collection statistics with Discord sharing support. 🚧                                                                                                              |
 | **Security Focused**        | General security hardening, SSL support, and [OpenSSF certified](https://www.bestpractices.dev/projects/13450) — see [SECURITY.md](.github/SECURITY.md) for the full process. |
 | **Deployment**              | Docker and Compose are the supported paths for QuestarrNG. Some upstream packages do not include this fork's SeerrNG integration.                                             |
-| **SeerrNG requests**        | Versioned request, status, variant, and imported-file delivery API for SeerrNG; documented in [the integration guide](docs/SEERRNG-INTEGRATION.md).                            |
+| **SeerrNG integration**     | Versioned IGDB catalog, request, status, variant, and imported-file delivery API for SeerrNG; documented in [the integration guide](docs/SEERRNG-INTEGRATION.md).             |
 | **Design**                  | Clean, minimalist, dark-first UI built with mobile usage in mind.                                                                                                             |
 
 ### Supported Indexers/Downloaders

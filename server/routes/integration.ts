@@ -7,6 +7,8 @@ import { storage } from "../storage.js";
 import { routesLogger as logger } from "../logger.js";
 import { normalizeTitle } from "../../shared/title-utils.js";
 import { quickAddGameByTitle } from "../game-quick-add.js";
+import { igdbClient } from "../igdb.js";
+import type { IGDBGame } from "../igdb.js";
 // Relative path, not the "@shared" alias — see the comment in
 // game-quick-add.ts.
 import { GAME_STATUSES, type Game } from "../../shared/schema.js";
@@ -76,6 +78,20 @@ type SeerrVariant = {
   architecture: "x64" | "arm64" | "x86" | "universal";
 };
 
+const seerrCatalogListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const seerrCatalogSearchQuerySchema = seerrCatalogListQuerySchema.extend({
+  q: z.string().trim().min(1).max(200),
+});
+
+async function toSeerrCatalogResults(userId: string, games: IGDBGame[]) {
+  const flags = await getContentFilterFlags(userId);
+  const formatted = games.map((game) => igdbClient.formatGameData(game));
+  return excludeFilteredContent(formatted, flags);
+}
+
 function isWithin(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
   return (
@@ -102,10 +118,7 @@ async function getDeliverableAssets(userId: string, gameId: string): Promise<Int
         : path.resolve(root, file.filePath);
       const lexical = path.resolve(reported);
       if (!isWithin(root, lexical)) continue;
-      const [canonical, linkInfo] = await Promise.all([
-        fs.realpath(lexical),
-        fs.lstat(lexical),
-      ]);
+      const [canonical, linkInfo] = await Promise.all([fs.realpath(lexical), fs.lstat(lexical)]);
       if (linkInfo.isSymbolicLink() || !isWithin(root, canonical)) continue;
       const stat = await fs.stat(canonical);
       if (!stat.isFile()) continue;
@@ -146,9 +159,7 @@ async function toSeerrRequestView(
       const attemptedAt = new Date(row.attemptedAt ?? row.createdAt ?? 0).getTime();
       const matchingDownloads = row.downloadId
         ? downloads.filter((download) => download.id === row.downloadId)
-        : downloads.filter(
-            (download) => new Date(download.addedAt ?? 0).getTime() >= attemptedAt
-          );
+        : downloads.filter((download) => new Date(download.addedAt ?? 0).getTime() >= attemptedAt);
       const latestAttempt = matchingDownloads.sort(
         (a, b) => new Date(b.addedAt ?? 0).getTime() - new Date(a.addedAt ?? 0).getTime()
       )[0];
@@ -165,8 +176,7 @@ async function toSeerrRequestView(
                 ].includes(download.status)
               )
               .sort(
-                (a, b) =>
-                  new Date(b.addedAt ?? 0).getTime() - new Date(a.addedAt ?? 0).getTime()
+                (a, b) => new Date(b.addedAt ?? 0).getTime() - new Date(a.addedAt ?? 0).getTime()
               )[0]
           : undefined;
       const latest = latestAttempt ?? latestActive;
@@ -199,12 +209,15 @@ async function toSeerrRequestView(
     game: game ? { id: game.id, title: game.title, status: game.status } : null,
     status,
     deliverable: assets.length > 0,
-    error: status === "failed" ? row.errorMessage ?? "The request could not be completed." : null,
+    error: status === "failed" ? (row.errorMessage ?? "The request could not be completed.") : null,
   };
 }
 
 function contentDisposition(filename: string): string {
-  const safe = path.basename(filename).replace(/[\r\n"\\]/g, "_").replace(/[^\x20-\x7e]/g, "_");
+  const safe = path
+    .basename(filename)
+    .replace(/[\r\n"\\]/g, "_")
+    .replace(/[^\x20-\x7e]/g, "_");
   const encoded = encodeURIComponent(path.basename(filename));
   return `attachment; filename="${safe || "download"}"; filename*=UTF-8''${encoded}`;
 }
@@ -242,7 +255,12 @@ integrationRouter.get("/ping", (req: Request, res: Response) => {
 
 const seerrRequestSchema = z
   .object({
-    externalRequestId: z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.:-]+$/),
+    externalRequestId: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9_.:-]+$/),
     title: z.string().trim().min(1).max(500),
     variant: z
       .object({
@@ -319,6 +337,68 @@ integrationRouter.get("/seerrng/v1/ping", (_req: Request, res: Response) => {
   res.json({ service: "QuestarrNG", apiVersion: 1, requestContractVersion: 1 });
 });
 
+integrationRouter.get("/seerrng/v1/catalog/search", async (req: Request, res: Response) => {
+  const parsed = seerrCatalogSearchQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid catalog search", issues: parsed.error.issues });
+  }
+
+  try {
+    const { q, limit } = parsed.data;
+    const games = await igdbClient.searchGames(q, Math.min(limit * 2, 100));
+    const results = await toSeerrCatalogResults(req.user!.id, games);
+    return res.json(results.slice(0, limit));
+  } catch (error) {
+    logger.error({ error }, "SeerrNG IGDB catalog search failed");
+    return res.status(502).json({ error: "QuestarrNG could not retrieve the game catalog" });
+  }
+});
+
+integrationRouter.get("/seerrng/v1/catalog/popular", async (req: Request, res: Response) => {
+  const parsed = seerrCatalogListQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid catalog query", issues: parsed.error.issues });
+  }
+
+  try {
+    const { limit } = parsed.data;
+    const games = await igdbClient.getPopularGames(Math.min(limit * 2, 100));
+    const results = await toSeerrCatalogResults(req.user!.id, games);
+    return res.json(results.slice(0, limit));
+  } catch (error) {
+    logger.error({ error }, "SeerrNG popular catalog request failed");
+    return res.status(502).json({ error: "QuestarrNG could not retrieve the game catalog" });
+  }
+});
+
+integrationRouter.get("/seerrng/v1/catalog/platforms", async (_req: Request, res: Response) => {
+  try {
+    return res.json(await igdbClient.getPlatforms());
+  } catch (error) {
+    logger.error({ error }, "SeerrNG platform catalog request failed");
+    return res.status(502).json({ error: "QuestarrNG could not retrieve game platforms" });
+  }
+});
+
+integrationRouter.get("/seerrng/v1/catalog/games/:igdbId", async (req: Request, res: Response) => {
+  const parsedId = z.coerce.number().int().positive().safeParse(req.params.igdbId);
+  if (!parsedId.success) {
+    return res.status(400).json({ error: "Invalid IGDB game ID" });
+  }
+
+  try {
+    const game = await igdbClient.getGameById(parsedId.data);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    const [result] = await toSeerrCatalogResults(req.user!.id, [game]);
+    return result
+      ? res.json(result)
+      : res.status(404).json({ error: "Game is hidden by the account's content filters" });
+  } catch (error) {
+    logger.error({ error, igdbId: parsedId.data }, "SeerrNG catalog detail request failed");
+    return res.status(502).json({ error: "QuestarrNG could not retrieve the game catalog" });
+  }
+});
+
 integrationRouter.post("/seerrng/v1/requests", async (req: Request, res: Response) => {
   const parsed = seerrRequestSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -365,9 +445,8 @@ integrationRouter.post("/seerrng/v1/requests", async (req: Request, res: Respons
       }
     }
 
-    const dispatched = await withSeerrDispatchLock(
-      `${userId}:${normalizeTitle(title)}`,
-      () => dispatchSeerrRequest(userId, externalRequestId, title, variant)
+    const dispatched = await withSeerrDispatchLock(`${userId}:${normalizeTitle(title)}`, () =>
+      dispatchSeerrRequest(userId, externalRequestId, title, variant)
     );
     if (dispatched.error) {
       const failed = await storage.getIntegrationRequest(userId, externalRequestId);
@@ -391,7 +470,7 @@ integrationRouter.post("/seerrng/v1/requests", async (req: Request, res: Respons
 
 integrationRouter.post(
   "/seerrng/v1/requests/:externalRequestId/retry",
-  async (req: Request, res: Response) => {
+  async (req: Request<{ externalRequestId: string }>, res: Response) => {
     const userId = req.user!.id;
     const externalRequestId = req.params.externalRequestId;
     const row = await storage.getIntegrationRequest(userId, externalRequestId);
@@ -406,13 +485,11 @@ integrationRouter.post(
       downloadId: null,
       attemptedAt: new Date(),
     });
-    const result = await withSeerrDispatchLock(
-      `${userId}:${normalizeTitle(row.title)}`,
-      () =>
-        dispatchSeerrRequest(userId, externalRequestId, row.title, {
-          operatingSystem: row.operatingSystem as SeerrVariant["operatingSystem"],
-          architecture: row.architecture as SeerrVariant["architecture"],
-        })
+    const result = await withSeerrDispatchLock(`${userId}:${normalizeTitle(row.title)}`, () =>
+      dispatchSeerrRequest(userId, externalRequestId, row.title, {
+        operatingSystem: row.operatingSystem as SeerrVariant["operatingSystem"],
+        architecture: row.architecture as SeerrVariant["architecture"],
+      })
     );
     const updated = await storage.getIntegrationRequest(userId, externalRequestId);
     const request = updated ? await toSeerrRequestView(userId, updated) : null;
@@ -424,7 +501,7 @@ integrationRouter.post(
 
 integrationRouter.get(
   "/seerrng/v1/requests/:externalRequestId",
-  async (req: Request, res: Response) => {
+  async (req: Request<{ externalRequestId: string }>, res: Response) => {
     const row = await storage.getIntegrationRequest(req.user!.id, req.params.externalRequestId);
     if (!row) return res.status(404).json({ error: "Request not found" });
     const request = await toSeerrRequestView(req.user!.id, row);
@@ -434,7 +511,7 @@ integrationRouter.get(
 
 integrationRouter.get(
   "/seerrng/v1/requests/:externalRequestId/assets",
-  async (req: Request, res: Response) => {
+  async (req: Request<{ externalRequestId: string }>, res: Response) => {
     const row = await storage.getIntegrationRequest(req.user!.id, req.params.externalRequestId);
     if (!row) return res.status(404).json({ error: "Request not found" });
     const request = await toSeerrRequestView(req.user!.id, row);
@@ -456,11 +533,12 @@ integrationRouter.get(
 
 integrationRouter.get(
   "/seerrng/v1/requests/:externalRequestId/assets/:assetId",
-  async (req: Request, res: Response) => {
+  async (req: Request<{ externalRequestId: string; assetId: string }>, res: Response) => {
     const row = await storage.getIntegrationRequest(req.user!.id, req.params.externalRequestId);
     if (!row?.gameId) return res.status(404).json({ error: "Asset not found" });
     const view = await toSeerrRequestView(req.user!.id, row);
-    if (!view || view.status !== "available") return res.status(404).json({ error: "Asset not found" });
+    if (!view || view.status !== "available")
+      return res.status(404).json({ error: "Asset not found" });
     const asset = (await getDeliverableAssets(req.user!.id, row.gameId)).find(
       (candidate) => candidate.id === req.params.assetId
     );
