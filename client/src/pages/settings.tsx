@@ -1190,7 +1190,7 @@ export default function SettingsPage() {
                   <Monitor className="h-5 w-5 text-muted-foreground" />
                   <CardTitle className="text-lg">Theme</CardTitle>
                 </div>
-                <CardDescription>Select the visual theme for Questarr</CardDescription>
+                <CardDescription>Select the visual theme for QuestarrNG</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -1500,7 +1500,7 @@ export default function SettingsPage() {
                   </Select>
                   <p className="text-xs text-muted-foreground">
                     API mode sends notifications to a remote Apprise server. CLI mode runs the local{" "}
-                    <code className="px-1">apprise</code> command inside Questarr.
+                    <code className="px-1">apprise</code> command inside QuestarrNG.
                   </p>
                 </div>
                 {appriseMode === "api" && (
@@ -1673,7 +1673,7 @@ export default function SettingsPage() {
                   <Gamepad2 className="h-5 w-5 text-muted-foreground" />
                   <CardTitle className="text-lg">Steam Integration</CardTitle>
                 </div>
-                <CardDescription>Sync your Steam Wishlist with Questarr.</CardDescription>
+                <CardDescription>Sync your Steam Wishlist with QuestarrNG.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex flex-col space-y-4">
@@ -1884,7 +1884,7 @@ export default function SettingsPage() {
                 <CardDescription>
                   Optional. Uses TypeSafe&apos;s Jev model to classify release types (full game,
                   DLC, update, repack...) and flag suspiciously small files in search results.
-                  Entirely optional and off by default &mdash; Questarr works normally without it.
+                  Entirely optional and off by default &mdash; QuestarrNG works normally without it.
                   Bring your own API key and endpoint (TypeSafe, OpenRouter, a self-hosted proxy,
                   etc.).
                 </CardDescription>
@@ -2353,7 +2353,7 @@ export default function SettingsPage() {
                   <CardTitle className="text-lg">Telemetry</CardTitle>
                 </div>
                 <CardDescription>
-                  Help improve Questarr by automatically sharing diagnostic data when something goes
+                  Help improve QuestarrNG by automatically sharing diagnostic data when something goes
                   wrong
                 </CardDescription>
               </CardHeader>
@@ -2364,7 +2364,7 @@ export default function SettingsPage() {
                       Automatically send error reports
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Off by default. When Questarr detects an unexpected server error, it will
+                      Off by default. When QuestarrNG detects an unexpected server error, it will
                       normally ask you first (see the &quot;Error Detected&quot; notification
                       below). Turn this on to skip that prompt and send a scrubbed diagnostic report
                       automatically instead — no personal data, IP addresses, or file paths are
@@ -2460,7 +2460,7 @@ export default function SettingsPage() {
                   <CardTitle className="text-lg">SSL/HTTPS Configuration</CardTitle>
                 </div>
                 <CardDescription>
-                  Configure secure access to Questarr. Requires server restart to apply changes.
+                  Configure secure access to QuestarrNG. Requires server restart to apply changes.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">

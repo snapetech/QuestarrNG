@@ -172,6 +172,8 @@ export const games = sqliteTable("games", {
   platforms: text("platforms", { mode: "json" }).$type<string[]>(),
   targetPlatformId: integer("target_platform_id"),
   targetPlatformName: text("target_platform_name"),
+  targetOperatingSystem: text("target_operating_system"),
+  targetArchitecture: text("target_architecture"),
   genres: text("genres", { mode: "json" }).$type<string[]>(),
   themes: text("themes", { mode: "json" }).$type<string[]>(),
   publishers: text("publishers", { mode: "json" }).$type<string[]>(),
@@ -1077,6 +1079,52 @@ export const apiKeys = sqliteTable(
     index("api_keys_user_id_idx").on(t.userId),
   ]
 );
+
+// Durable requests submitted by external services such as SeerrNG. The caller
+// key is scoped to one Questarr user, so the idempotency key is unique per
+// user and never grants access to another user's game or files.
+export const integrationRequests = sqliteTable(
+  "integration_requests",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    externalRequestId: text("external_request_id").notNull(),
+    gameId: text("game_id").references(() => games.id, { onDelete: "set null" }),
+    downloadId: text("download_id").references(() => gameDownloads.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    operatingSystem: text("operating_system"),
+    architecture: text("architecture"),
+    status: text("status").notNull().default("accepted"),
+    errorMessage: text("error_message"),
+    attemptedAt: integer("attempted_at", { mode: "timestamp_ms" }).default(
+      sql`(strftime('%s', 'now') * 1000)`
+    ),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
+      sql`(strftime('%s', 'now') * 1000)`
+    ),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).default(
+      sql`(strftime('%s', 'now') * 1000)`
+    ),
+  },
+  (t) => [
+    uniqueIndex("integration_requests_user_external_id_idx").on(
+      t.userId,
+      t.externalRequestId
+    ),
+    index("integration_requests_game_id_idx").on(t.gameId),
+  ]
+);
+
+export const insertIntegrationRequestSchema = createInsertSchema(integrationRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type IntegrationRequest = typeof integrationRequests.$inferSelect;
+export type InsertIntegrationRequest = (typeof insertIntegrationRequestSchema)["_output"];
 
 export const insertApiKeySchema = createInsertSchema(apiKeys, {
   name: (schema) => schema.trim().min(1, "Name is required").max(100, "Name is too long"),

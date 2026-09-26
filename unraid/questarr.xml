@@ -1,20 +1,20 @@
 <?xml version="1.0"?>
 <Container version="2">
-  <Name>Questarr</Name>
-  <Repository>ghcr.io/doezer/questarr:latest</Repository>
-  <Registry>https://github.com/Doezer/Questarr/pkgs/container/questarr</Registry>
+  <Name>QuestarrNG</Name>
+  <Repository>ghcr.io/snapetech/questarrng:latest</Repository>
+  <Registry>https://github.com/snapetech/QuestarrNG/pkgs/container/questarrng</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
   <Privileged>false</Privileged>
-  <Support>https://github.com/Doezer/Questarr/issues</Support>
-  <Project>https://github.com/Doezer/Questarr</Project>
-  <Overview>Questarr - A video game management application inspired by the -Arr apps.</Overview>
+  <Support>https://github.com/snapetech/QuestarrNG/issues</Support>
+  <Project>https://github.com/snapetech/QuestarrNG</Project>
+  <Overview>QuestarrNG - a maintained Questarr fork for SeerrNG game requests.</Overview>
   <Category>Downloaders: MediaApp:Other</Category>
   <WebUI>http://[IP]:[PORT:5000]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/Doezer/Questarr/main/unraid/questarr.xml</TemplateURL>
-  <Icon>https://raw.githubusercontent.com/Doezer/Questarr/main/images/Questarr_icon.png</Icon>
+  <TemplateURL>https://raw.githubusercontent.com/snapetech/QuestarrNG/main/unraid/questarr.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Questarr_icon.png</Icon>
   <ExtraParams>--restart=unless-stopped --health-cmd="node -e \"require('http').get('http://localhost:5000/api/health', (r) =&gt; process.exit(r.statusCode === 200 ? 0 : 1))\"" --health-interval=30s --health-timeout=10s --health-retries=3 --health-start-period=40s</ExtraParams>
-  <Description>Questarr is a video game management application inspired by the -Arr apps (Sonarr, Radarr, Prowlarr...) and GamezServer. Track and organize your video game collection with automated discovery and download management.</Description>
+  <Description>QuestarrNG is a maintained fork of Questarr for SeerrNG game requests, acquisition tracking, and delivery of imported files.</Description>
   <Networking>
     <Mode>bridge</Mode>
     <Publish>
@@ -32,7 +32,7 @@
   </Networking>
   <Data>
     <Volume>
-      <HostDir>/mnt/user/appdata/questarr</HostDir>
+      <HostDir>/mnt/user/appdata/questarrng</HostDir>
       <ContainerDir>/app/data</ContainerDir>
       <Mode>rw</Mode>
     </Volume>
@@ -72,8 +72,8 @@
   <Labels/>
   <Config Name="HTTP Port" Target="5000" Default="5000" Mode="tcp" Description="Web UI HTTP port." Type="Port" Display="always" Required="true" Mask="false">5000</Config>
   <Config Name="HTTPS/SSL Port" Target="9898" Default="9898" Mode="tcp" Description="Web UI HTTPS/SSL port. Use only for native SSL support." Type="Port" Display="always" Required="false" Mask="false">9898</Config>
-  <Config Name="Data Path" Target="/app/data" Default="/mnt/user/appdata/questarr" Mode="rw" Description="Path to store Questarr data including the SQLite database." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/questarr</Config>
-  <Config Name="Library Path" Target="/data" Default="" Mode="rw" Description="Optional: mount the same root your download client(s) write into (e.g. /mnt/user/data). Only needed if you want Questarr to move completed downloads into your game library; configure the matching path under Settings &#8594; Path Mappings. Leave blank if you manage imports manually." Type="Path" Display="always" Required="false" Mask="false"></Config>
+  <Config Name="Data Path" Target="/app/data" Default="/mnt/user/appdata/questarrng" Mode="rw" Description="Path to store QuestarrNG data including the SQLite database." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/questarrng</Config>
+  <Config Name="Library Path" Target="/data" Default="" Mode="rw" Description="Optional: mount the same root your download client(s) write into (e.g. /mnt/user/data). Only needed if you want QuestarrNG to move completed downloads into your game library; configure the matching path under Settings &#8594; Path Mappings. Leave blank if you manage imports manually." Type="Path" Display="always" Required="false" Mask="false"></Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID for file permissions." Type="Variable" Display="always" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID for file permissions." Type="Variable" Display="always" Required="true" Mask="false">100</Config>
   <Config Name="UMASK" Target="UMASK" Default="022" Mode="" Description="File creation mask for permissions." Type="Variable" Display="advanced" Required="false" Mask="false">022</Config>

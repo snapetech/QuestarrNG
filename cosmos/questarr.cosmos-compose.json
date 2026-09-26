@@ -4,10 +4,10 @@
       {
         "name": "DataFolder",
         "label": "Data folder",
-        "initialValue": "/usr/local/questarr/data",
+        "initialValue": "/usr/local/questarrng/data",
         "type": "text",
         "required": true,
-        "description": "Host folder where Questarr stores its SQLite database and other data."
+        "description": "Host folder where QuestarrNG stores its SQLite database and other data."
       },
       {
         "name": "LibraryFolder",
@@ -15,7 +15,7 @@
         "initialValue": "/mnt/data",
         "type": "text",
         "required": false,
-        "description": "Host folder your download client writes into. Mounted at /data inside the container so Questarr can import finished downloads. Add a matching entry under Settings -> Path Mappings."
+        "description": "Host folder your download client writes into. Mounted at /data inside the container so QuestarrNG can import finished downloads. Add a matching entry under Settings -> Path Mappings."
       },
       {
         "name": "PUID",
@@ -23,7 +23,7 @@
         "initialValue": "1000",
         "type": "text",
         "required": false,
-        "description": "User ID owning the files Questarr writes."
+        "description": "User ID owning the files QuestarrNG writes."
       },
       {
         "name": "PGID",
@@ -31,13 +31,13 @@
         "initialValue": "1000",
         "type": "text",
         "required": false,
-        "description": "Group ID owning the files Questarr writes."
+        "description": "Group ID owning the files QuestarrNG writes."
       }
     ]
   },
   "services": {
-    "questarr": {
-      "image": "ghcr.io/doezer/questarr:latest",
+    "questarrng": {
+      "image": "ghcr.io/snapetech/questarrng:latest",
       "restart": "unless-stopped",
       "environment": [
         "PORT=5000",
@@ -71,16 +71,16 @@
         "start_period": "40s"
       },
       "labels": {
-        "cosmos-icon": "https://raw.githubusercontent.com/Doezer/Questarr/main/images/Questarr_icon.png"
+        "cosmos-icon": "https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Questarr_icon.png"
       },
       "routes": [
         {
-          "name": "questarr",
-          "description": "Questarr web interface",
+          "name": "questarrng",
+          "description": "QuestarrNG web interface",
           "useHost": true,
-          "host": "questarr.{ServerHostname}",
+          "host": "questarrng.{ServerHostname}",
           "usePathPrefix": false,
-          "target": "http://questarr:5000",
+          "target": "http://questarrng:5000",
           "mode": "SERVAPP",
           "Timeout": 14400000,
           "ThrottlePerMinute": 0,

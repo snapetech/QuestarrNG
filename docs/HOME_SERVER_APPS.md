@@ -1,75 +1,42 @@
-# Home server app store integrations
+# QuestarrNG deployment definitions
 
-Questarr ships ready-made app definitions for the main self-hosting platforms, so it can be
-installed without hand-writing a Compose file. Every definition points at the same published image
-(`ghcr.io/doezer/questarr:latest`, `linux/amd64` + `linux/arm64`) and uses the same two mounts:
+QuestarrNG is a maintained fork of [Questarr](https://github.com/Doezer/Questarr)
+for SeerrNG game requests, durable acquisition tracking, and delivery of verified
+imported files. The fork is maintained at
+[snapetech/QuestarrNG](https://github.com/snapetech/QuestarrNG); SeerrNG remains
+the user-facing catalog and request application.
 
-| Container path | Purpose                                                                         |
-| -------------- | ------------------------------------------------------------------------------- |
-| `/app/data`    | Questarr data, including the SQLite database. Required, must be persisted.      |
-| `/data`        | Optional. The same root your download client writes into, used to import games. |
+Fork-owned deployment definitions are available for CasaOS, Cosmos Cloud,
+Kubernetes/Helm, and Unraid. They use `ghcr.io/snapetech/questarrng`. Until the
+fork publishes its first image, use the root Compose file, which builds the
+checked-out source locally:
 
-If you mount `/data`, add a matching entry under **Settings → Path Mappings** with **Local Path**
-`/data` and **Remote Path** set to the exact path your download client reports for that root.
-Leave it unmounted if you import manually.
+```bash
+docker compose up --build -d
+```
 
-| File                                       | Platform                        |
-| ------------------------------------------ | ------------------------------- |
-| `casaos/docker-compose.yml`                | CasaOS (AppFile)                |
-| `umbrel-app-store.yml`, `doezer-questarr/` | Umbrel (community app store)    |
-| `cosmos/questarr.cosmos-compose.json`      | Cosmos Cloud (ServApp)          |
-| `unraid/questarr.xml`                      | Unraid (Community Applications) |
-| `questarr/config.yaml`                     | Home Assistant add-on           |
+Persist `/app/data` for QuestarrNG's SQLite database. Mount the download or
+library directory at `/data` only when it is needed, then configure the matching
+entry under **Settings → Path Mappings**. The local path is `/data`; the remote
+path must match the path reported by the download client.
 
-## CasaOS
+| Definition | Platform | Image |
+| --- | --- | --- |
+| [`casaos/docker-compose.yml`](../casaos/docker-compose.yml) | CasaOS AppFile | `ghcr.io/snapetech/questarrng` |
+| [`cosmos/questarr.cosmos-compose.json`](../cosmos/questarr.cosmos-compose.json) | Cosmos Cloud ServApp | `ghcr.io/snapetech/questarrng` |
+| [`charts/questarr`](../charts/questarr) | Kubernetes with Helm | `ghcr.io/snapetech/questarrng` |
+| [`unraid/questarr.xml`](../unraid/questarr.xml) | Unraid Community Applications template | `ghcr.io/snapetech/questarrng` |
 
-CasaOS installs custom apps from an AppFile — a Compose file carrying `x-casaos` metadata.
+The CasaOS, Cosmos, and Unraid definitions can pull the fork image after it is
+published. Until then, build QuestarrNG from this checkout with Compose.
 
-1. Open the **App Store** and click **Custom Install**.
-2. Click the **import** icon (top right) and paste:
-   `https://raw.githubusercontent.com/Doezer/Questarr/main/casaos/docker-compose.yml`
-3. Adjust the mounts if needed. The defaults are `/DATA/AppData/questarr` → `/app/data` and
-   `/DATA/Downloads` → `/data`.
-4. Click **Install**, then open Questarr from the CasaOS dashboard (port `5000`).
+## Packages retained from upstream
 
-The AppFile declares both architectures, the health check, and `PUID`/`PGID`/`UMASK` so files
-written into your shares stay owned by the right user.
+The inherited `doezer-questarr/` Umbrel package and `questarr/` Home Assistant
+add-on still point to upstream Questarr. They do not include QuestarrNG's
+SeerrNG request and asset API and are not deployment options for this fork.
+QuestarrNG does not currently publish Umbrel or Home Assistant packages.
 
-## Umbrel
-
-Umbrel installs third-party apps from a _community app store_ — a Git repository with a root-level
-`umbrel-app-store.yml` and one top-level directory per app, named after that app's ID. This
-repository's root `umbrel-app-store.yml` (store ID `doezer`) and `doezer-questarr/` directory are
-exactly that; Umbrel requires app IDs to be prefixed with the store ID, hence `doezer-questarr`
-rather than `questarr` (which is already used by the
-[Home Assistant add-on](../README.md#home-assistant-add-on) directory).
-
-1. In umbrelOS, open the **App Store**.
-2. Click the **⋮** menu (top right) → **Community App Stores**.
-3. Add `https://github.com/Doezer/Questarr` and open the **Doezer** store.
-4. Install **Questarr** (`doezer-questarr`). Umbrel routes it through its own `app_proxy`, so it
-   appears on your dashboard and is reachable at `http://umbrel.local:5000`.
-
-App data lives in `${APP_DATA_DIR}/data`. The optional library mount defaults to
-`${UMBREL_ROOT}/data/storage/downloads`; edit `doezer-questarr/docker-compose.yml` (or the installed
-copy) if your download client writes elsewhere.
-
-## Cosmos Cloud
-
-Cosmos installs apps as _ServApps_ from a `cosmos-compose.json`.
-
-1. Open **Market Place → Custom Install** (or **Servapps → Add**).
-2. Paste:
-   `https://raw.githubusercontent.com/Doezer/Questarr/main/cosmos/questarr.cosmos-compose.json`
-3. Fill in the install form: **Data folder**, optional **Library folder**, and `PUID`/`PGID`.
-4. Install. Cosmos creates a route at `questarr.<your-server-hostname>` with SmartShield and bot
-   blocking enabled, and handles HTTPS for you.
-
-To browse Questarr from the Cosmos market list instead, add
-`https://raw.githubusercontent.com/Doezer/Questarr/main/cosmos/index.json` as a custom market source.
-
-## Keeping definitions in sync
-
-The app definitions duplicate settings that also live in `docker-compose.yml` and
-`unraid/questarr.xml`. When you change the exposed port, the data path, or the health check, update
-all of them together.
+The original deployment definitions and project are documented at
+[Doezer/Questarr](https://github.com/Doezer/Questarr). Do not use those upstream
+packages when SeerrNG request correlation or imported-file delivery is needed.

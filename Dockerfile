@@ -97,7 +97,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 # nosemgrep: dockerfile.security.missing-user.missing-user -- entrypoint.sh drops to the unprivileged questarr user via su-exec before this CMD ever runs
 CMD ["npm", "run", "start"]
 
-LABEL org.opencontainers.image.title="Questarr"
+LABEL org.opencontainers.image.title="QuestarrNG"
 LABEL org.opencontainers.image.description="Questarr is a smart game library manager that automates discovery and downloads, inspired by the *Arr ecosystem."
 LABEL org.opencontainers.image.authors="Doezer"
 LABEL org.opencontainers.image.source="https://github.com/Doezer/questarr"

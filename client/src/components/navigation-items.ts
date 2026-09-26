@@ -62,5 +62,5 @@ const allNavigation: AppNavItem[] = [
 
 export function getPageTitle(path: string): string {
   const item = allNavigation.find((entry) => entry.url === path);
-  return item?.title ?? "Questarr";
+  return item?.title ?? "QuestarrNG";
 }

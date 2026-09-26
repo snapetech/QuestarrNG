@@ -1,10 +1,24 @@
-# Questarr
+# QuestarrNG
 
-![Questarr Logo](images/Questarr_Logo-nobg.png)
+**QuestarrNG is the game-acquisition service maintained for
+[SeerrNG](https://github.com/snapetech/seerrng).** It is a separate
+[GPL-3.0-only fork of Questarr](https://github.com/Doezer/Questarr), with a
+versioned machine API for idempotent external requests, durable job status,
+platform-variant metadata, and authenticated delivery of imported files.
+SeerrNG remains the user-facing catalog, approval, and request experience.
+
+The fork is maintained at [snapetech/QuestarrNG](https://github.com/snapetech/QuestarrNG).
+Fork-specific API details are in
+[docs/SEERRNG-INTEGRATION.md](docs/SEERRNG-INTEGRATION.md). Upstream Questarr
+remains the source for inherited features and license attribution.
+
+![QuestarrNG Logo](images/Questarr_Logo-nobg.png)
 
 A video game management application inspired by the -Arr apps (Sonarr, Radarr, Prowlarr...) and GamezServer. Track and organize your video game collection with automated discovery and download management.
 
 [![Library screenshot](images/Screenshots/library.png)](images/Screenshots/library.png)
+
+The badges below report the upstream Questarr project's release, package, and CI status. QuestarrNG's code and fork-specific request API are maintained in this repository.
 
 [![Docker Pulls](https://img.shields.io/docker/pulls/doezer/questarr?logo=docker&logoColor=white)](https://hub.docker.com/r/doezer/questarr)
 [![GHCR](https://img.shields.io/badge/ghcr.io-questarr-blue?logo=github&logoColor=white)](https://github.com/Doezer/Questarr/pkgs/container/questarr)
@@ -28,16 +42,16 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 ⭐ Star us on GitHub — your support motivates us a lot! 🙏😊
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-7289da?logo=discord&logoColor=white)](https://discord.gg/STkp86wP9F)
-[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20this%20project%20on%20GitHub:%20https://github.com/Doezer/Questarr%20%23gaming%20%23selfhosted)
-[![Share](https://img.shields.io/badge/share-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Doezer/Questarr)
-[![Share](https://img.shields.io/badge/share-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Doezer/Questarr)
-[![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=Check%20out%20this%20project%20on%20GitHub:%20https://github.com/Doezer/Questarr)
-[![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/Doezer/Questarr&text=Check%20out%20this%20project%20on%20GitHub)
+[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20QuestarrNG%20for%20SeerrNG:%20https://github.com/snapetech/QuestarrNG%20%23gaming%20%23selfhosted)
+[![Share](https://img.shields.io/badge/share-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/snapetech/QuestarrNG)
+[![Share](https://img.shields.io/badge/share-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/snapetech/QuestarrNG)
+[![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=Check%20out%20QuestarrNG%20for%20SeerrNG:%20https://github.com/snapetech/QuestarrNG)
+[![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/snapetech/QuestarrNG&text=QuestarrNG%20for%20SeerrNG)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/doezer)
 
 ## Table of Contents
 
-- [Questarr](#questarr)
+- [QuestarrNG](#questarrng)
   - [Table of Contents](#table-of-contents)
   - [List of features](#list-of-features)
   - [Installation](#installation)
@@ -63,13 +77,14 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 | **Rich Game Metadata**      | Details enriched with IGDB, Steam, PCGamingWiki, and NexusMods, including trending mods where available.                                                                      |
 | **Statistics**              | Visualize collection statistics with Discord sharing support. 🚧                                                                                                              |
 | **Security Focused**        | General security hardening, SSL support, and [OpenSSF certified](https://www.bestpractices.dev/projects/13450) — see [SECURITY.md](.github/SECURITY.md) for the full process. |
-| **Integrations**            | One-click install on UNRAID, CasaOS, Umbrel and Cosmos Cloud, a Home Assistant add-on, and a Helm chart for Kubernetes. 🚧                                                    |
+| **Deployment**              | Docker and Compose are the supported paths for QuestarrNG. Some upstream packages do not include this fork's SeerrNG integration.                                             |
+| **SeerrNG requests**        | Versioned request, status, variant, and imported-file delivery API for SeerrNG; documented in [the integration guide](docs/SEERRNG-INTEGRATION.md).                            |
 | **Design**                  | Clean, minimalist, dark-first UI built with mobile usage in mind.                                                                                                             |
 
 ### Supported Indexers/Downloaders
 
 - Prowlarr synchronization is supported to add all your indexers at once.
-- G4u.to: the site offers an API to VIP members, which can be used in Questarr.
+- G4u.to: the site offers an API to VIP members, which can be used in QuestarrNG.
 
 | Indexers                   | Downloaders                                                                             |
 | -------------------------- | --------------------------------------------------------------------------------------- |
@@ -79,24 +94,26 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 
 ## Installation
 
-Docker is the easiest way to deploy Questarr with all dependencies included. Questarr uses a SQLite database which is self-contained in the application container.
+Docker is the easiest way to deploy QuestarrNG with all dependencies included. QuestarrNG uses a SQLite database which is self-contained in the application container. The fork's GHCR package is configured by the deployment workflow; until a fork image is published, build the checked-out source with Compose.
 
-**Supported architectures:** released Docker images are published for `linux/amd64` and `linux/arm64`, so Questarr runs on a Raspberry Pi 4/5 with a 64-bit OS, other 64-bit ARM SBCs, and ARM-based NAS boxes as well as on x86 hardware. Docker selects the right architecture automatically — the commands below are identical on every platform. (32-bit ARM, e.g. `armv7`/a 32-bit OS on Raspberry Pi 3 and earlier, is not supported. The [Home Assistant add-on](#home-assistant-add-on) is `amd64`-only.)
+**Supported architectures:** QuestarrNG's container workflow is configured for `linux/amd64` and `linux/arm64`. Docker selects the matching image when a published tag is available. (32-bit ARM, e.g. `armv7`/a 32-bit OS on Raspberry Pi 3 and earlier, is not supported.)
 
 ### Option 1: One-liner (Simplest but minimal)
 
 ```bash
-docker run -d -p 5000:5000 -v ./data:/app/data --name questarr ghcr.io/doezer/questarr:latest
+docker build -t questarrng .
+docker run -d -p 5000:5000 -v ./data:/app/data --name questarrng questarrng
 ```
 
 ### Option 2: Docker Compose (more detailed)
 
-1. **Use the [`docker-compose.yml`](https://github.com/Doezer/Questarr/blob/main/docker-compose.yml) file from the repo or create a minimal one:**
+1. **Use the [`docker-compose.yml`](https://github.com/snapetech/QuestarrNG/blob/main/docker-compose.yml) file from this fork or create a minimal one:**
 
    ```yaml
    services:
      app:
-       image: ghcr.io/doezer/questarr:latest
+       image: ghcr.io/snapetech/questarrng:latest
+       build: .
        ports:
          - "5000:5000"
        volumes:
@@ -109,7 +126,7 @@ docker run -d -p 5000:5000 -v ./data:/app/data --name questarr ghcr.io/doezer/qu
 2. **Start the application:**
 
    ```bash
-   docker compose up -d
+   docker compose up --build -d
    ```
 
 3. **Access the application:**
@@ -120,15 +137,15 @@ docker run -d -p 5000:5000 -v ./data:/app/data --name questarr ghcr.io/doezer/qu
 <details>
 <summary><b>Deploy as a Proxmox LXC container — no Docker</b></summary>
 
-Run this **on your Proxmox VE host**, as `root`, to create an LXC container with Questarr installed
+Run this **on your Proxmox VE host**, as `root`, to create an LXC container with QuestarrNG installed
 and running as a `systemd` service:
 
 ```bash
-bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/Doezer/Questarr/main/scripts/proxmox/questarr-lxc.sh)"
+bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-lxc.sh)"
 ```
 
 The script picks the next free container ID, downloads a Debian template if needed, creates an
-unprivileged container, builds Questarr from source, and prints the URL to open. Every prompt has a
+unprivileged container, builds QuestarrNG from this fork, and prints the URL to open. Every prompt has a
 default, so you can accept them all and be done in a few minutes.
 
 Update later with `pct exec <ctid> -- update`.
@@ -141,15 +158,15 @@ and troubleshooting.
 ### UNRAID
 
 <details>
-<summary><b>Install via Community Applications</b></summary>
+<summary><b>Run with Docker</b></summary>
 
-Questarr is available in the Unraid **Apps** tab via Community Applications:
+The upstream Questarr template in Community Applications installs upstream Questarr, not this fork's SeerrNG request API. After QuestarrNG publishes its first image, install `ghcr.io/snapetech/questarrng:latest` with Docker on Unraid and configure the app data and library mounts described in the fork's Compose file. Until then, build from this checkout with Docker Compose.
 
-1. Open the **Apps** tab and search for **Questarr**, then click **Install**.
-2. Set your **Data Path** (default `/mnt/user/appdata/questarr`), **PUID**/**PGID**, and ports (default `5000`
+1. Open the **Docker** tab and add a container using `ghcr.io/snapetech/questarrng:latest`.
+2. Set your **Data Path** (for example `/mnt/user/appdata/questarrng`), **PUID**/**PGID**, and ports (default `5000`
    HTTP, `9898` HTTPS if using it).
-3. Optionally set **Library Path** to the same root your download client(s) write into (e.g.
-   `/mnt/user/data`) if you want Questarr to move completed downloads into your game library. This host path
+3. Optionally mount **Library Path** to the same root your download client(s) write into (e.g.
+   `/mnt/user/data`) if you want QuestarrNG to move completed downloads into your game library. This host path
    is mounted at `/data` inside the container, so add a mapping under **Settings → Path Mappings** with
    **Local Path** set to `/data` and **Remote Path** set to the exact path your download client reports for
    that root. Leave Library Path blank if you manage imports manually.
@@ -162,26 +179,22 @@ Questarr is available in the Unraid **Apps** tab via Community Applications:
 <details>
 <summary><b>Install via Custom Install (AppFile)</b></summary>
 
-1. Open the **App Store** and click **Custom Install**.
+1. After QuestarrNG publishes its first image, open the **App Store** and click **Custom Install**.
 2. Click the **import** icon (top right) and paste this URL:
-   `https://raw.githubusercontent.com/Doezer/Questarr/main/casaos/docker-compose.yml`
-3. Review the mounts — by default `/DATA/AppData/questarr` holds Questarr's data and
-   `/DATA/Downloads` is mounted at `/data` so Questarr can import finished downloads. If you keep
+   `https://raw.githubusercontent.com/snapetech/QuestarrNG/main/casaos/docker-compose.yml`
+3. Review the mounts — by default `/DATA/AppData/questarrng` holds QuestarrNG's data and
+   `/DATA/Downloads` is mounted at `/data` so QuestarrNG can import finished downloads. If you keep
    that second mount, add a matching entry under **Settings → Path Mappings**.
-4. Click **Install**, then open Questarr from the CasaOS dashboard (port `5000`).
+4. Click **Install**, then open QuestarrNG from the CasaOS dashboard (port `5000`).
 
 </details>
 
 ### Umbrel
 
 <details>
-<summary><b>Install via Community App Store</b></summary>
+<summary><b>Deployment status</b></summary>
 
-1. In umbrelOS, open the **App Store**.
-2. Click the **⋮** menu (top right) → **Community App Stores**.
-3. Add this repository URL: `https://github.com/Doezer/Questarr`
-4. Open the **Doezer** store and install **Questarr** (app ID `doezer-questarr`), then open it from
-   your dashboard (`http://umbrel.local:5000`).
+The upstream Doezer community store installs upstream Questarr, not QuestarrNG. The NG fork is not currently packaged for Umbrel; use its Docker Compose deployment on the Umbrel host.
 
 </details>
 
@@ -190,9 +203,9 @@ Questarr is available in the Unraid **Apps** tab via Community Applications:
 <details>
 <summary><b>Install as a ServApp</b></summary>
 
-1. Open **Market Place → Custom Install** (or **Servapps → Add**).
+1. Once the fork image is published, open **Market Place → Custom Install** (or **Servapps → Add**).
 2. Paste this URL:
-   `https://raw.githubusercontent.com/Doezer/Questarr/main/cosmos/questarr.cosmos-compose.json`
+   `https://raw.githubusercontent.com/snapetech/QuestarrNG/main/cosmos/questarr.cosmos-compose.json`
 3. Fill in the install form: **Data folder**, optional **Library folder** (the root your download
    client writes into, mounted at `/data`), and `PUID`/`PGID`.
 4. Install. Cosmos creates the route `questarr.<your-server-hostname>` and handles HTTPS for you.
@@ -208,8 +221,8 @@ A Helm chart lives in [`charts/questarr`](charts/questarr). It is not published 
 repository yet, so install it from a clone:
 
 ```bash
-git clone https://github.com/Doezer/Questarr.git
-cd Questarr
+git clone https://github.com/snapetech/QuestarrNG.git
+cd QuestarrNG
 helm install questarr charts/questarr --namespace questarr --create-namespace
 ```
 
@@ -219,7 +232,7 @@ Then port-forward (or enable the Ingress) and open the UI:
 kubectl port-forward -n questarr svc/questarr 5000:5000
 ```
 
-Questarr keeps its state in a single SQLite database on a ReadWriteOnce volume, so the
+QuestarrNG keeps its state in a single SQLite database on a ReadWriteOnce volume, so the
 chart never runs more than one replica. See [`charts/questarr/README.md`](charts/questarr/README.md)
 for the full option reference — persistence, media mounts, secrets, Ingress and
 subdirectory deployments.
@@ -231,18 +244,13 @@ subdirectory deployments.
 <details>
 <summary><b>Install as a Home Assistant add-on</b></summary>
 
-You can install Questarr as a Home Assistant add-on from this repository:
-
-1. In Home Assistant, open **Settings → Add-ons → Add-on Store**.
-2. Click the menu (⋮) and choose **Repositories**.
-3. Add this repository URL: `https://github.com/Doezer/Questarr`
-4. Install the **Questarr** add-on and start it.
-5. Open `http://<home-assistant-host>:5000` to access the UI.
+The upstream Questarr add-on from Doezer's repository does not include the NG request API. A QuestarrNG add-on has not yet been packaged; use the Docker or Compose install above to run QuestarrNG alongside Home Assistant.
 
 </details>
 
-All platform definitions live in the repository and share the same mounts and ports — see
-[docs/HOME_SERVER_APPS.md](docs/HOME_SERVER_APPS.md) for details.
+Fork-owned platform definitions are listed in
+[docs/HOME_SERVER_APPS.md](docs/HOME_SERVER_APPS.md). The inherited Umbrel and Home Assistant
+definitions still install upstream Questarr and do not include QuestarrNG's SeerrNG API.
 
 ## Screenshots
 
@@ -341,7 +349,7 @@ Once logged-in:
 - Add downloaders
 - Add games!
 
-See [Configuration on the Wiki](https://github.com/Doezer/Questarr/wiki/Configuring-the-application#configure-app-behavior-in-settings--general) for more detailed info.
+See the [upstream Questarr configuration Wiki](https://github.com/Doezer/Questarr/wiki/Configuring-the-application#configure-app-behavior-in-settings--general) for inherited behavior. Fork-specific request API details are in [docs/SEERRNG-INTEGRATION.md](docs/SEERRNG-INTEGRATION.md).
 
 <details>
 <summary><b>Getting IGDB API Credentials</b></summary>
@@ -352,7 +360,7 @@ IGDB provides game metadata (covers, descriptions, ratings, release dates, etc.)
 2. Log in with your Twitch account (create one if needed)
 3. Click "Register Your Application"
 4. Fill in:
-   - **Name**: Questarr (or any name)
+   - **Name**: QuestarrNG (or any name)
    - **OAuth Redirect URLs**: `http://localhost` (not used, but required)
    - **Category**: Application Integration
 5. Click "Create"
@@ -388,8 +396,8 @@ This is mainly for users who want the latest commit (e.g when trying out fixes f
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/Doezer/Questarr.git
-cd Questarr
+git clone https://github.com/snapetech/QuestarrNG.git
+cd QuestarrNG
 ```
 
 1. **Configure the application:**
@@ -443,14 +451,13 @@ See the full [PRD](docs/PRD.md) for problem statements, detailed scope, and non-
 
 ## Troubleshooting
 
-See [Troubleshooting on the Wiki](https://github.com/Doezer/Questarr/wiki/Troubleshooting)
+See [upstream troubleshooting on the Wiki](https://github.com/Doezer/Questarr/wiki/Troubleshooting)
 
 If you run into an issue, go to the **Logs** page and click **Send Logs** before reporting it — it makes diagnosing the problem much easier.
 
 ### Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/Doezer/Questarr/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Doezer/Questarr/discussions)
+- **QuestarrNG issues**: [GitHub Issues](https://github.com/snapetech/QuestarrNG/issues)
 - **Discord**: [Join our Server](https://discord.gg/STkp86wP9F)
 
 ## Project Security & Documentation
@@ -472,7 +479,7 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Legal Disclaimer
 
-Questarr is a self-hosted game manager designed solely for organizing, tracking, and automating game libraries using user-provided data and metadata APIs (such as IGDB). Questarr does not host, distribute, or provide any copyrighted game content, ROMs, or download links. It is a technology-neutral tool: any indexers, download clients, or sources you configure are chosen and operated entirely by you. You are solely responsible for ensuring that your use of Questarr, and any content you access or download through third-party services you configure, complies with all applicable laws and the terms of service of those third parties.
+QuestarrNG is a self-hosted game manager designed for organizing, tracking, and automating game libraries using user-provided data and metadata APIs such as IGDB. QuestarrNG does not host or distribute game content. Indexers, download clients, and sources are configured and operated by the administrator.
 
 ## License
 

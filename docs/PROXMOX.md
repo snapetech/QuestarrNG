@@ -1,7 +1,7 @@
 # Proxmox VE — LXC deployment
 
-Questarr can run directly inside a Proxmox VE LXC container, without Docker. The container runs
-Questarr from source as a `systemd` service, which keeps the footprint small (no container runtime,
+QuestarrNG can run directly inside a Proxmox VE LXC container, without Docker. The container runs
+this fork from source as a `systemd` service, which keeps the footprint small (no container runtime,
 no image layers) and makes it behave like any other service on your Proxmox node.
 
 ## Quick start
@@ -9,7 +9,7 @@ no image layers) and makes it behave like any other service on your Proxmox node
 Run this **on the Proxmox host** (the node itself, not inside a container or VM), as `root`:
 
 ```bash
-bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/Doezer/Questarr/main/scripts/proxmox/questarr-lxc.sh)"
+bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-lxc.sh)"
 ```
 
 The script will:
@@ -19,7 +19,7 @@ The script will:
    with a sensible default.
 3. Download the newest Debian LXC template if your node does not already have it.
 4. Create and start an unprivileged container.
-5. Install Node.js, build Questarr from source, and register a `questarr.service` unit.
+5. Install Node.js, build QuestarrNG from this fork, and register a `questarr.service` unit.
 6. Print the URL to open.
 
 When it finishes, open `http://<container-ip>:5000`.
@@ -32,7 +32,7 @@ prompting:
 ```bash
 CTID=210 CT_HOSTNAME=questarr CORES=2 RAM=2048 DISK=8 \
 STORAGE=local-lvm BRIDGE=vmbr0 NET=dhcp \
-  bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/Doezer/Questarr/main/scripts/proxmox/questarr-lxc.sh)" -- --yes
+  bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-lxc.sh)" -- --yes
 ```
 
 | Variable           | Default           | Description                                        |
@@ -51,19 +51,19 @@ STORAGE=local-lvm BRIDGE=vmbr0 NET=dhcp \
 | `UNPRIVILEGED`     | `1`               | Create an unprivileged container                   |
 | `ONBOOT`           | `1`               | Start the container when the node boots            |
 | `CT_PASSWORD`      | —                 | Root password inside the container (optional)      |
-| `QUESTARR_PORT`    | `5000`            | HTTP port Questarr listens on                      |
-| `QUESTARR_REPO`    | `Doezer/Questarr` | Source repository                                  |
+| `QUESTARR_PORT`    | `5000`            | HTTP port QuestarrNG listens on                    |
+| `QUESTARR_REPO`    | `snapetech/QuestarrNG` | Source repository                             |
 | `QUESTARR_REF`     | latest release    | Tag or branch to install                           |
 
 ### Sizing
 
 2 GiB of RAM is the practical floor: the installer builds the client with Vite and type-checks the
 server with `tsc`, and both run during installation. You can lower the container's RAM afterwards if
-you want — Questarr itself is comfortable in far less — but leave it at 2 GiB whenever you update,
-since an update rebuilds from source.
+you want — QuestarrNG itself is comfortable in far less — but leave it at 2 GiB whenever you update,
+since an update rebuilds QuestarrNG from source.
 
 The default 8 GiB disk covers the OS, Node.js, `node_modules`, and the build output with room to
-spare. Questarr's own data (a SQLite database) stays small; it does not store game files.
+spare. QuestarrNG's own data (a SQLite database) stays small; it does not store game files.
 
 ## Managing the container
 
@@ -103,8 +103,11 @@ development code. Pin a release with `QUESTARR_REF` if you want to avoid that.
 To move to a specific version instead:
 
 ```bash
-pct exec 210 -- env QUESTARR_REF=v1.4.2 bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/Doezer/Questarr/main/scripts/proxmox/questarr-install.sh)"
+pct exec 210 -- env QUESTARR_REF=ng-release-tag bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-install.sh)"
 ```
+
+Replace `ng-release-tag` with a tag published by QuestarrNG. Upstream Questarr
+release tags are not interchangeable with this fork's releases.
 
 Take a Proxmox snapshot or backup before updating if you want a quick way back:
 
@@ -131,7 +134,7 @@ you normally do not need to touch `.env` at all.
 this inside it as `root`:
 
 ```bash
-bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/Doezer/Questarr/main/scripts/proxmox/questarr-install.sh)"
+bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-install.sh)"
 ```
 
 It installs the same `systemd` service and `update` helper. It is safe to re-run: it replaces the
@@ -139,7 +142,7 @@ application tree while preserving `data/` and `.env`.
 
 ## Notes and troubleshooting
 
-- **The service runs unprivileged.** Questarr runs as the `questarr` system user under a hardened
+- **The service runs unprivileged.** QuestarrNG runs as the `questarr` system user under a hardened
   unit (`ProtectSystem=strict`, `NoNewPrivileges`, `PrivateTmp`), with `/opt/questarr` as the only
   writable path.
 - **The install fails at "Waiting for network".** The container could not resolve DNS. Check that the

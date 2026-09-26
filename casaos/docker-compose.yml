@@ -1,11 +1,11 @@
-# CasaOS AppFile for Questarr
+# CasaOS AppFile for QuestarrNG
 # Install via CasaOS: App Store -> Custom Install -> Import (paste the raw URL of this file)
-# https://raw.githubusercontent.com/Doezer/Questarr/main/casaos/docker-compose.yml
-name: questarr
+# https://raw.githubusercontent.com/snapetech/QuestarrNG/main/casaos/docker-compose.yml
+name: questarrng
 services:
-  questarr:
-    image: ghcr.io/doezer/questarr:latest
-    container_name: questarr
+  questarrng:
+    image: ghcr.io/snapetech/questarrng:latest
+    container_name: questarrng
     restart: unless-stopped
     ports:
       - "5000:5000"
@@ -16,7 +16,7 @@ services:
       - PGID=1000
       - UMASK=022
     volumes:
-      - /DATA/AppData/questarr:/app/data
+      - /DATA/AppData/questarrng:/app/data
       - /DATA/Downloads:/data
     healthcheck:
       test:
@@ -34,57 +34,56 @@ services:
       envs:
         - container: PORT
           description:
-            en_us: Port Questarr listens on inside the container.
+            en_us: Port QuestarrNG listens on inside the container.
         - container: SQLITE_DB_PATH
           description:
             en_us: Full path to the SQLite database file inside the container.
         - container: PUID
           description:
-            en_us: User ID owning the files Questarr writes.
+            en_us: User ID owning the files QuestarrNG writes.
         - container: PGID
           description:
-            en_us: Group ID owning the files Questarr writes.
+            en_us: Group ID owning the files QuestarrNG writes.
         - container: UMASK
           description:
-            en_us: File creation mask applied to files Questarr writes.
+            en_us: File creation mask applied to files QuestarrNG writes.
       ports:
         - container: "5000"
           description:
-            en_us: Questarr web interface.
+            en_us: QuestarrNG web interface.
       volumes:
         - container: /app/data
           description:
-            en_us: Questarr data, including the SQLite database.
+            en_us: QuestarrNG data, including the SQLite database.
         - container: /data
           description:
             en_us:
-              Optional. Mount the same root your download client writes into so Questarr can import
+              Optional. Mount the same root your download client writes into so QuestarrNG can import
               completed downloads. Add a matching entry under Settings -> Path Mappings.
 x-casaos:
-  id: com.doezer.questarr
+  id: com.snapetech.questarrng
   version: "1.4.3"
   architectures:
     - amd64
     - arm64
-  main: questarr
-  author: Doezer
-  developer: Doezer
+  main: questarrng
+  author: snapetech
+  developer: snapetech
   category: Media
-  icon: https://raw.githubusercontent.com/Doezer/Questarr/main/images/Questarr_icon.png
-  thumbnail: https://raw.githubusercontent.com/Doezer/Questarr/main/images/Questarr_Logo-nobg.png
+  icon: https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Questarr_icon.png
+  thumbnail: https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Questarr_Logo-nobg.png
   screenshot_link:
-    - https://raw.githubusercontent.com/Doezer/Questarr/main/images/Screenshots/library.png
-    - https://raw.githubusercontent.com/Doezer/Questarr/main/images/Screenshots/discover.png
-    - https://raw.githubusercontent.com/Doezer/Questarr/main/images/Screenshots/calendar.png
+    - https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Screenshots/library.png
+    - https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Screenshots/discover.png
+    - https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Screenshots/calendar.png
   title:
-    en_us: Questarr
+    en_us: QuestarrNG
   tagline:
     en_us: Discover, track and download your video games.
   description:
     en_us:
-      Questarr is a video game management application inspired by the *Arr apps (Sonarr, Radarr,
-      Prowlarr). Track your collection, discover new releases through IGDB, RSS and xREL, search your
-      Torznab/Newznab indexers, and send releases straight to your download client.
+      QuestarrNG is a maintained Questarr fork for SeerrNG game requests. It keeps acquisition,
+      download tracking, and imported-file delivery in a separate service.
   tips:
     before_install:
       en_us: The default library mount (/DATA/Downloads) should point at the same root your download
@@ -93,5 +92,5 @@ x-casaos:
   port_map: "5000"
   scheme: http
   index: /
-  project_url: https://github.com/Doezer/Questarr
-  store_app_id: questarr
+  project_url: https://github.com/snapetech/QuestarrNG
+  store_app_id: questarrng

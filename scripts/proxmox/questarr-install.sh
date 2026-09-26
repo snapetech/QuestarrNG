@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
-# Questarr in-container installer.
+# QuestarrNG in-container installer.
 #
 # Installs Questarr from source into /opt/questarr and runs it as a systemd
 # service. Intended to be executed as root inside a freshly created Debian or
 # Ubuntu LXC container (see questarr-lxc.sh), but it works just as well on any
 # bare Debian/Ubuntu VM or host.
 #
-#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/Doezer/Questarr/main/scripts/proxmox/questarr-install.sh)"
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-install.sh)"
 #
 # Environment overrides:
-#   QUESTARR_REPO    GitHub repository            (default: Doezer/Questarr)
+#   QUESTARR_REPO    GitHub repository            (default: snapetech/QuestarrNG)
 #   QUESTARR_REF     Tag/branch to install        (default: latest release, else main)
 #   QUESTARR_PORT    HTTP port                    (default: 5000)
 #   QUESTARR_HOST    Bind address                 (default: 0.0.0.0)
@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-QUESTARR_REPO="${QUESTARR_REPO:-Doezer/Questarr}"
+QUESTARR_REPO="${QUESTARR_REPO:-snapetech/QuestarrNG}"
 QUESTARR_REF="${QUESTARR_REF:-}"
 QUESTARR_PORT="${QUESTARR_PORT:-5000}"
 QUESTARR_HOST="${QUESTARR_HOST:-0.0.0.0}"
@@ -265,7 +265,7 @@ IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 ok "Questarr ${REF} is installed."
 # Informational only: this is the address of the user's own freshly created
-# container, matching Questarr's own HTTP-by-default listener.
+# container, matching QuestarrNG's own HTTP-by-default listener.
 echo "   URL:      http://${IP_ADDR:-<container-ip>}:${QUESTARR_PORT}" # NOSONAR
 echo "   Config:   ${APP_DIR}/.env"
 echo "   Data:     ${DATA_DIR}"

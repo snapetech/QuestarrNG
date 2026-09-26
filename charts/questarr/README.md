@@ -1,7 +1,8 @@
-# Questarr Helm chart
+# QuestarrNG Helm chart
 
-Runs [Questarr](https://github.com/Doezer/questarr) on Kubernetes from the official
-`ghcr.io/doezer/questarr` image.
+Runs [QuestarrNG](https://github.com/snapetech/QuestarrNG), a fork of
+[Questarr](https://github.com/Doezer/Questarr) for SeerrNG's game request and
+asset-delivery contract, on Kubernetes from `ghcr.io/snapetech/questarrng`.
 
 The chart deploys a single-replica Deployment, a Service, an optional Ingress, and a
 PersistentVolumeClaim for `/app/data` (SQLite database, `config.yaml`, and any other
@@ -19,8 +20,8 @@ The chart is not published to a Helm repository yet — install it from a clone 
 repository:
 
 ```bash
-git clone https://github.com/Doezer/questarr.git
-cd questarr
+git clone https://github.com/snapetech/QuestarrNG.git
+cd QuestarrNG
 helm install questarr charts/questarr --namespace questarr --create-namespace
 ```
 
@@ -44,7 +45,7 @@ above `1`, and uses the `Recreate` strategy so two pods never hold the volume at
 
 | Key                | Default                   | Description                                     |
 | ------------------ | ------------------------- | ----------------------------------------------- |
-| `image.repository` | `ghcr.io/doezer/questarr` | Image repository                                |
+| `image.repository` | `ghcr.io/snapetech/questarrng` | Image repository                            |
 | `image.tag`        | `""`                      | Image tag; defaults to the chart's `appVersion` |
 | `image.pullPolicy` | `IfNotPresent`            | Image pull policy                               |
 | `imagePullSecrets` | `[]`                      | Pull secrets for private registries             |

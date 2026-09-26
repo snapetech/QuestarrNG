@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { readFileSync } from "node:fs";
+import { constants, readFileSync } from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { storage } from "../storage.js";
@@ -24,6 +25,7 @@ export const INTEGRATION_API_VERSION = 1;
 
 /** Upper bound on a single library sync payload, to keep one request bounded. */
 const MAX_SYNC_GAMES = 5000;
+const seerrDispatchQueues = new Map<string, Promise<void>>();
 
 export const integrationRouter = Router();
 
@@ -52,10 +54,177 @@ function toIntegrationGame(game: Game) {
     releaseDate: game.releaseDate,
     coverUrl: game.coverUrl,
     platforms: game.platforms ?? [],
+    variant: {
+      operatingSystem: game.targetOperatingSystem,
+      architecture: game.targetArchitecture,
+    },
     genres: game.genres ?? [],
     libraryPath: game.libraryPath,
     addedAt: game.addedAt,
   };
+}
+
+type IntegrationAsset = {
+  id: string;
+  name: string;
+  size: number;
+  filePath: string;
+};
+
+type SeerrVariant = {
+  operatingSystem: "windows" | "linux" | "macos";
+  architecture: "x64" | "arm64" | "x86" | "universal";
+};
+
+function isWithin(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative))
+  );
+}
+
+async function getDeliverableAssets(userId: string, gameId: string): Promise<IntegrationAsset[]> {
+  const config = await storage.getImportConfig(userId);
+  let root: string;
+  try {
+    root = await fs.realpath(config.libraryRoot);
+  } catch {
+    return [];
+  }
+
+  const records = await storage.getGameFiles(gameId);
+  const assets: IntegrationAsset[] = [];
+  for (const file of records) {
+    try {
+      const reported = path.isAbsolute(file.filePath)
+        ? file.filePath
+        : path.resolve(root, file.filePath);
+      const lexical = path.resolve(reported);
+      if (!isWithin(root, lexical)) continue;
+      const [canonical, linkInfo] = await Promise.all([
+        fs.realpath(lexical),
+        fs.lstat(lexical),
+      ]);
+      if (linkInfo.isSymbolicLink() || !isWithin(root, canonical)) continue;
+      const stat = await fs.stat(canonical);
+      if (!stat.isFile()) continue;
+      assets.push({
+        id: file.id,
+        name: path.basename(file.storedName || file.originalName),
+        size: stat.size,
+        filePath: canonical,
+      });
+    } catch {
+      // A stale, missing, or unreadable file is not a deliverable asset.
+    }
+  }
+  return assets;
+}
+
+async function toSeerrRequestView(
+  userId: string,
+  row: NonNullable<Awaited<ReturnType<typeof storage.getIntegrationRequest>>>
+) {
+  let status = row.status;
+  let downloadId = row.downloadId;
+  let game: Game | undefined;
+  let assets: IntegrationAsset[] = [];
+
+  if (row.gameId) {
+    game = await storage.getGame(row.gameId);
+    if (!game || game.userId !== userId) {
+      return null;
+    }
+    assets = await getDeliverableAssets(userId, game.id);
+    if (assets.length > 0) {
+      status = "available";
+    } else if (row.errorMessage) {
+      status = "failed";
+    } else {
+      const downloads = await storage.getDownloadsByGameId(game.id);
+      const attemptedAt = new Date(row.attemptedAt ?? row.createdAt ?? 0).getTime();
+      const matchingDownloads = row.downloadId
+        ? downloads.filter((download) => download.id === row.downloadId)
+        : downloads.filter(
+            (download) => new Date(download.addedAt ?? 0).getTime() >= attemptedAt
+          );
+      const latestAttempt = matchingDownloads.sort(
+        (a, b) => new Date(b.addedAt ?? 0).getTime() - new Date(a.addedAt ?? 0).getTime()
+      )[0];
+      const latestActive =
+        game.status === "downloading"
+          ? downloads
+              .filter((download) =>
+                [
+                  "downloading",
+                  "paused",
+                  "unpacking",
+                  "completed_pending_import",
+                  "manual_review_required",
+                ].includes(download.status)
+              )
+              .sort(
+                (a, b) =>
+                  new Date(b.addedAt ?? 0).getTime() - new Date(a.addedAt ?? 0).getTime()
+              )[0]
+          : undefined;
+      const latest = latestAttempt ?? latestActive;
+      if (latest && !downloadId) downloadId = latest.id;
+      if (latest?.status === "failed") status = "failed";
+      else if (
+        ["unpacking", "completed_pending_import", "manual_review_required"].includes(
+          latest?.status ?? ""
+        )
+      ) {
+        status = "importing";
+      } else if (["downloading", "paused"].includes(latest?.status ?? "")) {
+        status = "downloading";
+      } else if (game.status === "wanted") status = "searching";
+      else status = "failed";
+    }
+  }
+
+  if (status !== row.status || downloadId !== row.downloadId) {
+    await storage.updateIntegrationRequest(userId, row.externalRequestId, { status, downloadId });
+  }
+
+  return {
+    externalRequestId: row.externalRequestId,
+    title: row.title,
+    variant: {
+      operatingSystem: row.operatingSystem,
+      architecture: row.architecture,
+    },
+    game: game ? { id: game.id, title: game.title, status: game.status } : null,
+    status,
+    deliverable: assets.length > 0,
+    error: status === "failed" ? row.errorMessage ?? "The request could not be completed." : null,
+  };
+}
+
+function contentDisposition(filename: string): string {
+  const safe = path.basename(filename).replace(/[\r\n"\\]/g, "_").replace(/[^\x20-\x7e]/g, "_");
+  const encoded = encodeURIComponent(path.basename(filename));
+  return `attachment; filename="${safe || "download"}"; filename*=UTF-8''${encoded}`;
+}
+
+async function withSeerrDispatchLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = seerrDispatchQueues.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  seerrDispatchQueues.set(key, current);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (seerrDispatchQueues.get(key) === current) {
+      seerrDispatchQueues.delete(key);
+    }
+  }
 }
 
 // ── Handshake ────────────────────────────────────────────────────────────────
@@ -70,6 +239,301 @@ integrationRouter.get("/ping", (req: Request, res: Response) => {
     usingApiKey: Boolean(req.apiKeyId),
   });
 });
+
+const seerrRequestSchema = z
+  .object({
+    externalRequestId: z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_.:-]+$/),
+    title: z.string().trim().min(1).max(500),
+    variant: z
+      .object({
+        operatingSystem: z.enum(["windows", "linux", "macos"]),
+        architecture: z.enum(["x64", "arm64", "x86", "universal"]).default("x64"),
+      })
+      .strict(),
+  })
+  .strict();
+
+async function dispatchSeerrRequest(
+  userId: string,
+  externalRequestId: string,
+  title: string,
+  variant: SeerrVariant
+): Promise<{ game?: Game; error?: string }> {
+  const result = await quickAddGameByTitle(userId, title, { status: "wanted", source: "api" });
+  if (result.outcome === "not_found") {
+    await storage.updateIntegrationRequest(userId, externalRequestId, {
+      status: "failed",
+      errorMessage: "No matching game was found in the QuestarrNG catalog.",
+    });
+    return { error: "No matching game was found in the QuestarrNG catalog." };
+  }
+
+  const game = result.game;
+  if (
+    (game.targetOperatingSystem && game.targetOperatingSystem !== variant.operatingSystem) ||
+    (game.targetArchitecture && game.targetArchitecture !== variant.architecture)
+  ) {
+    const error = "This game is already tracked with a different platform variant.";
+    await storage.updateIntegrationRequest(userId, externalRequestId, {
+      status: "failed",
+      errorMessage: error,
+    });
+    return { error };
+  }
+
+  const currentAssets = await getDeliverableAssets(userId, game.id);
+  if (
+    result.outcome === "duplicate" &&
+    !currentAssets.length &&
+    !["wanted", "downloading"].includes(game.status)
+  ) {
+    const error = "This game is already in Questarr and has no verified downloadable files.";
+    await storage.updateIntegrationRequest(userId, externalRequestId, {
+      gameId: game.id,
+      status: "failed",
+      errorMessage: error,
+    });
+    return { error, game };
+  }
+
+  await storage.updateGame(game.id, {
+    targetOperatingSystem: variant.operatingSystem,
+    targetArchitecture: variant.architecture,
+  });
+  const refreshed = (await storage.getGame(game.id)) ?? game;
+  await storage.updateIntegrationRequest(userId, externalRequestId, {
+    gameId: refreshed.id,
+    status: currentAssets.length
+      ? "available"
+      : refreshed.status === "downloading"
+        ? "downloading"
+        : "searching",
+    errorMessage: null,
+  });
+  return { game: refreshed };
+}
+
+// Stable, user-scoped machine contract used by SeerrNG. The legacy v1 routes
+// above and below remain unchanged for existing Playnite clients.
+integrationRouter.get("/seerrng/v1/ping", (_req: Request, res: Response) => {
+  res.json({ service: "QuestarrNG", apiVersion: 1, requestContractVersion: 1 });
+});
+
+integrationRouter.post("/seerrng/v1/requests", async (req: Request, res: Response) => {
+  const parsed = seerrRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid request payload", issues: parsed.error.issues });
+  }
+  const { externalRequestId, title, variant } = parsed.data;
+  const userId = req.user!.id;
+
+  try {
+    let row = await storage.getIntegrationRequest(userId, externalRequestId);
+    if (row) {
+      if (
+        row.title !== title ||
+        row.operatingSystem !== variant.operatingSystem ||
+        row.architecture !== variant.architecture
+      ) {
+        return res
+          .status(409)
+          .json({ error: "externalRequestId is already bound to a different request" });
+      }
+      if (row.gameId || row.status === "failed") {
+        const request = await toSeerrRequestView(userId, row);
+        return request
+          ? res.status(200).json(request)
+          : res.status(404).json({ error: "Request not found" });
+      }
+    } else {
+      row = await storage.addIntegrationRequest({
+        userId,
+        externalRequestId,
+        title,
+        operatingSystem: variant.operatingSystem,
+        architecture: variant.architecture,
+        status: "accepted",
+      });
+      if (
+        row.title !== title ||
+        row.operatingSystem !== variant.operatingSystem ||
+        row.architecture !== variant.architecture
+      ) {
+        return res
+          .status(409)
+          .json({ error: "externalRequestId is already bound to a different request" });
+      }
+    }
+
+    const dispatched = await withSeerrDispatchLock(
+      `${userId}:${normalizeTitle(title)}`,
+      () => dispatchSeerrRequest(userId, externalRequestId, title, variant)
+    );
+    if (dispatched.error) {
+      const failed = await storage.getIntegrationRequest(userId, externalRequestId);
+      const request = failed ? await toSeerrRequestView(userId, failed) : null;
+      return res.status(dispatched.game ? 409 : 404).json(request ?? { error: dispatched.error });
+    }
+    const updated = await storage.getIntegrationRequest(userId, externalRequestId);
+    const request = updated ? await toSeerrRequestView(userId, updated) : null;
+    return request
+      ? res.status(202).json(request)
+      : res.status(500).json({ error: "Request was not persisted" });
+  } catch (error) {
+    logger.error({ error, externalRequestId }, "SeerrNG request dispatch failed");
+    await storage.updateIntegrationRequest(userId, externalRequestId, {
+      status: "failed",
+      errorMessage: "QuestarrNG could not start this request.",
+    });
+    return res.status(500).json({ error: "QuestarrNG could not start this request" });
+  }
+});
+
+integrationRouter.post(
+  "/seerrng/v1/requests/:externalRequestId/retry",
+  async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+    const externalRequestId = req.params.externalRequestId;
+    const row = await storage.getIntegrationRequest(userId, externalRequestId);
+    if (!row) return res.status(404).json({ error: "Request not found" });
+    if (row.status !== "failed") {
+      return res.status(409).json({ error: "Only failed requests can be retried" });
+    }
+
+    await storage.updateIntegrationRequest(userId, externalRequestId, {
+      status: "accepted",
+      errorMessage: null,
+      downloadId: null,
+      attemptedAt: new Date(),
+    });
+    const result = await withSeerrDispatchLock(
+      `${userId}:${normalizeTitle(row.title)}`,
+      () =>
+        dispatchSeerrRequest(userId, externalRequestId, row.title, {
+          operatingSystem: row.operatingSystem as SeerrVariant["operatingSystem"],
+          architecture: row.architecture as SeerrVariant["architecture"],
+        })
+    );
+    const updated = await storage.getIntegrationRequest(userId, externalRequestId);
+    const request = updated ? await toSeerrRequestView(userId, updated) : null;
+    return result.error
+      ? res.status(409).json(request ?? { error: result.error })
+      : res.status(202).json(request);
+  }
+);
+
+integrationRouter.get(
+  "/seerrng/v1/requests/:externalRequestId",
+  async (req: Request, res: Response) => {
+    const row = await storage.getIntegrationRequest(req.user!.id, req.params.externalRequestId);
+    if (!row) return res.status(404).json({ error: "Request not found" });
+    const request = await toSeerrRequestView(req.user!.id, row);
+    return request ? res.json(request) : res.status(404).json({ error: "Request not found" });
+  }
+);
+
+integrationRouter.get(
+  "/seerrng/v1/requests/:externalRequestId/assets",
+  async (req: Request, res: Response) => {
+    const row = await storage.getIntegrationRequest(req.user!.id, req.params.externalRequestId);
+    if (!row) return res.status(404).json({ error: "Request not found" });
+    const request = await toSeerrRequestView(req.user!.id, row);
+    if (!request || !row.gameId || request.status !== "available") {
+      return res.json({ assets: [], bundleSupported: false });
+    }
+    const assets = await getDeliverableAssets(req.user!.id, row.gameId);
+    return res.json({
+      assets: assets.map(({ id, name, size }) => ({
+        id,
+        name,
+        size,
+        url: `/api/integration/seerrng/v1/requests/${encodeURIComponent(row.externalRequestId)}/assets/${encodeURIComponent(id)}`,
+      })),
+      bundleSupported: false,
+    });
+  }
+);
+
+integrationRouter.get(
+  "/seerrng/v1/requests/:externalRequestId/assets/:assetId",
+  async (req: Request, res: Response) => {
+    const row = await storage.getIntegrationRequest(req.user!.id, req.params.externalRequestId);
+    if (!row?.gameId) return res.status(404).json({ error: "Asset not found" });
+    const view = await toSeerrRequestView(req.user!.id, row);
+    if (!view || view.status !== "available") return res.status(404).json({ error: "Asset not found" });
+    const asset = (await getDeliverableAssets(req.user!.id, row.gameId)).find(
+      (candidate) => candidate.id === req.params.assetId
+    );
+    if (!asset) return res.status(404).json({ error: "Asset not found" });
+
+    let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+    try {
+      handle = await fs.open(asset.filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+      const stat = await handle.stat();
+      if (!stat.isFile()) {
+        await handle.close();
+        return res.status(404).json({ error: "Asset not found" });
+      }
+      const size = stat.size;
+      if (size === 0) {
+        res.status(200).set({
+          "Content-Type": "application/octet-stream",
+          "Content-Length": "0",
+          "Content-Disposition": contentDisposition(asset.name),
+          "Cache-Control": "no-store",
+          "Accept-Ranges": "bytes",
+        });
+        await handle.close();
+        return res.end();
+      }
+
+      let start = 0;
+      let end = size - 1;
+      let statusCode = 200;
+      const range = req.header("range");
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+        if (!match || (!match[1] && !match[2])) {
+          await handle.close();
+          return res.status(416).set("Content-Range", `bytes */${size}`).end();
+        }
+        if (!match[1]) {
+          const suffix = Number(match[2]);
+          start = Math.max(0, size - suffix);
+        } else {
+          start = Number(match[1]);
+          if (match[2]) end = Number(match[2]);
+        }
+        if (start >= size || end < start || end >= size) {
+          await handle.close();
+          return res.status(416).set("Content-Range", `bytes */${size}`).end();
+        }
+        statusCode = 206;
+      }
+
+      res.status(statusCode).set({
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(end - start + 1),
+        "Content-Disposition": contentDisposition(asset.name),
+        "Cache-Control": "no-store",
+        "Accept-Ranges": "bytes",
+        ...(statusCode === 206 ? { "Content-Range": `bytes ${start}-${end}/${size}` } : {}),
+      });
+      const stream = handle.createReadStream({ start, end, autoClose: true });
+      stream.on("error", (error) => {
+        logger.error({ error, assetId: asset.id }, "SeerrNG asset stream failed");
+        if (!res.headersSent) res.status(500);
+        res.destroy(error);
+      });
+      return stream.pipe(res);
+    } catch (error) {
+      await handle?.close().catch(() => undefined);
+      logger.error({ error, assetId: req.params.assetId }, "SeerrNG asset could not be opened");
+      if (!res.headersSent) return res.status(404).json({ error: "Asset not found" });
+      return res.destroy(error as Error);
+    }
+  }
+);
 
 // ── Pull: Questarr library → external client ─────────────────────────────────
 const libraryQuerySchema = z.object({

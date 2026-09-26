@@ -1,6 +1,6 @@
 # API Reference
 
-This document describes Questarr's external software interfaces: the REST
+This document describes QuestarrNG's external software interfaces: the REST
 API exposed by the Express server, and the real-time events pushed over
 Socket.io. It complements [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) (system
 actors and data flow) and [`docs/SECURITY_ASSESSMENT.md`](SECURITY_ASSESSMENT.md)
@@ -303,7 +303,7 @@ router), both behind the global auth gate plus explicit `authenticateToken`.
 
 ## Integration API (external clients)
 
-`server/routes/integration.ts` — 4 routes, mounted at `/api/integration`.
+`server/routes/integration.ts` — legacy client routes and the separate SeerrNG v1 contract, mounted at `/api/integration`.
 
 This is the one part of the API that accepts a long-lived **integration API
 key** in addition to a JWT, for machine clients that cannot run the interactive
@@ -326,7 +326,7 @@ leaked key cannot escalate into minting or revoking other keys.
 
 `IntegrationGame` is a deliberately narrow projection of a library game —
 `id`, `title`, `igdbId`, `steamAppId`, `status`, `releaseStatus`, `releaseDate`,
-`coverUrl`, `platforms`, `genres`, `libraryPath`, `addedAt`. Internal fields
+`coverUrl`, `platforms`, `variant`, `genres`, `libraryPath`, `addedAt`. Internal fields
 (`userId`, `notes`, search-result bookkeeping) are never exposed.
 
 `apiVersion` (`INTEGRATION_API_VERSION`) describes the integration contract
@@ -343,6 +343,29 @@ installed, and is off by default.
 **Requesting a game**: a requested game is added with status `wanted`, which is
 what hands it to the existing auto-search pipeline (`checkAutoSearch` in
 `server/cron.ts`) — that is how a request from the couch turns into a download.
+
+### SeerrNG request and asset contract
+
+QuestarrNG adds a fork-specific, versioned contract at
+`/api/integration/seerrng/v1`. It is separate from the legacy integration API
+so existing Playnite clients retain their current request shape and `ping`
+response. The contract is documented with examples in
+[`SEERRNG-INTEGRATION.md`](SEERRNG-INTEGRATION.md).
+
+| Method | Path | Request | Response |
+| --- | --- | --- | --- |
+| GET | `/api/integration/seerrng/v1/ping` | — | `{ service: "QuestarrNG", apiVersion: 1, requestContractVersion: 1 }` |
+| POST | `/api/integration/seerrng/v1/requests` | `{ externalRequestId, title, variant: { operatingSystem: "windows" \| "linux" \| "macos", architecture?: "x64" \| "arm64" \| "x86" \| "universal" } }` | `202` with the durable request projection; an exact replay returns `200`; key reuse with a different body returns `409` |
+| GET | `/api/integration/seerrng/v1/requests/:externalRequestId` | — | Current correlated acquisition state and `deliverable`; never includes local file paths |
+| POST | `/api/integration/seerrng/v1/requests/:externalRequestId/retry` | — | Retries only a failed request; `409` while the request is active |
+| GET | `/api/integration/seerrng/v1/requests/:externalRequestId/assets` | — | Opaque file IDs, safe names, sizes, and same-origin stream paths; no bundles are advertised |
+| GET | `/api/integration/seerrng/v1/requests/:externalRequestId/assets/:assetId` | Optional single `Range` header | Authenticated attachment stream with byte-range support |
+
+Requests and asset lookups are scoped to the user represented by the API key
+or JWT. The selected OS and architecture are stored on the Questarr game and
+the automatic release search filters explicit incompatible platform markers;
+Linux and macOS requests require a matching release marker. Files are listed
+only when they still resolve beneath that user's configured library root.
 
 ## API Keys (management)
 
