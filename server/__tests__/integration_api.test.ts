@@ -25,7 +25,10 @@ import {
 // the whole point is to prove that a real API key authenticates against the
 // real middleware, and that it is refused everywhere except /api/integration.
 vi.mock("../storage.js", () => ({ storage: createStorageMock() }));
-vi.mock("../igdb.js", () => ({ igdbClient: createIgdbMock() }));
+vi.mock("../igdb.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../igdb.js")>()),
+  igdbClient: createIgdbMock(),
+}));
 vi.mock("../db.js", () => ({ db: createDbMock() }));
 vi.mock("../logger.js", () => createLoggerMocks());
 vi.mock("../rss.js", () => ({ rssService: createRssMock() }));
@@ -108,7 +111,8 @@ describe("integration API", () => {
         "Zelda",
         20,
         { approach: 0, offset: 20, seenIds: [123] },
-        []
+        [],
+        {}
       );
 
       const mismatch = await withKey(
@@ -123,6 +127,12 @@ describe("integration API", () => {
           .query({ q: "Zelda", limit: 20, platformIds: "130", cursor: first.body.nextCursor })
       );
       expect(platformMismatch.status).toBe(400);
+      const genreMismatch = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/catalog/search-page")
+          .query({ q: "Zelda", limit: 20, genre: "Adventure", cursor: first.body.nextCursor })
+      );
+      expect(genreMismatch.status).toBe(400);
     });
 
     it("returns a bounded next offset for popular titles", async () => {
@@ -159,6 +169,35 @@ describe("integration API", () => {
       expect(response.body.nextOffset).toBe(3);
       expect(igdbClient.getPopularGames).toHaveBeenNthCalledWith(1, 2, 0);
       expect(igdbClient.getPopularGames).toHaveBeenNthCalledWith(2, 1, 2);
+    });
+
+    it("filters popular pages by genre and release year before advancing", async () => {
+      const { igdbClient } = await import("../igdb.js");
+      vi.mocked(igdbClient.getPopularGames)
+        .mockResolvedValueOnce([
+          {
+            id: 1,
+            name: "Wrong genre",
+            genres: [{ id: 1, name: "Puzzle" }],
+            first_release_date: 1704067200,
+          },
+          {
+            id: 2,
+            igdbId: 2,
+            name: "Match",
+            title: "Match",
+            genres: [{ id: 2, name: "Adventure" }],
+            first_release_date: 1704067200,
+          },
+        ])
+        .mockResolvedValueOnce([]);
+      const response = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/catalog/popular-page")
+          .query({ limit: 2, genre: "Adventure", releaseYear: 2024 })
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.results.map((game: { igdbId: number }) => game.igdbId)).toEqual([2]);
     });
   });
 

@@ -136,6 +136,23 @@ export interface CatalogSearchPage {
   cursor: CatalogSearchCursor | null;
 }
 
+export interface CatalogMetadataFilters {
+  genre?: string;
+  releaseYear?: number;
+}
+
+export const matchesCatalogMetadataFilters = (
+  game: IGDBGame,
+  filters: CatalogMetadataFilters
+): boolean =>
+  (!filters.genre ||
+    game.genres?.some(
+      (genre) => genre.name.toLocaleLowerCase() === filters.genre?.toLocaleLowerCase()
+    ) === true) &&
+  (!filters.releaseYear ||
+    (typeof game.first_release_date === "number" &&
+      new Date(game.first_release_date * 1000).getUTCFullYear() === filters.releaseYear));
+
 interface IGDBAuthResponse {
   access_token: string;
   expires_in: number;
@@ -224,7 +241,8 @@ class IGDBClient {
     query: string,
     limit: number,
     cursor?: CatalogSearchCursor,
-    platformIds: number[] = []
+    platformIds: number[] = [],
+    filters: CatalogMetadataFilters = {}
   ): Promise<CatalogSearchPage> {
     if (!(await this.ensureConfigured())) return { results: [], cursor: null };
     const term = sanitizeIgdbInput(query);
@@ -270,6 +288,7 @@ class IGDBClient {
           ) {
             continue;
           }
+          if (!matchesCatalogMetadataFilters(game, filters)) continue;
           results.push(game);
         }
       }

@@ -366,8 +366,8 @@ integration routes above. Responses are marked `Cache-Control: no-store`.
 
 Paged catalog endpoints are also available:
 
-- `GET /api/integration/seerrng/v1/catalog/search-page?q=...&limit=...&cursor=...&platformIds=...` returns `{ results, nextCursor }`. The cursor is optional on the first request, bound to the query and platform list, and `null` after the last page.
-- `GET /api/integration/seerrng/v1/catalog/popular-page?limit=...&offset=...&platformIds=...` returns `{ results, nextOffset }`. The offset starts at zero and is `null` after the last page.
+- `GET /api/integration/seerrng/v1/catalog/search-page?q=...&limit=...&cursor=...&platformIds=...&genre=...&releaseYear=...` returns `{ results, nextCursor }`. The cursor is optional on the first request, bound to the query and filters, and `null` after the last page.
+- `GET /api/integration/seerrng/v1/catalog/popular-page?limit=...&offset=...&platformIds=...&genre=...&releaseYear=...` returns `{ results, nextOffset }`. The offset starts at zero and is `null` after the last page. Genre and year are applied before each page is returned.
 - `GET /api/integration/seerrng/v1/library/lookup?igdbIds=42,43` returns `{ games: [{ igdbId, status }] }` for up to 100 requested IDs in the authenticated user's visible library. Hidden and content-filtered titles are excluded.
 - `GET /api/integration/seerrng/v1/catalog/games/{igdbId}` includes bounded screenshots, video IDs, rating, publishers, and developers for a title detail view. Paged catalog results remain compact.
 

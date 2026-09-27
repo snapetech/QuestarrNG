@@ -6,7 +6,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { storage } from "../storage.js";
 import { routesLogger as logger } from "../logger.js";
-import { igdbClient, type CatalogSearchCursor } from "../igdb.js";
+import { igdbClient, matchesCatalogMetadataFilters, type CatalogSearchCursor } from "../igdb.js";
 import { checkAutoSearch, withGameOperationLock } from "../cron.js";
 import { DownloaderManager } from "../downloaders/manager.js";
 import { normalizeTitle } from "../../shared/title-utils.js";
@@ -81,8 +81,28 @@ const parseCatalogPlatformIds = (value: unknown): number[] | null => {
     ? [...new Set(ids)].sort((a, b) => a - b)
     : null;
 };
-const catalogSearchIdentity = (query: string, platformIds: number[]) =>
-  `${query}:${platformIds.join(",")}`;
+const catalogSearchIdentity = (
+  query: string,
+  platformIds: number[],
+  genre?: string,
+  releaseYear?: number
+) => `${query}:${platformIds.join(",")}:${genre?.toLocaleLowerCase() ?? ""}:${releaseYear ?? ""}`;
+const parseCatalogMetadataFilters = (query: Request["query"]) => {
+  const genre = z.string().trim().min(1).max(64).optional().safeParse(query.genre);
+  const releaseYear = z.coerce
+    .number()
+    .int()
+    .min(1950)
+    .max(2200)
+    .optional()
+    .safeParse(query.releaseYear);
+  return genre.success && releaseYear.success
+    ? {
+        ...(genre.data ? { genre: genre.data } : {}),
+        ...(releaseYear.data ? { releaseYear: releaseYear.data } : {}),
+      }
+    : null;
+};
 const parseCatalogCursor = (
   value: unknown,
   query: string
@@ -262,13 +282,32 @@ integrationRouter.get("/seerrng/v1/catalog/search-page", async (req: Request, re
   const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const limit = catalogLimitSchema.safeParse(req.query.limit ?? 20);
   const platformIds = parseCatalogPlatformIds(req.query.platformIds);
-  const identity = catalogSearchIdentity(query, platformIds ?? []);
+  const filters = parseCatalogMetadataFilters(req.query);
+  const identity = catalogSearchIdentity(
+    query,
+    platformIds ?? [],
+    filters?.genre,
+    filters?.releaseYear
+  );
   const cursor = parseCatalogCursor(req.query.cursor, identity);
-  if (!query || query.length > 200 || !limit.success || cursor === null || platformIds === null) {
+  if (
+    !query ||
+    query.length > 200 ||
+    !limit.success ||
+    cursor === null ||
+    platformIds === null ||
+    !filters
+  ) {
     return res.status(400).json({ error: "A valid search query, limit, and cursor are required." });
   }
   try {
-    const page = await igdbClient.searchCatalogPage(query, limit.data, cursor, platformIds);
+    const page = await igdbClient.searchCatalogPage(
+      query,
+      limit.data,
+      cursor,
+      platformIds,
+      filters
+    );
     return res.json({
       results: page.results.map(seerrGameSchema),
       nextCursor: page.cursor ? encodeCatalogCursor(page.cursor, identity) : null,
@@ -299,13 +338,14 @@ integrationRouter.get("/seerrng/v1/catalog/popular-page", async (req: Request, r
     .max(10000)
     .safeParse(req.query.offset ?? 0);
   const platformIds = parseCatalogPlatformIds(req.query.platformIds);
-  if (!limit.success || !offset.success || platformIds === null) {
+  const filters = parseCatalogMetadataFilters(req.query);
+  if (!limit.success || !offset.success || platformIds === null || !filters) {
     return res
       .status(400)
       .json({ error: "A valid result limit, offset, and platform list are required." });
   }
   try {
-    if (platformIds.length === 0) {
+    if (platformIds.length === 0 && !filters.genre && !filters.releaseYear) {
       const games = await igdbClient.getPopularGames(limit.data + 1, offset.data);
       return res.json({
         results: games.slice(0, limit.data).map(seerrGameSchema),
@@ -325,8 +365,11 @@ integrationRouter.get("/seerrng/v1/catalog/popular-page", async (req: Request, r
       const raw = await igdbClient.getPopularGames(take, currentOffset);
       currentOffset += raw.length;
       games.push(
-        ...raw.filter((game) =>
-          game.platforms?.some((platform) => allowedPlatforms.has(platform.id))
+        ...raw.filter(
+          (game) =>
+            (allowedPlatforms.size === 0 ||
+              game.platforms?.some((platform) => allowedPlatforms.has(platform.id))) &&
+            matchesCatalogMetadataFilters(game, filters)
         )
       );
       hasMore = raw.length === take;
