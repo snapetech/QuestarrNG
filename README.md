@@ -164,16 +164,18 @@ and troubleshooting.
 <details>
 <summary><b>Install via Community Applications</b></summary>
 
-Questarr is available in the Unraid **Apps** tab via Community Applications:
+The upstream **Questarr** Community Apps entry uses the upstream image and
+does not include this fork's SeerrNG integration routes. Use the
+[QuestarrNG fork template](unraid/questarr.xml) or the
+[SeerrNG companion template](https://github.com/snapetech/seerrng/blob/main/packaging/unraid/questarrng.xml)
+for `ghcr.io/snapetech/questarrng:latest`. QuestarrNG also works as a
+standalone game manager without SeerrNG:
 
-1. Open the **Apps** tab and search for **Questarr**, then click **Install**.
-2. Set your **Data Path** (default `/mnt/user/appdata/questarr`), **PUID**/**PGID**, and ports (default `5000`
-   HTTP, `9898` HTTPS if using it).
-3. Optionally set **Library Path** to the same root your download client(s) write into (e.g.
-   `/mnt/user/data`) if you want Questarr to move completed downloads into your game library. This host path
-   is mounted at `/data` inside the container, so add a mapping under **Settings → Path Mappings** with
-   **Local Path** set to `/data` and **Remote Path** set to the exact path your download client reports for
-   that root. Leave Library Path blank if you manage imports manually.
+1. Install the **QuestarrNG** template rather than the upstream **Questarr** template.
+2. Set your **Data Path** (default `/mnt/user/appdata/questarrng`), **PUID**/**PGID**, and HTTP port (default `5000`).
+3. Set the **Game Library** and **Downloads** paths to the folders shared with your download client. The game
+   library is mounted at `/data` inside the container; add a matching entry under **Settings → Path Mappings**
+   when the download client reports a different path.
 4. Apply, then open `http://<unraid-host>:5000` to access the UI.
 
 </details>
