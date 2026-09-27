@@ -1,5 +1,12 @@
 # Questarr
 
+## Snapetech QuestarrNG fork
+
+This fork adds the SeerrNG catalog and acquisition contract. Use
+`ghcr.io/snapetech/questarrng:latest` or the Compose file in this repository;
+the upstream Questarr image does not contain the SeerrNG integration routes.
+The fork image is published for `linux/amd64` from `main`.
+
 ![Questarr Logo](images/Questarr_Logo-nobg.png)
 
 A video game management application inspired by the -Arr apps (Sonarr, Radarr, Prowlarr...) and GamezServer. Track and organize your video game collection with automated discovery and download management.
@@ -100,17 +107,17 @@ Docker is the easiest way to deploy Questarr with all dependencies included. Que
 ### Option 1: One-liner (Simplest but minimal)
 
 ```bash
-docker run -d -p 5000:5000 -v ./data:/app/data --name questarr ghcr.io/doezer/questarr:latest
+docker run -d -p 5000:5000 -v ./data:/app/data --name questarrng ghcr.io/snapetech/questarrng:latest
 ```
 
 ### Option 2: Docker Compose (more detailed)
 
-1. **Use the [`docker-compose.yml`](https://github.com/Doezer/Questarr/blob/main/docker-compose.yml) file from the repo or create a minimal one:**
+1. **Use the [`docker-compose.yml`](https://github.com/snapetech/QuestarrNG/blob/main/docker-compose.yml) file from the repo or create a minimal one:**
 
    ```yaml
    services:
      app:
-       image: ghcr.io/doezer/questarr:latest
+       image: ghcr.io/snapetech/questarrng:latest
        ports:
          - "5000:5000"
        volumes:
