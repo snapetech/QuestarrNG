@@ -52,7 +52,7 @@ fi
 # Scanning recursively catches post-restore trees where the top-level inode matches but
 # inner files were created by a different host UID/GID.
 # -print -quit stops at the first mismatch so this is fast even on large trees.
-if find /app/data \( ! -uid "$QUESTARR_UID" -o ! -gid "$QUESTARR_GID" \) -print -quit 2>/dev/null | grep -q .; then
+if find /app/data \( ! -user "$QUESTARR_UID" -o ! -group "$QUESTARR_GID" \) -print -quit 2>/dev/null | grep -q .; then
   echo "Setting ownership of /app/data to questarr:questarr"
   chown -R questarr:questarr /app/data
 fi
