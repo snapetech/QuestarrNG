@@ -82,6 +82,86 @@ describe("integration API", () => {
   const withKey = (req: request.Test) => req.set("X-Api-Key", RAW_KEY);
   const tokenFor = (id: string) => jwt.sign({ id, username: "testuser" }, JWT_SECRET);
 
+  describe("SeerrNG catalog paging", () => {
+    it("binds search cursors to their original query", async () => {
+      const { igdbClient } = await import("../igdb.js");
+      vi.mocked(igdbClient.searchCatalogPage).mockResolvedValueOnce({
+        results: [],
+        cursor: { approach: 0, offset: 20, seenIds: [123] },
+      });
+
+      const first = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/catalog/search-page")
+          .query({ q: "Zelda", limit: 20 })
+      );
+      expect(first.status).toBe(200);
+      expect(first.body.nextCursor).toEqual(expect.any(String));
+
+      const next = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/catalog/search-page")
+          .query({ q: "Zelda", limit: 20, cursor: first.body.nextCursor })
+      );
+      expect(next.status).toBe(200);
+      expect(igdbClient.searchCatalogPage).toHaveBeenLastCalledWith(
+        "Zelda",
+        20,
+        { approach: 0, offset: 20, seenIds: [123] },
+        []
+      );
+
+      const mismatch = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/catalog/search-page")
+          .query({ q: "Mario", limit: 20, cursor: first.body.nextCursor })
+      );
+      expect(mismatch.status).toBe(400);
+      const platformMismatch = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/catalog/search-page")
+          .query({ q: "Zelda", limit: 20, platformIds: "130", cursor: first.body.nextCursor })
+      );
+      expect(platformMismatch.status).toBe(400);
+    });
+
+    it("returns a bounded next offset for popular titles", async () => {
+      const { igdbClient } = await import("../igdb.js");
+      vi.mocked(igdbClient.getPopularGames).mockResolvedValueOnce([
+        { id: 1, name: "One" },
+        { id: 2, name: "Two" },
+        { id: 3, name: "Three" },
+      ]);
+      const response = await withKey(
+        request(app).get("/api/integration/seerrng/v1/catalog/popular-page").query({ limit: 2 })
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.results).toHaveLength(2);
+      expect(response.body.nextOffset).toBe(2);
+      expect(igdbClient.getPopularGames).toHaveBeenCalledWith(3, 0);
+    });
+
+    it("filters popular pages by platform before advancing the offset", async () => {
+      const { igdbClient } = await import("../igdb.js");
+      vi.mocked(igdbClient.getPopularGames)
+        .mockResolvedValueOnce([
+          { id: 1, name: "PC", platforms: [{ id: 6, name: "PC" }] },
+          { id: 2, name: "NES", platforms: [{ id: 130, name: "NES" }] },
+        ])
+        .mockResolvedValueOnce([{ id: 3, name: "NES 2", platforms: [{ id: 130, name: "NES" }] }]);
+      const response = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/catalog/popular-page")
+          .query({ limit: 2, platformIds: "130" })
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.results).toHaveLength(2);
+      expect(response.body.nextOffset).toBe(3);
+      expect(igdbClient.getPopularGames).toHaveBeenNthCalledWith(1, 2, 0);
+      expect(igdbClient.getPopularGames).toHaveBeenNthCalledWith(2, 1, 2);
+    });
+  });
+
   describe("authentication", () => {
     it("rejects an unauthenticated integration request", async () => {
       const res = await request(app).get("/api/integration/ping");

@@ -120,6 +120,17 @@ interface SearchGamesOptions {
   releaseYear?: number;
 }
 
+export interface CatalogSearchCursor {
+  approach: number;
+  offset: number;
+  seenIds: number[];
+}
+
+export interface CatalogSearchPage {
+  results: IGDBGame[];
+  cursor: CatalogSearchCursor | null;
+}
+
 interface IGDBAuthResponse {
   access_token: string;
   expires_in: number;
@@ -202,6 +213,77 @@ class IGDBClient {
   // ⚡ Bolt: Use a Map for in-memory caching to store API responses and reduce redundant calls.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private cache = new Map<string, CacheEntry<any>>();
+
+  /** A stable, bounded IGDB search stream for SeerrNG catalog paging. */
+  async searchCatalogPage(
+    query: string,
+    limit: number,
+    cursor?: CatalogSearchCursor,
+    platformIds: number[] = []
+  ): Promise<CatalogSearchPage> {
+    if (!(await this.ensureConfigured())) return { results: [], cursor: null };
+    const term = sanitizeIgdbInput(query);
+    if (!term) return { results: [], cursor: null };
+
+    const approaches = [
+      (offset: number, take: number) =>
+        `search "${term}"; fields ${IGDB_GAME_FIELDS}; offset ${offset}; limit ${take};`,
+      (offset: number, take: number) =>
+        `search "${term}"; fields ${IGDB_GAME_FIELDS}; where category = 0; offset ${offset}; limit ${take};`,
+      (offset: number, take: number) =>
+        `fields ${IGDB_GAME_FIELDS}; where name ~= "${term}"; offset ${offset}; limit ${take};`,
+      (offset: number, take: number) =>
+        `fields ${IGDB_GAME_FIELDS}; where name ~ *"${term}"*; sort rating desc; offset ${offset}; limit ${take};`,
+    ];
+    const seen = new Set(cursor?.seenIds ?? []);
+    const allowedPlatforms = new Set(platformIds);
+    const results: IGDBGame[] = [];
+    let approach = cursor?.approach ?? 0;
+    let offset = cursor?.offset ?? 0;
+    let started = cursor !== undefined;
+    let batches = 0;
+
+    while (approach < approaches.length && batches < 4 && offset < MAX_OFFSET && seen.size < 1000) {
+      const buildQuery = approaches[approach];
+      if (!buildQuery) break;
+      const take = Math.min(limit - results.length, MAX_LIMIT);
+      if (take <= 0) break;
+      const raw = await this.makeRequest<IGDBGame[]>(
+        "games",
+        buildQuery(offset, take),
+        15 * 60 * 1000
+      );
+      batches++;
+      offset += raw.length;
+      const processed = await this.postProcessSearchResults(raw, raw.length);
+      for (const game of processed) {
+        if (!seen.has(game.id)) {
+          seen.add(game.id);
+          if (
+            allowedPlatforms.size > 0 &&
+            !game.platforms?.some((platform) => allowedPlatforms.has(platform.id))
+          ) {
+            continue;
+          }
+          results.push(game);
+        }
+      }
+      if (results.length > 0) started = true;
+      if (raw.length < take) {
+        if (started) return { results, cursor: null };
+        approach++;
+        offset = 0;
+      }
+    }
+
+    return {
+      results,
+      cursor:
+        approach < approaches.length && offset < MAX_OFFSET && seen.size < 1000
+          ? { approach, offset, seenIds: [...seen] }
+          : null,
+    };
+  }
 
   private async postProcessSearchResults(
     results: IGDBGame[],
@@ -1005,7 +1087,7 @@ class IGDBClient {
     return Math.floor(Date.now() / (HOUR_IN_SECONDS * 1000)) * HOUR_IN_SECONDS;
   }
 
-  async getPopularGames(limit: number = 20): Promise<IGDBGame[]> {
+  async getPopularGames(limit: number = 20, offset: number = 0): Promise<IGDBGame[]> {
     if (!(await this.ensureConfigured())) return [];
 
     const igdbQuery = `
@@ -1013,6 +1095,7 @@ class IGDBClient {
       where rating > 80 & rating_count > 10;
       sort rating desc;
       limit ${limit};
+      ${offset > 0 ? `offset ${offset};` : ""}
     `;
 
     // ⚡ Bolt: Cache popular games for 1 hour to reduce load during high traffic.

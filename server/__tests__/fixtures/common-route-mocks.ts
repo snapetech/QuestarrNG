@@ -146,6 +146,7 @@ export function createStorageMock() {
 export function createIgdbMock() {
   return {
     searchGames: vi.fn().mockResolvedValue([]),
+    searchCatalogPage: vi.fn().mockResolvedValue({ results: [], cursor: null }),
     formatGameData: vi.fn((game) => game),
     getPopularGames: vi.fn().mockResolvedValue([]),
     getRecentReleases: vi.fn().mockResolvedValue([]),

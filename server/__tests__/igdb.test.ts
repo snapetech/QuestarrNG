@@ -54,6 +54,34 @@ describe("IGDBClient - Fallback Mechanism", { timeout: 20000 }, () => {
     ).length;
   }
 
+  it("pages search results without repeating earlier IGDB rows", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: "test-token", expires_in: 3600, token_type: "bearer" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { id: 1, name: "One" },
+          { id: 2, name: "Two" },
+        ],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 3, name: "Three" }],
+      });
+
+    const { igdbClient } = await import("../igdb.js");
+    const first = await igdbClient.searchCatalogPage("test", 2);
+    const second = await igdbClient.searchCatalogPage("test", 2, first.cursor ?? undefined);
+
+    expect(first.results.map((game) => game.id)).toEqual([1, 2]);
+    expect(first.cursor).toEqual({ approach: 0, offset: 2, seenIds: [1, 2] });
+    expect(second.results.map((game) => game.id)).toEqual([3]);
+    expect(second.cursor).toBeNull();
+  });
+
   it("should try multiple search approaches when first approach returns no results", async () => {
     // Mock authentication response
     const authResponse = {

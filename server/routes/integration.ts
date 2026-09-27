@@ -3,9 +3,10 @@ import { createReadStream, promises as fs } from "node:fs";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { storage } from "../storage.js";
 import { routesLogger as logger } from "../logger.js";
-import { igdbClient } from "../igdb.js";
+import { igdbClient, type CatalogSearchCursor } from "../igdb.js";
 import { checkAutoSearch, withGameOperationLock } from "../cron.js";
 import { DownloaderManager } from "../downloaders/manager.js";
 import { normalizeTitle } from "../../shared/title-utils.js";
@@ -65,6 +66,47 @@ const seerrRequestIdSchema = z
   );
 
 const catalogLimitSchema = z.coerce.number().int().min(1).max(MAX_CATALOG_RESULTS).default(20);
+const catalogCursorSchema = z.object({
+  queryHash: z.string().regex(/^[a-f0-9]{64}$/),
+  approach: z.number().int().min(0).max(3),
+  offset: z.number().int().min(0).max(10000),
+  seenIds: z.array(z.number().int().positive()).max(1000),
+});
+const catalogQueryHash = (query: string) => createHash("sha256").update(query).digest("hex");
+const parseCatalogPlatformIds = (value: unknown): number[] | null => {
+  if (value === undefined) return [];
+  if (typeof value !== "string" || !/^[0-9,]{1,600}$/.test(value)) return null;
+  const ids = value.split(",").map(Number);
+  return ids.length <= 100 && ids.every((id) => Number.isSafeInteger(id) && id > 0)
+    ? [...new Set(ids)].sort((a, b) => a - b)
+    : null;
+};
+const catalogSearchIdentity = (query: string, platformIds: number[]) =>
+  `${query}:${platformIds.join(",")}`;
+const parseCatalogCursor = (
+  value: unknown,
+  query: string
+): CatalogSearchCursor | null | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]{1,20000}$/.test(value)) return null;
+  try {
+    const parsed = catalogCursorSchema.safeParse(
+      JSON.parse(Buffer.from(value, "base64url").toString("utf8"))
+    );
+    if (!parsed.success || parsed.data.queryHash !== catalogQueryHash(query)) return null;
+    return {
+      approach: parsed.data.approach,
+      offset: parsed.data.offset,
+      seenIds: parsed.data.seenIds,
+    };
+  } catch {
+    return null;
+  }
+};
+const encodeCatalogCursor = (cursor: CatalogSearchCursor, query: string): string =>
+  Buffer.from(JSON.stringify({ ...cursor, queryHash: catalogQueryHash(query) })).toString(
+    "base64url"
+  );
 
 const seerrGameSchema = (value: unknown) => {
   const game = igdbClient.formatGameData(value as Parameters<typeof igdbClient.formatGameData>[0]);
@@ -197,6 +239,27 @@ integrationRouter.get("/seerrng/v1/catalog/search", async (req: Request, res: Re
   }
 });
 
+integrationRouter.get("/seerrng/v1/catalog/search-page", async (req: Request, res: Response) => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const limit = catalogLimitSchema.safeParse(req.query.limit ?? 20);
+  const platformIds = parseCatalogPlatformIds(req.query.platformIds);
+  const identity = catalogSearchIdentity(query, platformIds ?? []);
+  const cursor = parseCatalogCursor(req.query.cursor, identity);
+  if (!query || query.length > 200 || !limit.success || cursor === null || platformIds === null) {
+    return res.status(400).json({ error: "A valid search query, limit, and cursor are required." });
+  }
+  try {
+    const page = await igdbClient.searchCatalogPage(query, limit.data, cursor, platformIds);
+    return res.json({
+      results: page.results.map(seerrGameSchema),
+      nextCursor: page.cursor ? encodeCatalogCursor(page.cursor, identity) : null,
+    });
+  } catch (error) {
+    logger.error({ error }, "SeerrNG paged catalog search failed");
+    return res.status(502).json({ error: "IGDB catalog search failed." });
+  }
+});
+
 integrationRouter.get("/seerrng/v1/catalog/popular", async (req: Request, res: Response) => {
   const limit = catalogLimitSchema.safeParse(req.query.limit ?? 20);
   if (!limit.success) return res.status(400).json({ error: "Invalid result limit." });
@@ -204,6 +267,58 @@ integrationRouter.get("/seerrng/v1/catalog/popular", async (req: Request, res: R
     return res.json((await igdbClient.getPopularGames(limit.data)).map(seerrGameSchema));
   } catch (error) {
     logger.error({ error }, "SeerrNG popular catalog fetch failed");
+    return res.status(502).json({ error: "IGDB catalog is unavailable." });
+  }
+});
+
+integrationRouter.get("/seerrng/v1/catalog/popular-page", async (req: Request, res: Response) => {
+  const limit = catalogLimitSchema.safeParse(req.query.limit ?? 20);
+  const offset = z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(10000)
+    .safeParse(req.query.offset ?? 0);
+  const platformIds = parseCatalogPlatformIds(req.query.platformIds);
+  if (!limit.success || !offset.success || platformIds === null) {
+    return res
+      .status(400)
+      .json({ error: "A valid result limit, offset, and platform list are required." });
+  }
+  try {
+    if (platformIds.length === 0) {
+      const games = await igdbClient.getPopularGames(limit.data + 1, offset.data);
+      return res.json({
+        results: games.slice(0, limit.data).map(seerrGameSchema),
+        nextOffset:
+          games.length > limit.data && offset.data + limit.data <= 10000
+            ? offset.data + limit.data
+            : null,
+      });
+    }
+
+    const allowedPlatforms = new Set(platformIds);
+    const games = [];
+    let currentOffset = offset.data;
+    let hasMore = false;
+    for (let batch = 0; batch < 8 && currentOffset <= 10000; batch++) {
+      const take = limit.data - games.length;
+      const raw = await igdbClient.getPopularGames(take, currentOffset);
+      currentOffset += raw.length;
+      games.push(
+        ...raw.filter((game) =>
+          game.platforms?.some((platform) => allowedPlatforms.has(platform.id))
+        )
+      );
+      hasMore = raw.length === take;
+      if (!hasMore || games.length >= limit.data) break;
+    }
+    return res.json({
+      results: games.map(seerrGameSchema),
+      nextOffset: hasMore && currentOffset <= 10000 ? currentOffset : null,
+    });
+  } catch (error) {
+    logger.error({ error }, "SeerrNG paged popular catalog fetch failed");
     return res.status(502).json({ error: "IGDB catalog is unavailable." });
   }
 });

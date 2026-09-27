@@ -364,6 +364,13 @@ integration routes above. Responses are marked `Cache-Control: no-store`.
 | GET    | `/api/integration/seerrng/v1/requests/{externalRequestId}/assets`           | —                                                | Local imported assets as opaque IDs, names, and sizes; no paths                                                                                                                                                                                                                                                                    |
 | GET    | `/api/integration/seerrng/v1/requests/{externalRequestId}/assets/{assetId}` | Optional `Range` header                          | Streams a request-scoped file only when its canonical path remains under the user's configured library root                                                                                                                                                                                                                        |
 
+Paged catalog endpoints are also available:
+
+- `GET /api/integration/seerrng/v1/catalog/search-page?q=...&limit=...&cursor=...&platformIds=...` returns `{ results, nextCursor }`. The cursor is optional on the first request, bound to the query and platform list, and `null` after the last page.
+- `GET /api/integration/seerrng/v1/catalog/popular-page?limit=...&offset=...&platformIds=...` returns `{ results, nextOffset }`. The offset starts at zero and is `null` after the last page.
+
+Both endpoints accept a limit of 1–50 and an optional comma-separated list of up to 100 positive IGDB platform IDs. Platform matching happens before pages are returned. The paged search keeps one IGDB query strategy and tracks canonical game IDs in its cursor, avoiding repeated editions across pages. Older array-returning endpoints remain available.
+
 `externalRequestId` is the SeerrNG idempotency key, limited to 255 characters.
 The selected PC target contains an operating system and architecture. Search,
 download, and import use Questarr's existing indexer and downloader pipeline.
