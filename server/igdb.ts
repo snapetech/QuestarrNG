@@ -78,6 +78,11 @@ export interface IGDBGame {
     id: number;
     url: string;
   }>;
+  videos?: Array<{
+    id: number;
+    name?: string;
+    video_id: string;
+  }>;
   websites?: Array<{
     category: number;
     url: string;
@@ -912,11 +917,11 @@ class IGDBClient {
     return results;
   }
 
-  async getGameById(id: number): Promise<IGDBGame | null> {
+  async getGameById(id: number, includeVideos = false): Promise<IGDBGame | null> {
     if (!(await this.ensureConfigured())) return null;
 
     const igdbQuery = `
-      fields ${IGDB_GAME_FIELDS};
+      fields ${IGDB_GAME_FIELDS}${includeVideos ? ", videos.name, videos.video_id" : ""};
       where id = ${id};
     `;
 

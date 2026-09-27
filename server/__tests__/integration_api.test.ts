@@ -187,6 +187,29 @@ describe("integration API", () => {
     });
   });
 
+  it("returns bounded detail media without changing catalog pages", async () => {
+    const { igdbClient } = await import("../igdb.js");
+    vi.mocked(igdbClient.getGameById).mockResolvedValueOnce({
+      id: 42,
+      name: "Test Game",
+      title: "Test Game",
+      igdbId: 42,
+      screenshots: ["https://images.igdb.com/test.jpg"],
+      videos: [
+        null,
+        { video_id: "abcdefghijk", name: "Trailer" },
+        { video_id: "bad-id", name: "Invalid" },
+      ],
+    } as never);
+    const response = await withKey(
+      request(app).get("/api/integration/seerrng/v1/catalog/games/42")
+    );
+    expect(response.status).toBe(200);
+    expect(igdbClient.getGameById).toHaveBeenCalledWith(42, true);
+    expect(response.body.screenshots).toEqual(["https://images.igdb.com/test.jpg"]);
+    expect(response.body.videos).toEqual([{ name: "Trailer", videoId: "abcdefghijk" }]);
+  });
+
   describe("authentication", () => {
     it("rejects an unauthenticated integration request", async () => {
       const res = await request(app).get("/api/integration/ping");

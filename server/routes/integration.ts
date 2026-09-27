@@ -123,6 +123,25 @@ const seerrGameSchema = (value: unknown) => {
   };
 };
 
+const seerrGameDetailSchema = (value: unknown) => {
+  const game = igdbClient.formatGameData(value as Parameters<typeof igdbClient.formatGameData>[0]);
+  const source = value as { videos?: Array<{ name?: string; video_id?: string }> };
+  return {
+    ...seerrGameSchema(value),
+    rating: typeof game.rating === "number" ? game.rating : null,
+    publishers: Array.isArray(game.publishers) ? game.publishers.slice(0, 20) : [],
+    developers: Array.isArray(game.developers) ? game.developers.slice(0, 20) : [],
+    screenshots: Array.isArray(game.screenshots) ? game.screenshots.slice(0, 12) : [],
+    videos: (Array.isArray(source.videos) ? source.videos : [])
+      .filter(
+        (video) =>
+          video && typeof video.video_id === "string" && /^[A-Za-z0-9_-]{11}$/.test(video.video_id)
+      )
+      .slice(0, 6)
+      .map((video) => ({ name: String(video.name ?? "").slice(0, 120), videoId: video.video_id })),
+  };
+};
+
 const findSeerrGame = async (userId: string, externalRequestId: string) =>
   (await storage.getUserGames(userId, true)).find(
     (game) => game.seerrExternalRequestId === externalRequestId
@@ -338,9 +357,9 @@ integrationRouter.get("/seerrng/v1/catalog/games/:igdbId", async (req: Request, 
     return res.status(400).json({ error: "Invalid IGDB game ID." });
   }
   try {
-    const game = await igdbClient.getGameById(igdbId);
+    const game = await igdbClient.getGameById(igdbId, true);
     return game
-      ? res.json(seerrGameSchema(game))
+      ? res.json(seerrGameDetailSchema(game))
       : res.status(404).json({ error: "Game not found." });
   } catch (error) {
     logger.error({ error, igdbId }, "SeerrNG catalog game fetch failed");
