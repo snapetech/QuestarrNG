@@ -368,6 +368,7 @@ Paged catalog endpoints are also available:
 
 - `GET /api/integration/seerrng/v1/catalog/search-page?q=...&limit=...&cursor=...&platformIds=...` returns `{ results, nextCursor }`. The cursor is optional on the first request, bound to the query and platform list, and `null` after the last page.
 - `GET /api/integration/seerrng/v1/catalog/popular-page?limit=...&offset=...&platformIds=...` returns `{ results, nextOffset }`. The offset starts at zero and is `null` after the last page.
+- `GET /api/integration/seerrng/v1/library/lookup?igdbIds=42,43` returns `{ games: [{ igdbId, status }] }` for up to 100 requested IDs in the authenticated user's visible library. Hidden and content-filtered titles are excluded.
 
 Both endpoints accept a limit of 1–50 and an optional comma-separated list of up to 100 positive IGDB platform IDs. Platform matching happens before pages are returned. The paged search keeps one IGDB query strategy and tracks canonical game IDs in its cursor, avoiding repeated editions across pages. Older array-returning endpoints remain available.
 

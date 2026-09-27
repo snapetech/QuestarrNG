@@ -162,6 +162,31 @@ describe("integration API", () => {
     });
   });
 
+  describe("SeerrNG library lookup", () => {
+    it("returns only visible statuses for the requested IGDB IDs", async () => {
+      (storage.getUserGamesByIgdbIds as Mock).mockResolvedValue([
+        { igdbId: 42, status: "owned", isAdultContent: false },
+        { igdbId: 43, status: "wanted", isAdultContent: true },
+      ]);
+      const response = await withKey(
+        request(app).get("/api/integration/seerrng/v1/library/lookup").query({ igdbIds: "42,43" })
+      );
+      expect(response.status).toBe(200);
+      expect(response.body.games).toEqual([{ igdbId: 42, status: "owned" }]);
+      expect(storage.getUserGamesByIgdbIds).toHaveBeenCalledWith(USER.id, [42, 43]);
+    });
+
+    it("rejects an unbounded or malformed ID list", async () => {
+      const response = await withKey(
+        request(app)
+          .get("/api/integration/seerrng/v1/library/lookup")
+          .query({ igdbIds: "42,not-an-id" })
+      );
+      expect(response.status).toBe(400);
+      expect(storage.getUserGamesByIgdbIds).not.toHaveBeenCalled();
+    });
+  });
+
   describe("authentication", () => {
     it("rejects an unauthenticated integration request", async () => {
       const res = await request(app).get("/api/integration/ping");

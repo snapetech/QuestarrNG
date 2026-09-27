@@ -183,9 +183,21 @@ describe("DatabaseStorage Extended Coverage", () => {
 
     it("filters getUserGames by status list and hidden state", async () => {
       const userId = await createUser();
-      await storage.addGame({ title: "Wanted", status: "wanted", userId, hidden: false });
-      await storage.addGame({ title: "Owned", status: "owned", userId, hidden: false });
-      await storage.addGame({ title: "Hidden Owned", status: "owned", userId, hidden: true });
+      await storage.addGame({
+        title: "Wanted",
+        status: "wanted",
+        userId,
+        igdbId: 11,
+        hidden: false,
+      });
+      await storage.addGame({ title: "Owned", status: "owned", userId, igdbId: 22, hidden: false });
+      await storage.addGame({
+        title: "Hidden Owned",
+        status: "owned",
+        userId,
+        igdbId: 33,
+        hidden: true,
+      });
 
       const wantedOnly = await storage.getUserGames(userId, false, ["wanted"]);
       expect(wantedOnly.map((g) => g.title)).toEqual(["Wanted"]);
@@ -195,6 +207,9 @@ describe("DatabaseStorage Extended Coverage", () => {
 
       const byStatus = await storage.getUserGamesByStatus(userId, "owned", true);
       expect(byStatus.map((g) => g.title).sort()).toEqual(["Hidden Owned", "Owned"]);
+
+      const byIgdbId = await storage.getUserGamesByIgdbIds(userId, [22, 33]);
+      expect(byIgdbId.map((g) => g.title)).toEqual(["Owned"]);
     });
 
     it("searchUserGames matches by title case-insensitively", async () => {

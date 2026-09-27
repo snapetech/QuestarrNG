@@ -348,6 +348,24 @@ integrationRouter.get("/seerrng/v1/catalog/games/:igdbId", async (req: Request, 
   }
 });
 
+integrationRouter.get("/seerrng/v1/library/lookup", async (req: Request, res: Response) => {
+  const igdbIds = parseCatalogPlatformIds(req.query.igdbIds);
+  if (!igdbIds || igdbIds.length === 0) {
+    return res.status(400).json({ error: "Provide up to 100 IGDB IDs." });
+  }
+  try {
+    const games = await storage.getUserGamesByIgdbIds(req.user!.id, igdbIds);
+    const filterFlags = await getContentFilterFlags(req.user!.id);
+    const visibleGames = excludeFilteredContent(games, filterFlags);
+    return res.json({
+      games: visibleGames.map((game) => ({ igdbId: game.igdbId, status: game.status })),
+    });
+  } catch (error) {
+    logger.error({ error }, "SeerrNG library lookup failed");
+    return res.status(500).json({ error: "Library lookup failed." });
+  }
+});
+
 const seerrCreateRequestSchema = z.object({
   externalRequestId: seerrRequestIdSchema,
   title: z.string().trim().min(1).max(500),

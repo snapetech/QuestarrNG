@@ -46,6 +46,7 @@ export const mockConfig = {
 export function createStorageMock() {
   return {
     getUserGames: vi.fn().mockResolvedValue([]),
+    getUserGamesByIgdbIds: vi.fn().mockResolvedValue([]),
     getUserGamesByStatus: vi.fn().mockResolvedValue([]),
     searchUserGames: vi.fn().mockResolvedValue([]),
     addGame: vi.fn(),

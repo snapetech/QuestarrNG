@@ -257,6 +257,10 @@ describe("MemStorage", () => {
 
       const multiple = await storage.getUserGames("u1", false, ["owned", "completed"]);
       expect(multiple).toHaveLength(2);
+      expect((await storage.getUserGamesByIgdbIds("u1", [2, 3])).map((g) => g.igdbId)).toEqual([
+        2, 3,
+      ]);
+      expect(await storage.getUserGamesByIgdbIds("u2", [2])).toEqual([]);
     });
 
     it("should return null/false when updating/removing non-existent game", async () => {

@@ -183,6 +183,7 @@ export interface IStorage {
   getGame(id: string): Promise<Game | undefined>;
   getGameByIgdbId(igdbId: number): Promise<Game | undefined>;
   getUserGames(userId: string, includeHidden?: boolean, statuses?: string[]): Promise<Game[]>;
+  getUserGamesByIgdbIds(userId: string, igdbIds: number[]): Promise<Game[]>;
   getAllGames(): Promise<Game[]>; // Keep for admin/debug or global search? Or maybe deprecated.
   getUserGamesByStatus(userId: string, status: string, includeHidden?: boolean): Promise<Game[]>;
   searchUserGames(userId: string, query: string, includeHidden?: boolean): Promise<Game[]>;
@@ -512,6 +513,15 @@ export class MemStorage implements IStorage {
           (!statuses || statuses.includes(game.status))
       )
       .sort((a, b) => new Date(b.addedAt || 0).getTime() - new Date(a.addedAt || 0).getTime());
+  }
+
+  async getUserGamesByIgdbIds(userId: string, igdbIds: number[]): Promise<Game[]> {
+    if (igdbIds.length === 0) return [];
+    const ids = new Set(igdbIds);
+    return Array.from(this.games.values()).filter(
+      (game) =>
+        game.userId === userId && !game.hidden && game.igdbId !== null && ids.has(game.igdbId)
+    );
   }
 
   async getAllGames(): Promise<Game[]> {
@@ -2053,6 +2063,16 @@ export class DatabaseStorage implements IStorage {
         )
       )
       .orderBy(sql`${games.addedAt} DESC`);
+  }
+
+  async getUserGamesByIgdbIds(userId: string, igdbIds: number[]): Promise<Game[]> {
+    if (igdbIds.length === 0) return [];
+    return db
+      .select()
+      .from(games)
+      .where(
+        and(eq(games.userId, userId), eq(games.hidden, false), inArray(games.igdbId, igdbIds))
+      );
   }
 
   async getAllGames(): Promise<Game[]> {
