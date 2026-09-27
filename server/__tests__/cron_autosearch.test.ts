@@ -23,6 +23,7 @@ vi.mock("../logger.js", () => ({
 // Mock storage
 const mockGetWantedGamesGroupedByUser = vi.fn();
 const mockGetUserGames = vi.fn();
+const mockGetGame = vi.fn();
 const mockGetUserSettings = vi.fn();
 const mockUpdateUserSettings = vi.fn();
 const mockAddNotification = vi.fn();
@@ -38,6 +39,7 @@ vi.mock("../storage.js", () => ({
   storage: {
     getWantedGamesGroupedByUser: mockGetWantedGamesGroupedByUser,
     getUserGames: mockGetUserGames,
+    getGame: mockGetGame,
     getUserSettings: mockGetUserSettings,
     updateUserSettings: mockUpdateUserSettings,
     addNotification: mockAddNotification,
@@ -153,6 +155,7 @@ describe("Cron - checkAutoSearch", () => {
     // - User has auto search enabled
     mockGetWantedGamesGroupedByUser.mockResolvedValue(new Map([[userId, [baseGame]]]));
     mockGetUserGames.mockResolvedValue([]);
+    mockGetGame.mockResolvedValue(baseGame);
     mockGetUserSettings.mockResolvedValue(baseSettings);
     mockSearchAllIndexers.mockResolvedValue({ items: [], errors: [], total: 0 });
     mockGetEnabledDownloaders.mockResolvedValue([]);
