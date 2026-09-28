@@ -25,11 +25,17 @@ const mocks = vi.hoisted(() => ({
     error: vi.fn(),
     warn: vi.fn(),
   },
+  expressLogger: {
+    warn: vi.fn(),
+  },
 }));
 
 vi.mock("../storage.js", () => ({ storage: mocks.storage }));
 vi.mock("../config-loader.js", () => ({ configLoader: { getConfigDir: () => mocks.configDir } }));
-vi.mock("../logger.js", () => ({ routesLogger: mocks.logger }));
+vi.mock("../logger.js", () => ({
+  routesLogger: mocks.logger,
+  expressLogger: mocks.expressLogger,
+}));
 vi.mock("../auth.js", () => ({
   authenticateToken: (req: { user?: unknown }, _res: unknown, next: () => void) => {
     req.user = { id: "user-1", username: "tester" };
