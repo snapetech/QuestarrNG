@@ -167,9 +167,9 @@ and troubleshooting.
 The upstream **Questarr** Community Apps entry uses the upstream image and
 does not include this fork's SeerrNG integration routes. Use the
 [QuestarrNG fork template](unraid/questarr.xml)
-for `ghcr.io/snapetech/questarrng:latest`. This is the canonical QuestarrNG
-Unraid template; SeerrNG does not include another copy. QuestarrNG works as a
-standalone game manager without SeerrNG:
+for `ghcr.io/snapetech/questarrng:latest`. QuestarrNG works as a standalone
+game manager; SeerrNG integration is optional. For package or integration
+support, use the [SeerrNG issue tracker](https://github.com/snapetech/seerrng/issues).
 
 1. Install the **QuestarrNG** template rather than the upstream **Questarr** template.
 2. Set your **Data Path** (default `/mnt/user/appdata/questarrng`), **PUID**/**PGID**, and HTTP port (default `5000`).
