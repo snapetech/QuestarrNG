@@ -93,7 +93,7 @@ describe("ImportReviewModal", () => {
     vi.clearAllMocks();
   });
 
-  it("prefills the saved library root and opens the browser there", () => {
+  it("prefills the saved library root and opens the browser at its virtual root", () => {
     render(
       <ImportReviewModal
         open
@@ -110,7 +110,7 @@ describe("ImportReviewModal", () => {
     const lastCall = mockFileBrowser.mock.calls.at(-1)?.[0];
     expect(lastCall).toMatchObject({
       open: true,
-      initialPath: "/games/library",
+      initialPath: "/",
       root: "/",
       title: "Select Destination",
     });
