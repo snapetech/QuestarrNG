@@ -40,6 +40,8 @@ function createJsonResponse(data: unknown): Response {
 
 function mockFetch({
   config = baseConfig,
+  rommConfig = DEFAULT_ROMM_CONFIG,
+  platformMappings = [],
   platforms = [
     { id: 1, name: "PC (Microsoft Windows)" },
     { id: 2, name: "PlayStation 5" },
@@ -50,6 +52,8 @@ function mockFetch({
   },
 }: {
   config?: ImportConfig | undefined;
+  rommConfig?: unknown;
+  platformMappings?: unknown[];
   platforms?: unknown[];
   appConfig?: unknown;
   hardlink?: unknown;
@@ -57,8 +61,8 @@ function mockFetch({
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url: RequestInfo | URL) => {
     const u = getRequestUrl(url);
     if (u.includes("/api/imports/config")) return createJsonResponse(config);
-    if (u.includes("/api/imports/romm")) return createJsonResponse(DEFAULT_ROMM_CONFIG);
-    if (u.includes("/api/imports/mappings/platforms")) return createJsonResponse([]);
+    if (u.includes("/api/imports/romm")) return createJsonResponse(rommConfig);
+    if (u.includes("/api/imports/mappings/platforms")) return createJsonResponse(platformMappings);
     if (u.includes("/api/igdb/platforms")) return createJsonResponse(platforms);
     if (u.includes("/api/imports/hardlink/check")) return createJsonResponse(hardlink);
     if (u.includes("/api/config")) return createJsonResponse(appConfig);
@@ -256,5 +260,119 @@ describe("ImportSettings", () => {
       screen.queryByText(/If your download client runs on a different machine/)
     ).not.toBeInTheDocument();
     expect(container.querySelector(".pointer-events-none")).toBeInTheDocument();
+  });
+
+  it("saves RomM settings and reports a successful update", async () => {
+    const { apiRequest } = await import("@/lib/queryClient");
+    mockFetch({ rommConfig: { ...DEFAULT_ROMM_CONFIG, enabled: true } });
+    renderComponent();
+    await screen.findByText("Enable Post-Processing");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "RomM" }));
+
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.change(screen.getByDisplayValue(DEFAULT_ROMM_CONFIG.libraryRoot), {
+      target: { value: "/romm/library/custom" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save RomM settings" }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        "PATCH",
+        "/api/imports/romm",
+        expect.objectContaining({ enabled: false, libraryRoot: "/romm/library/custom" })
+      );
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Settings Saved",
+          description: "RomM import configuration updated.",
+        })
+      );
+    });
+  });
+
+  it("edits JSON folder bindings and restores invalid JSON on blur", async () => {
+    const { apiRequest } = await import("@/lib/queryClient");
+    mockFetch({
+      rommConfig: {
+        ...DEFAULT_ROMM_CONFIG,
+        platformRoutingMode: "binding-map",
+        platformBindings: { nes: "Nintendo/NES" },
+      },
+    });
+    renderComponent();
+    await screen.findByText("Enable Post-Processing");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "RomM" }));
+
+    const bindings = await screen.findByRole("textbox", { name: "RomM platform folder bindings" });
+    expect(bindings).toHaveValue(JSON.stringify({ nes: "Nintendo/NES" }, null, 2));
+    fireEvent.change(bindings, { target: { value: '{"nes":"Console/NES"}' } });
+    fireEvent.click(screen.getByRole("button", { name: "Save RomM settings" }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        "PATCH",
+        "/api/imports/romm",
+        expect.objectContaining({ platformBindings: { nes: "Console/NES" } })
+      );
+    });
+
+    fireEvent.change(bindings, { target: { value: "{ invalid" } });
+    fireEvent.blur(bindings);
+    expect(bindings).toHaveValue(JSON.stringify({ nes: "Console/NES" }, null, 2));
+  });
+
+  it("updates a platform slug mapping on blur", async () => {
+    const { apiRequest } = await import("@/lib/queryClient");
+    mockFetch({
+      platformMappings: [{ id: "mapping-1", igdbPlatformId: 19, rommPlatformSlug: "snes" }],
+    });
+    renderComponent();
+    await screen.findByText("Enable Post-Processing");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "RomM" }));
+
+    const slug = await screen.findByRole("textbox", { name: "RomM slug for platform 19" });
+    fireEvent.change(slug, { target: { value: "  super-nintendo  " } });
+    fireEvent.blur(slug);
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        "PATCH",
+        "/api/imports/mappings/platforms/mapping-1",
+        { rommPlatformSlug: "super-nintendo" }
+      );
+    });
+  });
+
+  it("loads default platform mappings when none are configured", async () => {
+    const { apiRequest } = await import("@/lib/queryClient");
+    renderComponent();
+    await screen.findByText("Enable Post-Processing");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "RomM" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Load default platform mappings" }));
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith("POST", "/api/imports/mappings/platforms/init", {});
+    });
+  });
+
+  it("restores RomM settings and shows the failed-save message when updating fails", async () => {
+    const { apiRequest } = await import("@/lib/queryClient");
+    vi.mocked(apiRequest).mockRejectedValueOnce(new Error("API unavailable"));
+    mockFetch({ rommConfig: { ...DEFAULT_ROMM_CONFIG, enabled: true } });
+    renderComponent();
+    await screen.findByText("Enable Post-Processing");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "RomM" }));
+    fireEvent.change(screen.getByDisplayValue(DEFAULT_ROMM_CONFIG.libraryRoot), {
+      target: { value: "/romm/invalid" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save RomM settings" }));
+
+    await waitFor(() => {
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Save Failed",
+          description: "Could not update RomM settings.",
+          variant: "destructive",
+        })
+      );
+    });
   });
 });
