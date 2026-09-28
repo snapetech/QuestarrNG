@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 - **File browser scope**: directory browsing is limited to configured library and download-mapping roots, and requests through symlinks that escape those roots are rejected.
 - **Archive imports**: restored directory archive detection and categorized transfer handling so archive and categorized imports follow the maintained import pipeline.
+- **Production startup**: the compiled server now resolves the shared game-journal schemas and starts successfully after a production build.
 - **Release images**: the tagged QuestarrNG image now publishes both `linux/amd64` and `linux/arm64`, matching the documented supported architectures.
 
 ### Security
