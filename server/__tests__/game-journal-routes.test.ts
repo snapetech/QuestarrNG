@@ -43,10 +43,14 @@ vi.mock("../config-loader.js", () => ({
     }),
   },
 }));
-vi.mock("../logger.js", () => ({
-  routesLogger: mocks.logger,
-  expressLogger: mocks.expressLogger,
-}));
+vi.mock("../logger.js", async () => {
+  const actual = await vi.importActual<typeof import("../logger.js")>("../logger.js");
+  return {
+    ...actual,
+    routesLogger: mocks.logger,
+    expressLogger: mocks.expressLogger,
+  };
+});
 vi.mock("../auth.js", () => ({
   authenticateToken: (req: { user?: unknown }, _res: unknown, next: () => void) => {
     req.user = { id: "user-1", username: "tester" };
