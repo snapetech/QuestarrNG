@@ -179,7 +179,7 @@ jobs:
             type=sha,prefix=${{ env.ENVIRONMENT }}-sha-,format=short,enable=${{ env.ENVIRONMENT != 'dev' }}
           labels: |
             org.opencontainers.image.title=QuestarrNG
-            org.opencontainers.image.description=Questarr is an *Arr-inspired game manager that helps you discover, track, and automatically download the games you want.
+            org.opencontainers.image.description=QuestarrNG game discovery, acquisition, and SeerrNG request delivery.
             org.opencontainers.image.vendor=Snapetech
 
       - name: Build and push Docker image

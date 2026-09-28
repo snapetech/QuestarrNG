@@ -172,6 +172,8 @@ export const games = sqliteTable("games", {
   platforms: text("platforms", { mode: "json" }).$type<string[]>(),
   targetPlatformId: integer("target_platform_id"),
   targetPlatformName: text("target_platform_name"),
+  targetOperatingSystem: text("target_operating_system"),
+  targetArchitecture: text("target_architecture"),
   // Stable request identity for SeerrNG. Nullable and unique so ordinary
   // Questarr games remain unaffected while provider retries stay idempotent.
   seerrExternalRequestId: text("seerr_external_request_id").unique(),
@@ -1116,6 +1118,48 @@ export const insertGameFileSchema = createInsertSchema(gameFiles, {
 
 export type GameFile = typeof gameFiles.$inferSelect;
 export type InsertGameFile = (typeof insertGameFileSchema)["_output"];
+
+// Durable requests submitted by external services such as SeerrNG. The caller
+// key is scoped to one Questarr user so it cannot expose another user's game.
+export const integrationRequests = sqliteTable(
+  "integration_requests",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    externalRequestId: text("external_request_id").notNull(),
+    gameId: text("game_id").references(() => games.id, { onDelete: "set null" }),
+    downloadId: text("download_id").references(() => gameDownloads.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    operatingSystem: text("operating_system"),
+    architecture: text("architecture"),
+    status: text("status").notNull().default("accepted"),
+    errorMessage: text("error_message"),
+    attemptedAt: integer("attempted_at", { mode: "timestamp_ms" }).default(
+      sql`(strftime('%s', 'now') * 1000)`
+    ),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
+      sql`(strftime('%s', 'now') * 1000)`
+    ),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).default(
+      sql`(strftime('%s', 'now') * 1000)`
+    ),
+  },
+  (t) => [
+    uniqueIndex("integration_requests_user_external_id_idx").on(t.userId, t.externalRequestId),
+    index("integration_requests_game_id_idx").on(t.gameId),
+  ]
+);
+
+export const insertIntegrationRequestSchema = createInsertSchema(integrationRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type IntegrationRequest = typeof integrationRequests.$inferSelect;
+export type InsertIntegrationRequest = (typeof insertIntegrationRequestSchema)["_output"];
 
 // Additional folders scanned for games already present on disk outside the
 // configured library root (e.g. an older library, a secondary drive). Purely

@@ -146,6 +146,16 @@ export const games = pgTable("games", {
   platforms: jsonb("platforms").$type<string[]>(),
   targetPlatformId: integer("target_platform_id"),
   targetPlatformName: text("target_platform_name"),
+  targetOperatingSystem: text("target_operating_system"),
+  targetArchitecture: text("target_architecture"),
+  seerrExternalRequestId: text("seerr_external_request_id").unique(),
+  seerrVariant: jsonb("seerr_variant").$type<{
+    operatingSystem: "windows" | "linux" | "macos";
+    architecture: "x64" | "arm64" | "x86" | "universal";
+  }>(),
+  seerrCancelled: boolean("seerr_cancelled").notNull().default(false),
+  seerrDispatching: boolean("seerr_dispatching").notNull().default(false),
+  seerrRecoveryRequired: boolean("seerr_recovery_required").notNull().default(false),
   genres: jsonb("genres").$type<string[]>(),
   themes: jsonb("themes").$type<string[]>(),
   publishers: jsonb("publishers").$type<string[]>(),
@@ -165,7 +175,6 @@ export const games = pgTable("games", {
   isAdultContent: boolean("is_adult_content").notNull().default(false),
   isAgeRestricted: boolean("is_age_restricted").notNull().default(false),
   userRating: doublePrecision("user_rating"),
-  notes: text("notes"),
   libraryPath: text("library_path"),
   searchResultsAvailable: boolean("search_results_available").default(false).notNull(),
   searchResultsAvailableAt: timestampMs("search_results_available_at"),
@@ -245,11 +254,15 @@ export const gameDownloads = pgTable(
     downloadTitle: text("download_title").notNull(),
     status: text("status").notNull().default("downloading"),
     errorMessage: text("error_message"),
+    seerrExternalRequestId: text("seerr_external_request_id"),
     fileSize: bigint("file_size", { mode: "number" }),
     addedAt: timestampMs("added_at").default(sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`),
     completedAt: timestampMs("completed_at"),
   },
-  (t) => [uniqueIndex("game_downloads_downloader_hash_idx").on(t.downloaderId, t.downloadHash)]
+  (t) => [
+    uniqueIndex("game_downloads_downloader_hash_idx").on(t.downloaderId, t.downloadHash),
+    index("game_downloads_seerr_request_idx").on(t.seerrExternalRequestId),
+  ]
 );
 
 // Legacy table name for backward compatibility during migration
@@ -434,6 +447,33 @@ export const gameFiles = pgTable(
   (t) => [
     index("game_files_game_id_idx").on(t.gameId),
     index("game_files_download_id_idx").on(t.downloadId),
+  ]
+);
+
+export const integrationRequests = pgTable(
+  "integration_requests",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    externalRequestId: text("external_request_id").notNull(),
+    gameId: text("game_id").references(() => games.id, { onDelete: "set null" }),
+    downloadId: text("download_id").references(() => gameDownloads.id, { onDelete: "set null" }),
+    title: text("title").notNull(),
+    operatingSystem: text("operating_system"),
+    architecture: text("architecture"),
+    status: text("status").notNull().default("accepted"),
+    errorMessage: text("error_message"),
+    attemptedAt: timestampMs("attempted_at").default(
+      sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`
+    ),
+    createdAt: timestampMs("created_at").default(sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`),
+    updatedAt: timestampMs("updated_at").default(sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`),
+  },
+  (t) => [
+    uniqueIndex("integration_requests_user_external_id_idx").on(t.userId, t.externalRequestId),
+    index("integration_requests_game_id_idx").on(t.gameId),
   ]
 );
 

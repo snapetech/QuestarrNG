@@ -30,6 +30,7 @@ const EXPECTED_TABLES = [
   "games",
   "importTaskItems",
   "importTasks",
+  "integrationRequests",
   "indexers",
   "notifications",
   "pathMappings",

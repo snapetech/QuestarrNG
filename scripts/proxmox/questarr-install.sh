@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Questarr in-container installer.
+# QuestarrNG in-container installer.
 #
 # Installs Questarr from source into /opt/questarr and runs it as a systemd
 # service. Intended to be executed as root inside a freshly created Debian or
@@ -265,7 +265,7 @@ IP_ADDR="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 ok "Questarr ${REF} is installed."
 # Informational only: this is the address of the user's own freshly created
-# container, matching Questarr's own HTTP-by-default listener.
+# container, matching QuestarrNG's own HTTP-by-default listener.
 echo "   URL:      http://${IP_ADDR:-<container-ip>}:${QUESTARR_PORT}" # NOSONAR
 echo "   Config:   ${APP_DIR}/.env"
 echo "   Data:     ${DATA_DIR}"

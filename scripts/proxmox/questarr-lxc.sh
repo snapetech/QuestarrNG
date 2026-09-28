@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# Questarr — Proxmox VE LXC deployment script.
+# QuestarrNG — Proxmox VE LXC deployment script.
 #
-# Creates a Debian LXC container on a Proxmox VE host and installs Questarr
+# Creates a Debian LXC container on a Proxmox VE host and installs QuestarrNG
 # into it as a systemd service. No Docker involved.
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-lxc.sh)"
@@ -274,7 +274,7 @@ CT_IP="$(pct exec "${CTID}" -- hostname -I 2>/dev/null | awk '{print $1}')"
 echo
 ok "${BOLD}Questarr is deployed in LXC ${CTID} (${CT_HOSTNAME}).${RESET}"
 # Informational only: this is the address of the user's own freshly created
-# container, matching Questarr's own HTTP-by-default listener.
+# container, matching QuestarrNG's own HTTP-by-default listener.
 echo "   URL:     http://${CT_IP:-<container-ip>}:${QUESTARR_PORT}" # NOSONAR
 echo "   Shell:   pct enter ${CTID}"
 echo "   Logs:    pct exec ${CTID} -- journalctl -u questarr -f"

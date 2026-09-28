@@ -286,6 +286,38 @@ function applyPreferredPlatformFilter(
   });
 }
 
+function applyRequestedVariantFilter(
+  items: SearchItem[],
+  operatingSystem: string | null | undefined,
+  architecture: string | null | undefined
+): SearchItem[] {
+  if (!operatingSystem && !architecture) return items;
+  return items.filter(({ title }) => {
+    const normalized = title.replace(/[._-]/g, " ").toLowerCase();
+    const isWindows = /\b(?:windows|win32|win64|win x86|win x64)\b/.test(normalized);
+    const isLinux = /\b(?:linux|steam deck|steamdeck)\b/.test(normalized);
+    const isMac = /\b(?:mac ?os|macos|os ?x|osx|darwin)\b/.test(normalized);
+    const hasKnownOs = isWindows || isLinux || isMac;
+
+    if (operatingSystem === "linux" && !isLinux) return false;
+    if (operatingSystem === "macos" && !isMac) return false;
+    // Most PC scene releases omit a Windows marker. Accept an unlabelled PC
+    // release for Windows, while never crossing an explicit Linux/macOS marker.
+    if (operatingSystem === "windows" && (isLinux || isMac)) return false;
+    if (operatingSystem === "windows" && hasKnownOs && !isWindows) return false;
+
+    if (!architecture || architecture === "universal") return true;
+    const hasArm64 = /\b(?:arm64|aarch64)\b/.test(normalized);
+    const hasX64 = /\b(?:x86 ?64|x64|amd64|64 ?bit|win64)\b/.test(normalized);
+    const hasX86 = /\b(?:x86|i[3-6]86|32 ?bit|win32)\b/.test(normalized);
+    const hasKnownArchitecture = hasArm64 || hasX64 || hasX86;
+    if (!hasKnownArchitecture) return architecture !== "arm64";
+    if (architecture === "arm64") return hasArm64;
+    if (architecture === "x64") return hasX64 && !hasArm64;
+    return hasX86 && !hasX64 && !hasArm64;
+  });
+}
+
 async function searchAndCategorizeItemsForGame(
   game: Pick<Game, "id" | "title">,
   downloadRules: string | null,
@@ -1290,8 +1322,13 @@ export async function checkAutoSearch(
               searchResult.mainItems,
               effectivePlatform
             );
-            const groupFilteredMain = applyPreferredGroupsFilter(
+            const variantFilteredMain = applyRequestedVariantFilter(
               platformFilteredMain,
+              game.targetOperatingSystem,
+              game.targetArchitecture
+            );
+            const groupFilteredMain = applyPreferredGroupsFilter(
+              variantFilteredMain,
               preferredGroups,
               settings.filterByPreferredGroups ?? false
             );
@@ -1503,8 +1540,13 @@ export async function checkAutoSearch(
               searchResult.updateItems,
               effectivePlatform
             );
-            const groupFilteredUpdate = applyPreferredGroupsFilter(
+            const variantFilteredUpdate = applyRequestedVariantFilter(
               platformFilteredUpdate,
+              game.targetOperatingSystem,
+              game.targetArchitecture
+            );
+            const groupFilteredUpdate = applyPreferredGroupsFilter(
+              variantFilteredUpdate,
               preferredGroups,
               settings.filterByPreferredGroups ?? false
             );
@@ -1515,8 +1557,13 @@ export async function checkAutoSearch(
               searchResult.packsItems,
               effectivePlatform
             );
-            const groupFilteredPacks = applyPreferredGroupsFilter(
+            const variantFilteredPacks = applyRequestedVariantFilter(
               platformFilteredPacks,
+              game.targetOperatingSystem,
+              game.targetArchitecture
+            );
+            const groupFilteredPacks = applyPreferredGroupsFilter(
+              variantFilteredPacks,
               preferredGroups,
               settings.filterByPreferredGroups ?? false
             );

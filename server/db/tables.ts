@@ -23,6 +23,7 @@ export const {
   downloaders,
   gameDownloads,
   gameFiles,
+  integrationRequests,
   gameJournalEntries,
   gameMilestones,
   gameScreenshots,

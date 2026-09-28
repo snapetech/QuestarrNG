@@ -138,13 +138,22 @@ export type _InsertGameJournalEntries = Expect<
   >
 >;
 export type _SelectGameMilestones = Expect<
-  Equal<typeof sqliteSchema.gameMilestones.$inferSelect, typeof pgSchema.gameMilestones.$inferSelect>
+  Equal<
+    typeof sqliteSchema.gameMilestones.$inferSelect,
+    typeof pgSchema.gameMilestones.$inferSelect
+  >
 >;
 export type _InsertGameMilestones = Expect<
-  Equal<typeof sqliteSchema.gameMilestones.$inferInsert, typeof pgSchema.gameMilestones.$inferInsert>
+  Equal<
+    typeof sqliteSchema.gameMilestones.$inferInsert,
+    typeof pgSchema.gameMilestones.$inferInsert
+  >
 >;
 export type _SelectGameScreenshots = Expect<
-  Equal<typeof sqliteSchema.gameScreenshots.$inferSelect, typeof pgSchema.gameScreenshots.$inferSelect>
+  Equal<
+    typeof sqliteSchema.gameScreenshots.$inferSelect,
+    typeof pgSchema.gameScreenshots.$inferSelect
+  >
 >;
 export type _SelectNotifications = Expect<
   Equal<typeof sqliteSchema.notifications.$inferSelect, typeof pgSchema.notifications.$inferSelect>
@@ -199,4 +208,16 @@ export type _SelectApiKeys = Expect<
 >;
 export type _InsertApiKeys = Expect<
   Equal<typeof sqliteSchema.apiKeys.$inferInsert, typeof pgSchema.apiKeys.$inferInsert>
+>;
+export type _SelectIntegrationRequests = Expect<
+  Equal<
+    typeof sqliteSchema.integrationRequests.$inferSelect,
+    typeof pgSchema.integrationRequests.$inferSelect
+  >
+>;
+export type _InsertIntegrationRequests = Expect<
+  Equal<
+    typeof sqliteSchema.integrationRequests.$inferInsert,
+    typeof pgSchema.integrationRequests.$inferInsert
+  >
 >;

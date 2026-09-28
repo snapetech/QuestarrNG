@@ -1,4 +1,4 @@
-# Default values for the Questarr chart.
+# Default values for the QuestarrNG chart.
 # See charts/questarr/README.md for the full option reference.
 
 image:
@@ -11,7 +11,7 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Questarr stores its state in a single SQLite database on a ReadWriteOnce
+# QuestarrNG stores its state in a single SQLite database on a ReadWriteOnce
 # volume, so more than one replica would corrupt the database. Keep this at 1.
 replicaCount: 1
 

@@ -37,6 +37,8 @@ import {
   type ImportTaskType,
   type ImportTaskItemResult,
   type InsertImportTaskItem,
+  type IntegrationRequest,
+  type InsertIntegrationRequest,
   type PathMapping,
   type InsertPathMapping,
   type PlatformMapping,
@@ -71,6 +73,7 @@ import {
   platformMappings,
   importTasks,
   importTaskItems,
+  integrationRequests,
   releaseBlacklist,
   aiAutoDownloadHolds,
   gameFiles,
@@ -449,6 +452,20 @@ export interface IStorage {
   touchRootFolderScanned(id: string): Promise<void>;
   removeRootFolder(id: string): Promise<boolean>;
 
+  // Durable SeerrNG request ledger, scoped to the authenticated Questarr user.
+  getIntegrationRequest(
+    userId: string,
+    externalRequestId: string
+  ): Promise<IntegrationRequest | undefined>;
+  addIntegrationRequest(request: InsertIntegrationRequest): Promise<IntegrationRequest>;
+  updateIntegrationRequest(
+    userId: string,
+    externalRequestId: string,
+    updates: Partial<
+      Pick<IntegrationRequest, "gameId" | "downloadId" | "status" | "errorMessage" | "attemptedAt">
+    >
+  ): Promise<IntegrationRequest | undefined>;
+
   // Integration API key methods
   getApiKeys(userId: string): Promise<ApiKeyPublic[]>;
   /** Throws "API key limit reached" (as a plain Error) if the user already has maxKeys. */
@@ -483,6 +500,7 @@ export class MemStorage implements IStorage {
   private gameJournalEntries: Map<string, GameJournalEntry>;
   private gameMilestones: Map<string, GameMilestone>;
   private gameScreenshots: Map<string, GameScreenshot>;
+  private integrationRequests: Map<string, IntegrationRequest>;
 
   constructor() {
     this.users = new Map();
@@ -506,6 +524,7 @@ export class MemStorage implements IStorage {
     this.gameJournalEntries = new Map();
     this.gameMilestones = new Map();
     this.gameScreenshots = new Map();
+    this.integrationRequests = new Map();
   }
 
   // System Config methods
@@ -652,6 +671,8 @@ export class MemStorage implements IStorage {
       platforms: insertGame.platforms || null,
       targetPlatformId: insertGame.targetPlatformId ?? null,
       targetPlatformName: insertGame.targetPlatformName ?? null,
+      targetOperatingSystem: insertGame.targetOperatingSystem ?? null,
+      targetArchitecture: insertGame.targetArchitecture ?? null,
       seerrExternalRequestId: insertGame.seerrExternalRequestId ?? null,
       seerrVariant: insertGame.seerrVariant ?? null,
       seerrCancelled: insertGame.seerrCancelled ?? false,
@@ -1891,6 +1912,50 @@ export class MemStorage implements IStorage {
     return toDelete.length;
   }
 
+  async getIntegrationRequest(
+    userId: string,
+    externalRequestId: string
+  ): Promise<IntegrationRequest | undefined> {
+    return this.integrationRequests.get(`${userId}\0${externalRequestId}`);
+  }
+
+  async addIntegrationRequest(request: InsertIntegrationRequest): Promise<IntegrationRequest> {
+    const key = `${request.userId}\0${request.externalRequestId}`;
+    const existing = this.integrationRequests.get(key);
+    if (existing) return existing;
+    const now = new Date();
+    const row: IntegrationRequest = {
+      ...request,
+      id: randomUUID(),
+      gameId: request.gameId ?? null,
+      downloadId: request.downloadId ?? null,
+      operatingSystem: request.operatingSystem ?? null,
+      architecture: request.architecture ?? null,
+      status: request.status ?? "accepted",
+      errorMessage: request.errorMessage ?? null,
+      attemptedAt: request.attemptedAt ?? now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.integrationRequests.set(key, row);
+    return row;
+  }
+
+  async updateIntegrationRequest(
+    userId: string,
+    externalRequestId: string,
+    updates: Partial<
+      Pick<IntegrationRequest, "gameId" | "downloadId" | "status" | "errorMessage" | "attemptedAt">
+    >
+  ): Promise<IntegrationRequest | undefined> {
+    const key = `${userId}\0${externalRequestId}`;
+    const existing = this.integrationRequests.get(key);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...updates, updatedAt: new Date() };
+    this.integrationRequests.set(key, updated);
+    return updated;
+  }
+
   // Import task history — not implemented in MemStorage (tests use DatabaseStorage)
   async createImportTask(_data: {
     userId: string;
@@ -2290,6 +2355,8 @@ export class DatabaseStorage implements IStorage {
       platforms: insertGame.platforms ?? null,
       targetPlatformId: insertGame.targetPlatformId ?? null,
       targetPlatformName: insertGame.targetPlatformName ?? null,
+      targetOperatingSystem: insertGame.targetOperatingSystem ?? null,
+      targetArchitecture: insertGame.targetArchitecture ?? null,
       seerrExternalRequestId: insertGame.seerrExternalRequestId ?? null,
       seerrVariant: insertGame.seerrVariant ?? null,
       seerrCancelled: insertGame.seerrCancelled ?? false,
@@ -3026,8 +3093,7 @@ export class DatabaseStorage implements IStorage {
             topStatus: row.topStatus as DownloadSummary["topStatus"],
             count: row.count,
             downloadTypes: (row.downloadTypes ?? "torrent").split(",").filter(Boolean) as (
-              | "torrent"
-              | "usenet"
+              "torrent" | "usenet"
             )[],
             hasUpdateDownload: row.hasUpdateDownload > 0,
           },
@@ -3631,6 +3697,57 @@ export class DatabaseStorage implements IStorage {
   async removeRootFolder(id: string): Promise<boolean> {
     const result = await db.delete(rootFolders).where(eq(rootFolders.id, id));
     return affectedRows(result) > 0;
+  }
+
+  async getIntegrationRequest(
+    userId: string,
+    externalRequestId: string
+  ): Promise<IntegrationRequest | undefined> {
+    const [row] = await db
+      .select()
+      .from(integrationRequests)
+      .where(
+        and(
+          eq(integrationRequests.userId, userId),
+          eq(integrationRequests.externalRequestId, externalRequestId)
+        )
+      )
+      .limit(1);
+    return row;
+  }
+
+  async addIntegrationRequest(request: InsertIntegrationRequest): Promise<IntegrationRequest> {
+    const [row] = await db
+      .insert(integrationRequests)
+      .values({ ...request, id: randomUUID() })
+      .onConflictDoNothing({
+        target: [integrationRequests.userId, integrationRequests.externalRequestId],
+      })
+      .returning();
+    if (row) return row;
+    const existing = await this.getIntegrationRequest(request.userId, request.externalRequestId);
+    if (!existing) throw new Error("Unable to persist integration request");
+    return existing;
+  }
+
+  async updateIntegrationRequest(
+    userId: string,
+    externalRequestId: string,
+    updates: Partial<
+      Pick<IntegrationRequest, "gameId" | "downloadId" | "status" | "errorMessage" | "attemptedAt">
+    >
+  ): Promise<IntegrationRequest | undefined> {
+    const [row] = await db
+      .update(integrationRequests)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(
+        and(
+          eq(integrationRequests.userId, userId),
+          eq(integrationRequests.externalRequestId, externalRequestId)
+        )
+      )
+      .returning();
+    return row;
   }
 
   // Integration API key methods

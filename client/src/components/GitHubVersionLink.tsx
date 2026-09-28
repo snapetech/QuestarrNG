@@ -23,7 +23,7 @@ export function GitHubVersionLink({ className }: Readonly<GitHubVersionLinkProps
       }
     >
       <FaGithub size={14} />
-      <span>Questarr v{pkg.version}</span>
+      <span>QuestarrNG v{pkg.version}</span>
       {hasNewerVersion && (
         <span className="text-emerald-500/70">
           v{latestVersion} <FaArrowUp className="inline" size={10} />

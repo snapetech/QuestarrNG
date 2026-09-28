@@ -44,7 +44,7 @@ export default function LoginPage() {
         <CardHeader className="text-center flex flex-col items-center gap-2">
           <img
             src={withBasePath("/Questarr_Logo-nobg.png")}
-            alt="Questarr Logo"
+            alt="QuestarrNG Logo"
             className="h-16 w-auto mb-2"
           />
           <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>

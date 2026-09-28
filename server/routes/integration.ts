@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { createReadStream, promises as fs } from "node:fs";
-import { readFileSync } from "node:fs";
+import { createReadStream, promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { createHash } from "node:crypto";
@@ -30,8 +29,25 @@ export const INTEGRATION_API_VERSION = 1;
 /** Upper bound on a single library sync payload, to keep one request bounded. */
 const MAX_SYNC_GAMES = 5000;
 const MAX_CATALOG_RESULTS = 50;
+const seerrDispatchQueues = new Map<string, Promise<void>>();
 const INTERRUPTED_HANDOFF_MESSAGE =
   "Questarr restarted during a download handoff. Check the download client's queue and history before retrying.";
+
+async function withSeerrDispatchQueue<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const previous = seerrDispatchQueues.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  seerrDispatchQueues.set(key, current);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (seerrDispatchQueues.get(key) === current) seerrDispatchQueues.delete(key);
+  }
+}
 
 export const integrationRouter = Router();
 
@@ -162,10 +178,17 @@ const seerrGameDetailSchema = (value: unknown) => {
   };
 };
 
-const findSeerrGame = async (userId: string, externalRequestId: string) =>
-  (await storage.getUserGames(userId, true)).find(
+const findSeerrGame = async (userId: string, externalRequestId: string) => {
+  const request = await storage.getIntegrationRequest(userId, externalRequestId);
+  if (request?.gameId) {
+    const game = await storage.getGame(request.gameId);
+    if (game?.userId === userId) return game;
+  }
+  // Keep requests created before the durable ledger was introduced readable.
+  return (await storage.getUserGames(userId, true)).find(
     (game) => game.seerrExternalRequestId === externalRequestId
   );
+};
 
 const isContainedPath = (candidate: string, root: string): boolean =>
   candidate === root || candidate.startsWith(`${root.replace(/[\\/]+$/, "")}${path.sep}`);
@@ -203,8 +226,23 @@ const getSeerrAssets = async (userId: string, gameId: string) => {
 };
 
 const getSeerrRequest = async (userId: string, externalRequestId: string) => {
+  const ledger = await storage.getIntegrationRequest(userId, externalRequestId);
   const game = await findSeerrGame(userId, externalRequestId);
-  if (!game) return undefined;
+  if (!game) {
+    if (!ledger) return undefined;
+    return {
+      externalRequestId,
+      status: ledger.status,
+      deliverable: false,
+      error: ledger.errorMessage,
+      title: ledger.title,
+      game: null,
+      variant: {
+        operatingSystem: ledger.operatingSystem,
+        architecture: ledger.architecture,
+      },
+    };
+  }
 
   const [assets, downloads] = await Promise.all([
     getSeerrAssets(userId, game.id),
@@ -240,7 +278,7 @@ const getSeerrRequest = async (userId: string, externalRequestId: string) => {
     status = "accepted";
   }
 
-  return {
+  const request = {
     externalRequestId,
     status,
     deliverable: assets.length > 0,
@@ -254,6 +292,15 @@ const getSeerrRequest = async (userId: string, externalRequestId: string) => {
     game: { id: game.id, title: game.title, status: game.status },
     variant: game.seerrVariant ?? undefined,
   };
+  if (ledger) {
+    await storage.updateIntegrationRequest(userId, externalRequestId, {
+      gameId: game.id,
+      downloadId: latestDownload?.id ?? null,
+      status,
+      errorMessage: request.error,
+    });
+  }
+  return request;
 };
 
 // ── SeerrNG software-provider contract ──────────────────────────────────────
@@ -439,34 +486,76 @@ integrationRouter.post("/seerrng/v1/requests", async (req: Request, res: Respons
   const parsed = seerrCreateRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid software request payload." });
   const { externalRequestId, title, igdbId, variant } = parsed.data;
-  try {
-    const existing = await findSeerrGame(req.user!.id, externalRequestId);
-    if (existing) {
-      const current = await getSeerrRequest(req.user!.id, externalRequestId);
-      return res.status(200).json(current);
-    }
+  return withSeerrDispatchQueue(`${req.user!.id}:${normalizeTitle(title)}`, async () => {
+    try {
+      let ledger = await storage.getIntegrationRequest(req.user!.id, externalRequestId);
+      if (ledger) {
+        const sameRequest =
+          ledger.title === title &&
+          ledger.operatingSystem === variant.operatingSystem &&
+          ledger.architecture === variant.architecture;
+        if (!sameRequest) {
+          return res
+            .status(409)
+            .json({ error: "externalRequestId is already bound to a different request." });
+        }
+        return res.status(200).json(await getSeerrRequest(req.user!.id, externalRequestId));
+      } else {
+        ledger = await storage.addIntegrationRequest({
+          userId: req.user!.id,
+          externalRequestId,
+          title,
+          operatingSystem: variant.operatingSystem,
+          architecture: variant.architecture,
+        });
+      }
+      const existing = await findSeerrGame(req.user!.id, externalRequestId);
+      if (existing) {
+        await storage.updateIntegrationRequest(req.user!.id, externalRequestId, {
+          gameId: existing.id,
+        });
+        const current = await getSeerrRequest(req.user!.id, externalRequestId);
+        return res.status(200).json(current);
+      }
 
-    const result = await quickAddGameByTitle(req.user!.id, title, {
-      status: "wanted",
-      source: "api",
-      ...(igdbId ? { igdbId } : {}),
-      seerrExternalRequestId: externalRequestId,
-      seerrVariant: variant,
-    });
-    if (result.outcome === "not_found") {
-      return res.status(404).json({ error: "No matching PC game was found." });
+      const result = await quickAddGameByTitle(req.user!.id, title, {
+        status: "wanted",
+        source: "api",
+        ...(igdbId ? { igdbId } : {}),
+        seerrExternalRequestId: externalRequestId,
+        seerrVariant: variant,
+        targetOperatingSystem: variant.operatingSystem,
+        targetArchitecture: variant.architecture,
+      });
+      if (result.outcome === "not_found") {
+        await storage.updateIntegrationRequest(req.user!.id, externalRequestId, {
+          status: "failed",
+          errorMessage: "No matching PC game was found.",
+        });
+        return res.status(404).json({ error: "No matching PC game was found." });
+      }
+      if (result.outcome === "duplicate") {
+        await storage.updateIntegrationRequest(req.user!.id, externalRequestId, {
+          status: "failed",
+          errorMessage: "Game is already linked to another request.",
+        });
+        return res.status(409).json({ error: "Game is already linked to another request." });
+      }
+      await storage.updateIntegrationRequest(req.user!.id, externalRequestId, {
+        gameId: result.game.id,
+        status: "searching",
+        errorMessage: null,
+        attemptedAt: new Date(),
+      });
+      if (!result.game.seerrCancelled && result.game.status === "wanted") {
+        await checkAutoSearch({ userId: req.user!.id, gameId: result.game.id, force: true });
+      }
+      return res.status(201).json(await getSeerrRequest(req.user!.id, externalRequestId));
+    } catch (error) {
+      logger.error({ error, externalRequestId }, "SeerrNG software request failed");
+      return res.status(500).json({ error: "Software request could not be started." });
     }
-    if (result.outcome === "duplicate") {
-      return res.status(409).json({ error: "Game is already linked to another request." });
-    }
-    if (!result.game.seerrCancelled && result.game.status === "wanted") {
-      await checkAutoSearch({ userId: req.user!.id, gameId: result.game.id, force: true });
-    }
-    return res.status(201).json(await getSeerrRequest(req.user!.id, externalRequestId));
-  } catch (error) {
-    logger.error({ error, externalRequestId }, "SeerrNG software request failed");
-    return res.status(500).json({ error: "Software request could not be started." });
-  }
+  });
 });
 
 integrationRouter.get(
@@ -498,8 +587,43 @@ integrationRouter.post(
     }
     const confirmNoExistingDownload = body.confirmNoExistingDownload === true;
     try {
-      const game = await findSeerrGame(req.user!.id, externalRequestId.data);
-      if (!game) return res.status(404).json({ error: "Request not found." });
+      let game = await findSeerrGame(req.user!.id, externalRequestId.data);
+      if (!game) {
+        const ledger = await storage.getIntegrationRequest(req.user!.id, externalRequestId.data);
+        if (!ledger) return res.status(404).json({ error: "Request not found." });
+        const recovered = await quickAddGameByTitle(req.user!.id, ledger.title, {
+          status: "wanted",
+          source: "api",
+          targetOperatingSystem: ledger.operatingSystem ?? undefined,
+          targetArchitecture: ledger.architecture ?? undefined,
+          seerrExternalRequestId: externalRequestId.data,
+          seerrVariant: {
+            operatingSystem: ledger.operatingSystem as "windows" | "linux" | "macos",
+            architecture: ledger.architecture as "x64" | "arm64" | "x86" | "universal",
+          },
+        });
+        if (recovered.outcome === "not_found") {
+          await storage.updateIntegrationRequest(req.user!.id, externalRequestId.data, {
+            status: "failed",
+            errorMessage: "No matching PC game was found.",
+          });
+          return res.status(404).json({ error: "No matching PC game was found." });
+        }
+        if (recovered.outcome === "duplicate") {
+          await storage.updateIntegrationRequest(req.user!.id, externalRequestId.data, {
+            status: "failed",
+            errorMessage: "Game is already linked to another request.",
+          });
+          return res.status(409).json({ error: "Game is already linked to another request." });
+        }
+        game = recovered.game;
+        await storage.updateIntegrationRequest(req.user!.id, externalRequestId.data, {
+          gameId: game.id,
+          status: "searching",
+          errorMessage: null,
+          attemptedAt: new Date(),
+        });
+      }
       let retryError: { status: number; error: string } | undefined;
       let confirmationRequired = false;
       await withGameOperationLock(game.id, async () => {
@@ -680,7 +804,12 @@ integrationRouter.get(
     try {
       const assets = await getSeerrAssets(req.user!.id, game.id);
       return res.json({
-        assets: assets.map(({ id, name, size }) => ({ id, name, size, url: "" })),
+        assets: assets.map(({ id, name, size }) => ({
+          id,
+          name,
+          size,
+          url: `/api/integration/seerrng/v1/requests/${encodeURIComponent(externalRequestId.data)}/assets/${encodeURIComponent(id)}`,
+        })),
         bundleSupported: false,
       });
     } catch (error) {
