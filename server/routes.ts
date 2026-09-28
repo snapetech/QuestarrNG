@@ -2268,6 +2268,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         const entry = await storage.addReleaseBlacklist(parsed.data);
+        // Best-effort: a blacklisted release is filtered out of search entirely, so any
+        // pending AI review hold for it is now moot. Never let this fail the blacklist
+        // request itself. Holds are keyed by normalized title (see cron.ts), so clear
+        // using the same normalization rather than the raw releaseTitle.
+        storage.clearAiAutoDownloadHold(gameId, normalizeTitle(releaseTitle)).catch((error) => {
+          routesLogger.warn({ error, gameId }, "Failed to clear AI auto-download hold");
+        });
         return res.status(201).json(entry);
       } catch (error) {
         routesLogger.error({ error }, "error adding to blacklist");
@@ -4095,6 +4102,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
 
             if (result.success === false) return;
+
+            if (gameId && result.success) {
+              // A direct user choice resolves any AI hold for this release.
+              // Keep it best-effort so notification cleanup cannot undo a started download.
+              storage.clearAiAutoDownloadHold(gameId, normalizeTitle(title)).catch((error) => {
+                routesLogger.warn({ error, gameId }, "Failed to clear AI auto-download hold");
+              });
+            }
 
             // For async qBittorrent adds, the correlation tag creates a tracked
             // record before the real torrent hash is available.
