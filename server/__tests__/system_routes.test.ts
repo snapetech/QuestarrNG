@@ -6,6 +6,7 @@ const { mockStorage, fsMock } = vi.hoisted(() => ({
   mockStorage: {
     getImportConfig: vi.fn(),
     getRomMConfig: vi.fn(),
+    getPathMappings: vi.fn(),
   },
   fsMock: {
     pathExists: vi.fn(),
@@ -42,6 +43,7 @@ describe("systemRouter /browse", () => {
     vi.clearAllMocks();
     mockStorage.getImportConfig.mockResolvedValue({ libraryRoot: "/data" });
     mockStorage.getRomMConfig.mockResolvedValue(DEFAULT_ROMM_CONFIG);
+    mockStorage.getPathMappings.mockResolvedValue([]);
   });
 
   it("returns 401 when user is missing", async () => {

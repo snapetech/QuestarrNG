@@ -744,6 +744,8 @@ describe("ImportStrategies", () => {
       // Nothing was written through the symlink into the outside directory.
       expect(await fs.pathExists(path.join(outsideDir, "game.rom"))).toBe(false);
     });
+  });
+
   // reorganizeBySortExtras() — post-extraction categorization pass
   // ---------------------------------------------------------------------------
 

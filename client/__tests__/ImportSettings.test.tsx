@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createTestQueryClient, getRequestUrl } from "./test-utils";
 import ImportSettings from "../src/components/ImportSettings";
-import type { ImportConfig } from "@shared/schema";
+import { DEFAULT_ROMM_CONFIG, type ImportConfig } from "@shared/schema";
 
 const mockToast = vi.fn();
 vi.mock("@/hooks/use-toast", () => ({
@@ -57,6 +57,8 @@ function mockFetch({
   vi.spyOn(globalThis, "fetch").mockImplementation(async (url: RequestInfo | URL) => {
     const u = getRequestUrl(url);
     if (u.includes("/api/imports/config")) return createJsonResponse(config);
+    if (u.includes("/api/imports/romm")) return createJsonResponse(DEFAULT_ROMM_CONFIG);
+    if (u.includes("/api/imports/mappings/platforms")) return createJsonResponse([]);
     if (u.includes("/api/igdb/platforms")) return createJsonResponse(platforms);
     if (u.includes("/api/imports/hardlink/check")) return createJsonResponse(hardlink);
     if (u.includes("/api/config")) return createJsonResponse(appConfig);
@@ -164,6 +166,8 @@ describe("ImportSettings", () => {
         return { ok: false, json: async () => ({}) } as Response;
       }
       if (u.includes("/api/imports/config")) return createJsonResponse(baseConfig);
+      if (u.includes("/api/imports/romm")) return createJsonResponse(DEFAULT_ROMM_CONFIG);
+      if (u.includes("/api/imports/mappings/platforms")) return createJsonResponse([]);
       if (u.includes("/api/imports/hardlink/check")) {
         return createJsonResponse({
           generic: { targetRoot: "/data/library", supportedForAll: true, checkedSources: [] },
@@ -200,6 +204,8 @@ describe("ImportSettings", () => {
       if (u.includes("/api/imports/mappings/paths")) return createJsonResponse([]);
       if (u.includes("/api/downloaders")) return createJsonResponse([]);
       if (u.includes("/api/imports/config")) return createJsonResponse(baseConfig);
+      if (u.includes("/api/imports/romm")) return createJsonResponse(DEFAULT_ROMM_CONFIG);
+      if (u.includes("/api/imports/mappings/platforms")) return createJsonResponse([]);
       if (u.includes("/api/igdb/platforms")) return createJsonResponse([]);
       if (u.includes("/api/imports/hardlink/check")) {
         return createJsonResponse({

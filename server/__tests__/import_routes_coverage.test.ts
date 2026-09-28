@@ -337,7 +337,12 @@ describe("GET /api/imports/:id/plan", () => {
       originalPath: "/local/downloads/game.iso",
       proposedPath: "/data/PC/My Game",
     });
-    expect(mockImportManager.planConfirmImport).toHaveBeenCalledWith("dl-1", undefined, "user-1");
+    expect(mockImportManager.planConfirmImport).toHaveBeenCalledWith(
+      "dl-1",
+      undefined,
+      "user-1",
+      "pc"
+    );
   });
 
   it("passes sourcePath query param to planConfirmImport", async () => {
@@ -347,7 +352,8 @@ describe("GET /api/imports/:id/plan", () => {
     expect(mockImportManager.planConfirmImport).toHaveBeenCalledWith(
       "dl-2",
       "/custom/source",
-      "user-1"
+      "user-1",
+      "pc"
     );
   });
 
