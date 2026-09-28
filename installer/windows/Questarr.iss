@@ -1,6 +1,6 @@
 #define MyAppName "Questarr"
-#define MyAppPublisher "Doezer"
-#define MyAppURL "https://github.com/Doezer/Questarr"
+#define MyAppPublisher "Snapetech"
+#define MyAppURL "https://github.com/snapetech/QuestarrNG"
 #define MyAppVersion GetEnv("QUESTARR_VERSION")
 #define MySourceDir GetEnv("QUESTARR_SOURCE_DIR")
 #define MyOutputDir GetEnv("QUESTARR_OUTPUT_DIR")
@@ -15,7 +15,7 @@
 #endif
 
 [Setup]
-; Freshly generated for the Doezer/Questarr installer - do not reuse this
+; Freshly generated for the Snapetech/QuestarrNG installer - do not reuse this
 ; GUID for any other Questarr distribution (e.g. a fork's own installer),
 ; since AppId is what Windows uses to recognize upgrades vs. a fresh install.
 AppId={{8E661E0D-ECE5-43CF-9FF4-A4E8BC06690E}

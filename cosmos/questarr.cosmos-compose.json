@@ -37,7 +37,7 @@
   },
   "services": {
     "questarr": {
-      "image": "ghcr.io/doezer/questarr:latest",
+      "image": "ghcr.io/snapetech/questarrng:latest",
       "restart": "unless-stopped",
       "environment": [
         "PORT=5000",
@@ -71,7 +71,7 @@
         "start_period": "40s"
       },
       "labels": {
-        "cosmos-icon": "https://raw.githubusercontent.com/Doezer/Questarr/main/images/Questarr_icon.png"
+        "cosmos-icon": "https://raw.githubusercontent.com/snapetech/QuestarrNG/main/images/Questarr_icon.png"
       },
       "routes": [
         {

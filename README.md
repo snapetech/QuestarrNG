@@ -1,4 +1,4 @@
-# Questarr
+# QuestarrNG
 
 ## Snapetech QuestarrNG fork
 
@@ -13,34 +13,17 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 
 [![Library screenshot](images/Screenshots/library.png)](images/Screenshots/library.png)
 
-[![Docker Pulls](https://img.shields.io/docker/pulls/doezer/questarr?logo=docker&logoColor=white)](https://hub.docker.com/r/doezer/questarr)
-[![GHCR](https://img.shields.io/badge/ghcr.io-questarr-blue?logo=github&logoColor=white)](https://github.com/Doezer/Questarr/pkgs/container/questarr)
-[![License](https://img.shields.io/github/license/Doezer/Questarr)](https://github.com/Doezer/Questarr/blob/main/COPYING)
-[![GitHub release](https://img.shields.io/github/v/release/Doezer/Questarr)](https://github.com/Doezer/Questarr/releases)
-[![GitHub release date](https://img.shields.io/github/release-date/Doezer/Questarr)](https://github.com/Doezer/Questarr/releases)
-[![GitHub last commit](https://img.shields.io/github/last-commit/Doezer/Questarr)](https://github.com/Doezer/Questarr/commits/main)
-
-[![security rating](https://sonarcloud.io/api/project_badges/measure?project=Doezer_Questarr&metric=security_rating)](https://sonarcloud.io/summary/overall?id=Doezer_Questarr)
-[![reliability rating](https://sonarcloud.io/api/project_badges/measure?project=Doezer_Questarr&metric=reliability_rating)](https://sonarcloud.io/summary/overall?id=Doezer_Questarr)
-[![maintainability rating](https://sonarcloud.io/api/project_badges/measure?project=Doezer_Questarr&metric=sqale_rating)](https://sonarcloud.io/summary/overall?id=Doezer_Questarr)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13450/baseline)](https://www.bestpractices.dev/projects/13450)
-[![OpenSSF Best Practices Badge](https://www.bestpractices.dev/projects/13450/badge)](https://www.bestpractices.dev/projects/13450)
-
-[![CI](https://github.com/Doezer/Questarr/actions/workflows/ci.yml/badge.svg)](https://github.com/Doezer/Questarr/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/Doezer/Questarr/branch/main/graph/badge.svg)](https://codecov.io/gh/Doezer/Questarr)
-[![Code Scanning](https://github.com/Doezer/Questarr/actions/workflows/sast.yml/badge.svg)](https://github.com/Doezer/Questarr/security/code-scanning)
-[![tests](https://img.shields.io/badge/tests-1800%2B%20passing-brightgreen)](https://github.com/Doezer/Questarr/actions/workflows/ci.yml)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)](https://github.com/Doezer/Questarr/graphs/commit-activity)
+[![GHCR](https://img.shields.io/badge/container-ghcr.io%2Fsnapetech%2Fquestarrng-blue?logo=github&logoColor=white)](https://github.com/snapetech/QuestarrNG/pkgs/container/questarrng)
+[![GitHub release](https://img.shields.io/github/v/release/snapetech/QuestarrNG)](https://github.com/snapetech/QuestarrNG/releases)
+[![License](https://img.shields.io/github/license/snapetech/QuestarrNG)](https://github.com/snapetech/QuestarrNG/blob/main/COPYING)
+[![CI](https://github.com/snapetech/QuestarrNG/actions/workflows/ci.yml/badge.svg)](https://github.com/snapetech/QuestarrNG/actions/workflows/ci.yml)
+[![Code Scanning](https://github.com/snapetech/QuestarrNG/actions/workflows/sast.yml/badge.svg)](https://github.com/snapetech/QuestarrNG/security/code-scanning)
+[![Last commit](https://img.shields.io/github/last-commit/snapetech/QuestarrNG)](https://github.com/snapetech/QuestarrNG/commits/main)
 
 ⭐ Star us on GitHub — your support motivates us a lot! 🙏😊
 
 [![Discord](https://img.shields.io/badge/Discord-Join%20Us-7289da?logo=discord&logoColor=white)](https://discord.gg/STkp86wP9F)
-[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20this%20project%20on%20GitHub:%20https://github.com/Doezer/Questarr%20%23gaming%20%23selfhosted)
-[![Share](https://img.shields.io/badge/share-1877F2?logo=facebook&logoColor=white)](https://www.facebook.com/sharer/sharer.php?u=https://github.com/Doezer/Questarr)
-[![Share](https://img.shields.io/badge/share-0A66C2?logo=linkedin&logoColor=white)](https://www.linkedin.com/sharing/share-offsite/?url=https://github.com/Doezer/Questarr)
-[![Share](https://img.shields.io/badge/share-FF4500?logo=reddit&logoColor=white)](https://www.reddit.com/submit?title=Check%20out%20this%20project%20on%20GitHub:%20https://github.com/Doezer/Questarr)
-[![Share](https://img.shields.io/badge/share-0088CC?logo=telegram&logoColor=white)](https://t.me/share/url?url=https://github.com/Doezer/Questarr&text=Check%20out%20this%20project%20on%20GitHub)
-[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Donate-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/doezer)
+[![Share](https://img.shields.io/badge/share-000000?logo=x&logoColor=white)](https://x.com/intent/tweet?text=Check%20out%20QuestarrNG%20on%20GitHub:%20https://github.com/snapetech/QuestarrNG%20%23gaming%20%23selfhosted)
 
 ## Table of Contents
 
@@ -145,7 +128,7 @@ Run this **on your Proxmox VE host**, as `root`, to create an LXC container with
 and running as a `systemd` service:
 
 ```bash
-bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/Doezer/Questarr/main/scripts/proxmox/questarr-lxc.sh)"
+bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-lxc.sh)"
 ```
 
 The script picks the next free container ID, downloads a Debian template if needed, creates an
@@ -187,7 +170,7 @@ support, use the [SeerrNG issue tracker](https://github.com/snapetech/seerrng/is
 
 1. Open the **App Store** and click **Custom Install**.
 2. Click the **import** icon (top right) and paste this URL:
-   `https://raw.githubusercontent.com/Doezer/Questarr/main/casaos/docker-compose.yml`
+   `https://raw.githubusercontent.com/snapetech/QuestarrNG/main/casaos/docker-compose.yml`
 3. Review the mounts — by default `/DATA/AppData/questarr` holds Questarr's data and
    `/DATA/Downloads` is mounted at `/data` so Questarr can import finished downloads. If you keep
    that second mount, add a matching entry under **Settings → Path Mappings**.
@@ -202,8 +185,8 @@ support, use the [SeerrNG issue tracker](https://github.com/snapetech/seerrng/is
 
 1. In umbrelOS, open the **App Store**.
 2. Click the **⋮** menu (top right) → **Community App Stores**.
-3. Add this repository URL: `https://github.com/Doezer/Questarr`
-4. Open the **Doezer** store and install **Questarr** (app ID `doezer-questarr`), then open it from
+3. Add this repository URL: `https://github.com/snapetech/QuestarrNG`
+4. Open the **Snapetech** store and install **QuestarrNG** (app ID `doezer-questarr`, retained for existing installs), then open it from
    your dashboard (`http://umbrel.local:5000`).
 
 </details>
@@ -215,7 +198,7 @@ support, use the [SeerrNG issue tracker](https://github.com/snapetech/seerrng/is
 
 1. Open **Market Place → Custom Install** (or **Servapps → Add**).
 2. Paste this URL:
-   `https://raw.githubusercontent.com/Doezer/Questarr/main/cosmos/questarr.cosmos-compose.json`
+   `https://raw.githubusercontent.com/snapetech/QuestarrNG/main/cosmos/questarr.cosmos-compose.json`
 3. Fill in the install form: **Data folder**, optional **Library folder** (the root your download
    client writes into, mounted at `/data`), and `PUID`/`PGID`.
 4. Install. Cosmos creates the route `questarr.<your-server-hostname>` and handles HTTPS for you.
@@ -231,8 +214,8 @@ A Helm chart lives in [`charts/questarr`](charts/questarr). It is not published 
 repository yet, so install it from a clone:
 
 ```bash
-git clone https://github.com/Doezer/Questarr.git
-cd Questarr
+git clone https://github.com/snapetech/QuestarrNG.git
+cd QuestarrNG
 helm install questarr charts/questarr --namespace questarr --create-namespace
 ```
 
@@ -258,7 +241,7 @@ You can install Questarr as a Home Assistant add-on from this repository:
 
 1. In Home Assistant, open **Settings → Add-ons → Add-on Store**.
 2. Click the menu (⋮) and choose **Repositories**.
-3. Add this repository URL: `https://github.com/Doezer/Questarr`
+3. Add this repository URL: `https://github.com/snapetech/QuestarrNG`
 4. Install the **Questarr** add-on and start it.
 5. Open `http://<home-assistant-host>:5000` to access the UI.
 
@@ -364,7 +347,7 @@ Once logged-in:
 - Add downloaders
 - Add games!
 
-See [Configuration on the Wiki](https://github.com/Doezer/Questarr/wiki/Configuring-the-application#configure-app-behavior-in-settings--general) for more detailed info.
+See the upstream [Configuration Wiki](https://github.com/Doezer/Questarr/wiki/Configuring-the-application#configure-app-behavior-in-settings--general) for more detailed info.
 
 <details>
 <summary><b>Getting IGDB API Credentials</b></summary>
@@ -411,8 +394,8 @@ This is mainly for users who want the latest commit (e.g when trying out fixes f
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/Doezer/Questarr.git
-cd Questarr
+git clone https://github.com/snapetech/QuestarrNG.git
+cd QuestarrNG
 ```
 
 1. **Configure the application:**
@@ -466,14 +449,14 @@ See the full [PRD](docs/PRD.md) for problem statements, detailed scope, and non-
 
 ## Troubleshooting
 
-See [Troubleshooting on the Wiki](https://github.com/Doezer/Questarr/wiki/Troubleshooting)
+See the upstream [Troubleshooting Wiki](https://github.com/Doezer/Questarr/wiki/Troubleshooting)
 
 If you run into an issue, go to the **Logs** page and click **Send Logs** before reporting it — it makes diagnosing the problem much easier.
 
 ### Getting Help
 
-- **Issues**: [GitHub Issues](https://github.com/Doezer/Questarr/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/Doezer/Questarr/discussions)
+- **Issues**: [GitHub Issues](https://github.com/snapetech/QuestarrNG/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/snapetech/QuestarrNG/discussions)
 - **Discord**: [Join our Server](https://discord.gg/STkp86wP9F)
 
 ## Project Security & Documentation
@@ -483,12 +466,12 @@ If you run into an issue, go to the **Logs** page and click **Send Logs** before
 ## Contributing
 
 - See [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines on how to contribute to this project.
-- See [MAINTAINERS.md](/.github/MAINTAINERS.md) for the current list of project members with access to sensitive resources.
+- See [MAINTAINERS.md](/.github/MAINTAINERS.md) for how repository access and release permissions are managed.
 
 ### Contributors
 
-<a href="https://github.com/Doezer/Questarr/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Doezer/Questarr" />
+<a href="https://github.com/snapetech/QuestarrNG/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=snapetech/QuestarrNG" />
 </a>
 
 Made with [contrib.rocks](https://contrib.rocks).

@@ -29,7 +29,7 @@ no trailing slash — e.g. `/Questarr`):
 ```yaml
 services:
   app:
-    image: ghcr.io/doezer/questarr:latest
+    image: ghcr.io/snapetech/questarrng:latest
     environment:
       - QUESTARR_BASE_PATH=/Questarr
     # ...
@@ -38,7 +38,7 @@ services:
 **`docker run`:**
 
 ```bash
-docker run -e QUESTARR_BASE_PATH=/Questarr ghcr.io/doezer/questarr:latest
+docker run -e QUESTARR_BASE_PATH=/Questarr ghcr.io/snapetech/questarrng:latest
 ```
 
 **npm (non-Docker):** add `QUESTARR_BASE_PATH=/Questarr` to your `.env` file.

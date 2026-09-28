@@ -31,7 +31,7 @@ To upgrade, download the newer QuestarrSetup-*.exe and run it - the installer
 detects the existing install, stops the service, replaces changed files, and
 restarts it, preserving your ProgramData. There is currently no "Check for
 updates" button inside Questarr itself; watch the GitHub Releases page
-(https://github.com/Doezer/Questarr/releases) or the repository for new
+(https://github.com/snapetech/QuestarrNG/releases) or the repository for new
 versions.
 
 Building the installer

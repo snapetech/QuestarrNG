@@ -113,7 +113,7 @@ jobs:
             echo "environment=${INPUT_ENVIRONMENT:-dev}" >> $GITHUB_OUTPUT
           fi
 
-          # Normalize repository name to lowercase and strip owner for Docker Hub
+          # Normalize the package name for GitHub Container Registry maintenance.
           REPO_NAME="$REPOSITORY"
           # Get the part after the slash (repo name only)
           REPO_SHOULD_BE_NAME="${REPO_NAME##*/}"
@@ -157,12 +157,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: step-security/docker-login-action@8c7b695d8738c5699a679ff5254baf0f19f20a94 # v4.6.0
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-
       - name: Get version from package.json
         id: package_version
         run: |
@@ -178,16 +172,15 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository }}
-            doezer/${{ env.REPO_NAME_LC }}
           tags: |
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
             type=raw,value=latest,enable=${{ env.ENVIRONMENT == 'production' }}
             type=raw,value=dev,enable=${{ env.ENVIRONMENT == 'dev' }}
             type=sha,prefix=${{ env.ENVIRONMENT }}-sha-,format=short,enable=${{ env.ENVIRONMENT != 'dev' }}
           labels: |
-            org.opencontainers.image.title=Questarr
+            org.opencontainers.image.title=QuestarrNG
             org.opencontainers.image.description=Questarr is an *Arr-inspired game manager that helps you discover, track, and automatically download the games you want.
-            org.opencontainers.image.vendor=Doezer
+            org.opencontainers.image.vendor=Snapetech
 
       - name: Build and push Docker image
         id: build
@@ -345,7 +338,6 @@ jobs:
 
           - **Environment:** ${{ env.ENVIRONMENT }}
           - **Image:** ghcr.io/${{ env.REPO_LC }}
-          - **Docker Hub:** doezer/${{ env.REPO_NAME_LC }}
           - **Tags:** ${{ steps.meta.outputs.tags }}
           - **SBOM:** attached to the image as an attestation, and uploaded as the \`sbom-questarr-${{ env.VERSION }}-${{ env.ENVIRONMENT }}\` workflow artifact
 
@@ -635,7 +627,7 @@ jobs:
       # Best-effort: attach the installer to the matching GitHub Release when
       # one was requested and already exists. This deliberately never fails
       # the job - workflow_dispatch can be run with no tag at all (there's
-      # then nothing to attach to), and even with a tag, release.yml may not
+      # then nothing to attach to), and even with a tag, fork-image.yml may not
       # have created that release yet (or never will, for an ad-hoc
       # dispatch). `gh release view` tells us which case we're in; only
       # `gh release upload` runs when it confirms the release exists, so a

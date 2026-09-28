@@ -1,36 +1,14 @@
 # Maintainers
 
-This file lists the project's participants, their roles and responsibilities, and — for
-those with escalated access — the sensitive resources they can reach, per the
-[Collaborator Access & Escalation Policy](/.github/SECURITY.md#collaborator-access--escalation-policy).
+QuestarrNG is maintained in the `snapetech/QuestarrNG` repository. The
+repository's current collaborator and organization-team membership is the
+source of truth for individual access; this file does not duplicate a roster
+that can become stale.
 
-## Roles & Responsibilities
+The fork's release workflows publish images to GitHub Container Registry with
+the repository-scoped `GITHUB_TOKEN`. Docker Hub publishing has been removed.
+Repository administrators manage Actions permissions and release access in
+GitHub settings, following the [Collaborator Access & Escalation Policy](SECURITY.md#collaborator-access--escalation-policy).
 
-### Doezer — Project Lead / Maintainer ([@Doezer](https://github.com/Doezer))
-
-- Sets project direction and reviews/merges pull requests.
-- Owns release management: versioning, changelog, and publishing Docker images to
-  Docker Hub and GHCR.
-- Triages and responds to security vulnerability reports (see
-  [SECURITY.md](/.github/SECURITY.md)).
-- Reviews and approves (or denies) requests for escalated collaborator access, per the
-  [Collaborator Access & Escalation Policy](/.github/SECURITY.md#collaborator-access--escalation-policy).
-- Enforces the [Code of Conduct](/.github/CODE_OF_CONDUCT.md) as the community leader responsible
-  for handling reports.
-
-There are currently no other maintainers, reviewers, or triagers with a formal role on
-the project; all other contributions come from the community via pull requests as
-described in [CONTRIBUTING.md](/.github/CONTRIBUTING.md).
-
-## Sensitive Access
-
-| Name   | GitHub                               | Role  | Access                                                                       |
-| ------ | ------------------------------------ | ----- | ---------------------------------------------------------------------------- |
-| Doezer | [@Doezer](https://github.com/Doezer) | Admin | Repository admin, GitHub Actions secrets, Docker Hub / GHCR image publishing |
-
-## Updating this file
-
-Any change in repository collaborators, org membership, or access to secrets/deployment
-infrastructure must be reflected here as part of the same change, per the
-[Periodic Review & Revocation](/.github/SECURITY.md#periodic-review--revocation) section of the
-security policy.
+QuestarrNG is derived from Doezer's Questarr project. Copyright and contributor
+attribution for that upstream work remains in the source and license files.

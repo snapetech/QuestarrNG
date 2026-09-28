@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.5.0] - 2026-09-xx
+## [1.5.0] - 2026-09-28
 
 Addresses dependency vulnerabilities flagged by `npm audit`.
 
@@ -20,6 +20,9 @@ Addresses dependency vulnerabilities flagged by `npm audit`.
 
 ### Fixed
 
+- **Downloader connection checks**: the insecure-LAN acknowledgement is now
+  applied consistently to test-connection requests, allowing configured
+  downloaders on trusted HTTP LANs to be tested without bypassing the setting.
 - **Documentation**: corrected `docs/SECRETS.md` §8, which presented the
   `pg-to-sqlite` credential-logging issue as still open. It was real in
   **v1.1.0–v1.3.1**, which printed the full `DATABASE_URL` (embedding
@@ -48,6 +51,11 @@ Addresses dependency vulnerabilities flagged by `npm audit`.
 ### Changed
 
 - Dependency updates: `undici` 7.29.0 → 8.9.0 (direct dependency, used by the SSRF-safe fetch wrapper in `server/ssrf.ts`). No vulnerability fix — see `docs/CVE_FIXES_BY_RELEASE.md` for verification. Major version bump; undici 8.9.0 requires Node `>=22.19.0`, so Questarr's own `engines.node` floor is raised from `>=20` to `>=22.19.0` to match — this only formalizes existing practice, since CI (`node-version: 26.x`) and the production Docker image (`node:26-alpine`) were already on Node 26. Full test suite and `server/__tests__/ssrf.test.ts` verified green against the new version.
+
+- **QuestarrNG releases**: version checks and release links now follow the
+  Snapetech fork. Releases publish versioned images under
+  `ghcr.io/snapetech/questarrng`; `latest` continues to track the fork's main
+  build.
 
 ## [1.4.2] - 2026-08-11
 
