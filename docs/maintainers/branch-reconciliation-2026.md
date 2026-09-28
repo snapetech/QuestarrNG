@@ -33,3 +33,23 @@ The final `romm-integration-clean` branch added real RomM import work. Its older
 ## Mainline integrity fixes found in the audit
 
 The audit found truncated importer code on the local mainline: directory archive resolution, categorized file transfer, and the final path-security function brace had been dropped. Those paths have been restored before release preparation. The obsolete single-note endpoint was removed after personal notes moved to the per-user game journal; clients use the journal routes now.
+
+## Release and tester-report outcomes
+
+- The reported SABnzbd test failure after enabling **Allow insecure LAN** was
+  fixed in the work prepared for `1.5.0`; that version was not published. The
+  unsaved connection-test request carries the selected acknowledgement into
+  the temporary downloader configuration, and the fix is included in the
+  `1.6.0` release. Its note is
+  `release-notes/2026-09-28-downloader-insecure-lan-test.md`.
+- Prowlarr feed diagnostics were completed on `main`. They check the
+  management API and each enabled torrent or usenet feed separately, redact
+  credentials and URLs, and are included in the `1.6.0` release notes.
+- The versioned image workflow now publishes `linux/amd64` and `linux/arm64`
+  and publishes the changelog-backed GitHub release after the image smoke
+  check succeeds. `deploy.yml` remains the separate manual/daily deployment
+  and Windows-installer workflow; it does not compete for version tags.
+
+The superseded Copilot plans, historical release branches, and integrated
+remote feature tips listed above are deleted after the completed `main` push.
+The corresponding release tags remain intact.

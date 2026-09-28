@@ -35,25 +35,25 @@ STORAGE=local-lvm BRIDGE=vmbr0 NET=dhcp \
   bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-lxc.sh)" -- --yes
 ```
 
-| Variable           | Default           | Description                                        |
-| ------------------ | ----------------- | -------------------------------------------------- |
-| `CTID`             | next free ID      | Container ID                                       |
-| `CT_HOSTNAME`      | `questarr`        | Container hostname                                 |
-| `CORES`            | `2`               | CPU cores                                          |
-| `RAM`              | `2048`            | RAM in MiB                                         |
-| `SWAP`             | `512`             | Swap in MiB                                        |
-| `DISK`             | `8`               | Root disk in GiB                                   |
-| `STORAGE`          | first active      | Storage for the root filesystem                    |
-| `TEMPLATE_STORAGE` | first active      | Storage holding the LXC template                   |
-| `BRIDGE`           | `vmbr0`           | Network bridge                                     |
-| `NET`              | `dhcp`            | `dhcp`, or a static CIDR such as `192.168.1.50/24` |
-| `GATEWAY`          | —                 | Gateway, required when `NET` is a static address   |
-| `UNPRIVILEGED`     | `1`               | Create an unprivileged container                   |
-| `ONBOOT`           | `1`               | Start the container when the node boots            |
-| `CT_PASSWORD`      | —                 | Root password inside the container (optional)      |
-| `QUESTARR_PORT`    | `5000`            | HTTP port Questarr listens on                      |
+| Variable           | Default                | Description                                        |
+| ------------------ | ---------------------- | -------------------------------------------------- |
+| `CTID`             | next free ID           | Container ID                                       |
+| `CT_HOSTNAME`      | `questarr`             | Container hostname                                 |
+| `CORES`            | `2`                    | CPU cores                                          |
+| `RAM`              | `2048`                 | RAM in MiB                                         |
+| `SWAP`             | `512`                  | Swap in MiB                                        |
+| `DISK`             | `8`                    | Root disk in GiB                                   |
+| `STORAGE`          | first active           | Storage for the root filesystem                    |
+| `TEMPLATE_STORAGE` | first active           | Storage holding the LXC template                   |
+| `BRIDGE`           | `vmbr0`                | Network bridge                                     |
+| `NET`              | `dhcp`                 | `dhcp`, or a static CIDR such as `192.168.1.50/24` |
+| `GATEWAY`          | —                      | Gateway, required when `NET` is a static address   |
+| `UNPRIVILEGED`     | `1`                    | Create an unprivileged container                   |
+| `ONBOOT`           | `1`                    | Start the container when the node boots            |
+| `CT_PASSWORD`      | —                      | Root password inside the container (optional)      |
+| `QUESTARR_PORT`    | `5000`                 | HTTP port Questarr listens on                      |
 | `QUESTARR_REPO`    | `snapetech/QuestarrNG` | Source repository                                  |
-| `QUESTARR_REF`     | latest release    | Tag or branch to install                           |
+| `QUESTARR_REF`     | latest release         | Tag or branch to install                           |
 
 ### Sizing
 
@@ -103,7 +103,7 @@ development code. Pin a release with `QUESTARR_REF` if you want to avoid that.
 To move to a specific version instead:
 
 ```bash
-pct exec 210 -- env QUESTARR_REPO=Doezer/Questarr QUESTARR_REF=v1.4.2 bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-install.sh)"
+pct exec 210 -- env QUESTARR_REPO=snapetech/QuestarrNG QUESTARR_REF=v1.6.0 bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-install.sh)"
 ```
 
 Take a Proxmox snapshot or backup before updating if you want a quick way back:

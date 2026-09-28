@@ -108,6 +108,18 @@ export default function IndexersPage() {
   const [testingIndexerId, setTestingIndexerId] = useState<string | null>(null);
   const [availableCategories, setAvailableCategories] = useState<MultiSelectOption[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(false);
+  const [diagnosingProwlarr, setDiagnosingProwlarr] = useState(false);
+  const [prowlarrDiagnostics, setProwlarrDiagnostics] = useState<{
+    management: { success: boolean; status?: number; version?: string; error?: string };
+    indexers: {
+      id: number;
+      name: string;
+      success: boolean;
+      status?: number;
+      error?: string;
+      layer: "indexer-feed";
+    }[];
+  } | null>(null);
 
   const { data: indexers = [], isLoading } = useQuery<Indexer[]>({
     queryKey: ["/api/indexers"],
@@ -116,6 +128,33 @@ export default function IndexersPage() {
   const sortedIndexers = useMemo(() => {
     return [...indexers].sort(compareEnabledPriorityName);
   }, [indexers]);
+
+  const diagnoseProwlarr = async () => {
+    setDiagnosingProwlarr(true);
+    setProwlarrDiagnostics(null);
+    try {
+      const response = await apiFetch("/api/indexers/prowlarr/diagnose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: prowlarrUrl,
+          apiKey: prowlarrApiKey,
+          allowInsecureLan: prowlarrAllowInsecureLan,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Prowlarr diagnostics failed");
+      setProwlarrDiagnostics(result);
+    } catch (error) {
+      toast({
+        title: "Prowlarr diagnostics failed",
+        description: error instanceof Error ? error.message : "Could not diagnose Prowlarr.",
+        variant: "destructive",
+      });
+    } finally {
+      setDiagnosingProwlarr(false);
+    }
+  };
 
   const syncProwlarrMutation = useMutation({
     mutationFn: async () => {
@@ -813,7 +852,7 @@ export default function IndexersPage() {
       </Dialog>
 
       <Dialog open={isProwlarrDialogOpen} onOpenChange={setIsProwlarrDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sync from Prowlarr</DialogTitle>
             <DialogDescription>
@@ -830,7 +869,10 @@ export default function IndexersPage() {
                 id="prowlarr-url"
                 placeholder="http://localhost:9696"
                 value={prowlarrUrl}
-                onChange={(e) => setProwlarrUrl(e.target.value)}
+                onChange={(e) => {
+                  setProwlarrUrl(e.target.value);
+                  setProwlarrDiagnostics(null);
+                }}
               />
             </div>
             <div className="space-y-2">
@@ -842,14 +884,20 @@ export default function IndexersPage() {
                 type="password"
                 placeholder="Enter Prowlarr API Key"
                 value={prowlarrApiKey}
-                onChange={(e) => setProwlarrApiKey(e.target.value)}
+                onChange={(e) => {
+                  setProwlarrApiKey(e.target.value);
+                  setProwlarrDiagnostics(null);
+                }}
               />
             </div>
             <div className="flex items-start gap-3 rounded-lg border p-3">
               <Checkbox
                 id="prowlarr-allow-insecure-lan"
                 checked={prowlarrAllowInsecureLan}
-                onCheckedChange={(checked) => setProwlarrAllowInsecureLan(checked === true)}
+                onCheckedChange={(checked) => {
+                  setProwlarrAllowInsecureLan(checked === true);
+                  setProwlarrDiagnostics(null);
+                }}
                 data-testid="checkbox-prowlarr-allow-insecure-lan"
               />
               <div className="space-y-1">
@@ -865,6 +913,49 @@ export default function IndexersPage() {
                 </p>
               </div>
             </div>
+            {prowlarrDiagnostics && (
+              <div className="rounded-lg border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-medium">Prowlarr management API</div>
+                  <Badge
+                    variant={prowlarrDiagnostics.management.success ? "default" : "destructive"}
+                  >
+                    {prowlarrDiagnostics.management.success
+                      ? `Connected${prowlarrDiagnostics.management.version ? ` · ${prowlarrDiagnostics.management.version}` : ""}`
+                      : `Failed${prowlarrDiagnostics.management.status ? ` · HTTP ${prowlarrDiagnostics.management.status}` : ""}`}
+                  </Badge>
+                </div>
+                {prowlarrDiagnostics.management.error && (
+                  <p className="text-muted-foreground mt-1 text-sm">
+                    {prowlarrDiagnostics.management.error}
+                  </p>
+                )}
+                {prowlarrDiagnostics.indexers.length > 0 && (
+                  <ul className="mt-3 divide-y">
+                    {prowlarrDiagnostics.indexers.map((item) => (
+                      <li
+                        key={item.id}
+                        className="flex items-start justify-between gap-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-medium">{item.name}</div>
+                          {item.error && (
+                            <div className="text-muted-foreground break-words text-xs">
+                              {item.error}
+                            </div>
+                          )}
+                        </div>
+                        <Badge variant={item.success ? "secondary" : "destructive"}>
+                          {item.success
+                            ? `Connected${item.status ? ` · HTTP ${item.status}` : ""}`
+                            : `Failed${item.status ? ` · HTTP ${item.status}` : ""}`}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
             <div className="flex justify-end space-x-2">
               <Button
                 variant="outline"
@@ -872,6 +963,21 @@ export default function IndexersPage() {
                 data-testid="button-cancel-prowlarr"
               >
                 Cancel
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void diagnoseProwlarr()}
+                disabled={diagnosingProwlarr || !prowlarrUrl || !prowlarrApiKey}
+                data-testid="button-diagnose-prowlarr"
+              >
+                {diagnosingProwlarr ? (
+                  <>
+                    <Activity className="mr-2 h-4 w-4 animate-spin" />
+                    Testing...
+                  </>
+                ) : (
+                  "Test indexers"
+                )}
               </Button>
               <Button
                 onClick={() => syncProwlarrMutation.mutate()}

@@ -1392,6 +1392,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/api/api-keys", apiKeysRouter);
 
   // Sync indexers from Prowlarr
+  app.post("/api/indexers/prowlarr/diagnose", sensitiveEndpointLimiter, async (req, res, next) => {
+    try {
+      const { url, apiKey, allowInsecureLan = false } = req.body;
+      if (typeof url !== "string" || !url || typeof apiKey !== "string" || !apiKey) {
+        return res.status(400).json({ error: "URL and API Key are required" });
+      }
+      if (typeof allowInsecureLan !== "boolean") {
+        return res.status(400).json({ error: "Invalid insecure LAN setting" });
+      }
+      if (!(await isSafeUrl(url))) {
+        return res.status(400).json({ error: "Invalid or unsafe URL" });
+      }
+      return res.json(await prowlarrClient.diagnose(url, apiKey, allowInsecureLan));
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   app.post("/api/indexers/prowlarr/sync", sensitiveEndpointLimiter, async (req, res, next) => {
     try {
       const { url, apiKey, allowInsecureLan = false } = req.body;

@@ -8,11 +8,15 @@ All notable changes to this project will be documented in this file.
 
 - **RomM imports**: route matched ROM downloads into configured RomM platform folders. Import settings now include a RomM library root, transfer/conflict behavior, platform slug mappings, and manual destination selection. Existing mappings receive safe default slugs during database migration.
 - **Prowlarr HTTP opt-in**: when syncing indexers from an HTTP Prowlarr instance, administrators can explicitly allow its API key to be sent to the synced HTTP indexers. New indexers remain opted out by default, and syncing with the option off preserves existing per-indexer choices.
+- **Prowlarr feed diagnostics**: test the management API separately from each enabled torrent or usenet feed to identify indexer-level failures without exposing API keys or feed URLs.
+- **Downloader connection checks**: the Allow insecure LAN acknowledgement is now applied to unsaved connection-test requests, so operators can test downloaders on trusted HTTP LANs as configured.
+- **Proxmox install instructions**: the pinned-version example now installs QuestarrNG 1.6.0 from the maintained Snapetech repository.
 
 ### Fixed
 
 - **File browser scope**: directory browsing is limited to configured library and download-mapping roots, and requests through symlinks that escape those roots are rejected.
 - **Archive imports**: restored directory archive detection and categorized transfer handling so archive and categorized imports follow the maintained import pipeline.
+- **Release images**: the tagged QuestarrNG image now publishes both `linux/amd64` and `linux/arm64`, matching the documented supported architectures.
 
 ### Security
 
@@ -22,9 +26,9 @@ All notable changes to this project will be documented in this file.
 
 - Removed the unused legacy `PATCH /api/games/:id/notes` endpoint. API clients should use the per-user journal endpoints (`GET`/`POST /api/games/:id/journal` and `DELETE /api/games/:id/journal/:entryId`).
 
-## [1.5.0] - 2026-09-28
+### Additional changes prepared for 1.5.0 and included in 1.6.0
 
-Addresses dependency vulnerabilities flagged by `npm audit`.
+The 1.5.0 release was not published. Its completed changes ship in 1.6.0:
 
 ### Removed
 

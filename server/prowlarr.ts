@@ -2,6 +2,26 @@ import { type Indexer } from "../shared/schema.js";
 import { torznabLogger } from "./logger.js";
 import { safeFetch } from "./ssrf.js";
 
+const redactDiagnosticDetail = (value: string, apiKey: string): string => {
+  let detail = value;
+  if (apiKey.length >= 4) {
+    for (const secret of [apiKey, encodeURIComponent(apiKey)]) {
+      detail = detail.split(secret).join("[redacted]");
+    }
+  }
+  return detail
+    .replace(
+      /(?:apikey|api[_-]?key|passkey|password|token|access_token)(?:=|%3d|:)\s*[^&\s"'<>]+/gi,
+      "credential=[redacted]"
+    )
+    .replace(/https?:\/\/[^\s"'<>]+/gi, "[URL]")
+    .split("")
+    .map((character) => (character.charCodeAt(0) < 32 ? " " : character))
+    .join("")
+    .trim()
+    .slice(0, 240);
+};
+
 interface ProwlarrIndexer {
   id: number;
   name: string;
@@ -116,6 +136,166 @@ export class ProwlarrClient {
       );
       throw error;
     }
+  }
+
+  /**
+   * Check the Prowlarr management API separately from each proxied feed.
+   * Feed probes use a one-result search so an indexer's own HTTP 401 or
+   * Torznab/Newznab error can be shown beside its name.
+   */
+  async diagnose(
+    prowlarrUrl: string,
+    apiKey: string,
+    allowInsecureLan = false
+  ): Promise<{
+    management: { success: boolean; status?: number; version?: string; error?: string };
+    indexers: {
+      id: number;
+      name: string;
+      success: boolean;
+      status?: number;
+      error?: string;
+      layer: "indexer-feed";
+    }[];
+  }> {
+    let baseUrl = prowlarrUrl.replace(/\/+$/, "");
+    if (!baseUrl.startsWith("http")) baseUrl = `http://${baseUrl}`;
+    const headers = { "X-Api-Key": apiKey, "User-Agent": "Questarr/1.0" };
+    const safeOptions = {
+      headers,
+      allowPrivate: true,
+      requireHttps: !allowInsecureLan,
+      timeoutMs: 15000,
+    };
+    let status: number | undefined;
+    let version: string | undefined;
+    let indexers: ProwlarrIndexer[];
+    try {
+      const systemResponse = await safeFetch(`${baseUrl}/api/v1/system/status`, safeOptions);
+      status = systemResponse.status;
+      if (!systemResponse.ok) {
+        return {
+          management: {
+            success: false,
+            status,
+            error: `Prowlarr management API returned HTTP ${status}.`,
+          },
+          indexers: [],
+        };
+      }
+      const system = (await systemResponse.json()) as { version?: string };
+      version = typeof system.version === "string" ? system.version.slice(0, 64) : undefined;
+      const response = await safeFetch(`${baseUrl}/api/v1/indexer`, safeOptions);
+      status = response.status;
+      if (!response.ok) {
+        return {
+          management: {
+            success: false,
+            status,
+            error: `Prowlarr indexer inventory returned HTTP ${status}.`,
+          },
+          indexers: [],
+        };
+      }
+      const payload: unknown = await response.json();
+      if (!Array.isArray(payload)) {
+        return {
+          management: {
+            success: false,
+            status,
+            error: "Prowlarr returned an invalid indexer inventory.",
+          },
+          indexers: [],
+        };
+      }
+      indexers = payload as ProwlarrIndexer[];
+    } catch {
+      return {
+        management: {
+          success: false,
+          ...(status !== undefined ? { status } : {}),
+          error: status
+            ? `Prowlarr management API failed after HTTP ${status}.`
+            : "Prowlarr management API could not be reached.",
+        },
+        indexers: [],
+      };
+    }
+
+    const active = indexers.filter(
+      (item): item is ProwlarrIndexer =>
+        Boolean(item) &&
+        Number.isSafeInteger(item.id) &&
+        item.id > 0 &&
+        item.enable &&
+        (item.protocol === "torrent" || item.protocol === "usenet")
+    );
+    const results: {
+      id: number;
+      name: string;
+      success: boolean;
+      status?: number;
+      error?: string;
+      layer: "indexer-feed";
+    }[] = [];
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(4, active.length) }, async () => {
+        while (cursor < active.length) {
+          const indexer = active[cursor++];
+          if (!indexer) continue;
+          const name = String(indexer.name || `Indexer ${indexer.id}`).slice(0, 120);
+          const feed = new URL(`${baseUrl}/${indexer.id}/api`);
+          feed.searchParams.set("t", "search");
+          feed.searchParams.set("q", "questarrng-indexer-diagnostic");
+          feed.searchParams.set("limit", "1");
+          feed.searchParams.set("apikey", apiKey);
+          try {
+            const response = await safeFetch(feed.toString(), safeOptions);
+            const responseStatus = response.status;
+            const body = (await response.text()).slice(0, 16384);
+            const xmlError = body.match(/<error\b[^>]*\bdescription=["']([^"']*)["'][^>]*>/i);
+            const errorBody = body
+              .match(/<error\b[^>]*>([\s\S]*?)<\/error>/i)?.[1]
+              ?.replace(/<[^>]*>/g, " ");
+            const description = redactDiagnosticDetail(xmlError?.[1] || errorBody || "", apiKey);
+            const htmlError =
+              response.headers.get("content-type")?.toLowerCase().includes("text/html") ||
+              /<\s*html\b/i.test(body);
+            const failed = !response.ok || /<error\b/i.test(body) || Boolean(htmlError);
+            const error = failed
+              ? description ||
+                (htmlError
+                  ? "Prowlarr feed returned an HTML page instead of an indexer response."
+                  : `Prowlarr feed returned HTTP ${responseStatus}.`)
+              : undefined;
+            results.push({
+              id: indexer.id,
+              name,
+              success: !failed,
+              status: responseStatus,
+              ...(error ? { error } : {}),
+              layer: "indexer-feed",
+            });
+          } catch {
+            results.push({
+              id: indexer.id,
+              name,
+              success: false,
+              error: "Prowlarr feed could not be reached.",
+              layer: "indexer-feed",
+            });
+          }
+        }
+      })
+    );
+    return {
+      management: {
+        success: true,
+        ...(version ? { version } : {}),
+      },
+      indexers: results.sort((a, b) => a.id - b.id),
+    };
   }
 }
 

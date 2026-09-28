@@ -243,9 +243,8 @@ const getSeerrRequest = async (userId: string, externalRequestId: string) => {
       },
       actions: {
         retry: ledger.status === "failed",
-        cancel: ["accepted", "searching", "downloading", "importing", "failed"].includes(
-          ledger.status
-        ),
+        cancel: false,
+        cancelReason: "This request is not linked to an acquisition record yet.",
       },
     };
   }
@@ -523,6 +522,18 @@ integrationRouter.post("/seerrng/v1/requests", async (req: Request, res: Respons
           return res
             .status(409)
             .json({ error: "externalRequestId is already bound to a different request." });
+        }
+        const existingGame = await findSeerrGame(req.user!.id, externalRequestId);
+        if (
+          igdbId &&
+          existingGame &&
+          typeof existingGame.igdbId === "number" &&
+          Number.isSafeInteger(existingGame.igdbId) &&
+          existingGame.igdbId !== igdbId
+        ) {
+          return res
+            .status(409)
+            .json({ error: "externalRequestId is already bound to a different IGDB title." });
         }
         return res.status(200).json(await getSeerrRequest(req.user!.id, externalRequestId));
       } else {
