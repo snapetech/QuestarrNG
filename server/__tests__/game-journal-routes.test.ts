@@ -56,7 +56,10 @@ const GAME_ID = "00000000-0000-4000-8000-000000000001";
 const ENTRY_ID = "00000000-0000-4000-8000-000000000002";
 const MILESTONE_ID = "00000000-0000-4000-8000-000000000003";
 const SCREENSHOT_ID = "00000000-0000-4000-8000-000000000004";
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const PNG_IMAGE = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+  "base64"
+);
 
 describe("game journal routes", () => {
   let app: express.Express;
@@ -249,7 +252,7 @@ describe("game journal routes", () => {
     const uploaded = await request(app)
       .post(`/api/games/${GAME_ID}/screenshots`)
       .field("caption", "  Boss fight  ")
-      .attach("file", PNG_SIGNATURE, { filename: "shot.png", contentType: "image/png" });
+      .attach("file", PNG_IMAGE, { filename: "shot.png", contentType: "image/png" });
     expect(uploaded.status).toBe(201);
     expect(uploaded.body.caption).toBe("Boss fight");
     expect(uploaded.body.filePath).toContain(path.join("screenshots", GAME_ID));
@@ -258,7 +261,7 @@ describe("game journal routes", () => {
     mocks.storage.addGameScreenshot.mockRejectedValueOnce(new Error("metadata insert failed"));
     const failed = await request(app)
       .post(`/api/games/${GAME_ID}/screenshots`)
-      .attach("file", PNG_SIGNATURE, { filename: "shot.png", contentType: "image/png" });
+      .attach("file", PNG_IMAGE, { filename: "shot.png", contentType: "image/png" });
     expect(failed.status).toBe(500);
     expect(mocks.logger.error).toHaveBeenCalled();
   });
@@ -266,7 +269,7 @@ describe("game journal routes", () => {
   it("serves, updates, and deletes screenshot metadata and files safely", async () => {
     const screenshotPath = path.join(configDir, "screenshots", GAME_ID, "shot.png");
     await fs.mkdir(path.dirname(screenshotPath), { recursive: true });
-    await fs.writeFile(screenshotPath, PNG_SIGNATURE);
+    await fs.writeFile(screenshotPath, PNG_IMAGE);
     mocks.storage.getGameScreenshots.mockResolvedValue([
       { id: SCREENSHOT_ID, caption: "Old", filePath: screenshotPath },
     ]);
