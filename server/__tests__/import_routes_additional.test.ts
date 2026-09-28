@@ -4,6 +4,7 @@ import request from "supertest";
 const { mockStorage, mockImportManager, mockPlatformMappingService, fsMock } = vi.hoisted(() => ({
   mockStorage: {
     getImportConfig: vi.fn(),
+    getRomMConfig: vi.fn(),
     getEnabledDownloaders: vi.fn(),
     getPendingImportReviews: vi.fn(),
     getUnlinkedImportReviews: vi.fn(),
@@ -45,13 +46,18 @@ vi.mock("fs-extra", () => ({
 }));
 
 import { importRouter } from "../routes/import.js";
-import { makeImportConfig, createImportTestApp } from "./helpers/import-test-helpers.js";
+import {
+  makeImportConfig,
+  makeRomMConfig,
+  createImportTestApp,
+} from "./helpers/import-test-helpers.js";
 
 describe("importRouter additional coverage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStorage.getEnabledDownloaders.mockResolvedValue([]);
     mockStorage.getImportConfig.mockResolvedValue(makeImportConfig({ overwriteExisting: true }));
+    mockStorage.getRomMConfig.mockResolvedValue(makeRomMConfig());
     mockStorage.getPathMappings.mockResolvedValue([]);
     mockStorage.getUnlinkedImportReviews.mockResolvedValue([]);
   });

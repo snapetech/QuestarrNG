@@ -1,6 +1,15 @@
 import express from "express";
 import type { Router } from "express";
-import type { Game, ImportConfig } from "../../../shared/schema.js";
+import {
+  DEFAULT_ROMM_CONFIG,
+  type Game,
+  type ImportConfig,
+  type RomMConfig,
+} from "../../../shared/schema.js";
+
+export function makeRomMConfig(overrides: Partial<RomMConfig> = {}): RomMConfig {
+  return { ...DEFAULT_ROMM_CONFIG, ...overrides };
+}
 
 export function makeGame(overrides: Partial<Game> = {}): Game {
   return {

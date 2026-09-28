@@ -24,13 +24,14 @@ vi.mock("../downloaders.js", () => ({
 }));
 
 import { ImportManager } from "../services/ImportManager.js";
-import { makeGame, makeImportConfig } from "./helpers/import-test-helpers.js";
+import { makeGame, makeImportConfig, makeRomMConfig } from "./helpers/import-test-helpers.js";
 
 describe("ImportManager", () => {
   const storage = {
     getGameDownload: vi.fn(),
     getGame: vi.fn(),
     getImportConfig: vi.fn(),
+    getRomMConfig: vi.fn().mockResolvedValue(makeRomMConfig()),
     getDownloader: vi.fn(),
     updateGameDownloadStatus: vi.fn(),
     updateGameStatus: vi.fn(),

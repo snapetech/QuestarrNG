@@ -1,4 +1,5 @@
 ALTER TABLE `platform_mappings` ADD `romm_platform_slug` text;
+--> statement-breakpoint
 UPDATE `platform_mappings` SET `romm_platform_slug` = CASE lower(`source_platform_name`)
   WHEN 'nes' THEN 'nes' WHEN 'snes' THEN 'snes' WHEN 'n64' THEN 'n64'
   WHEN 'ngc' THEN 'ngc' WHEN 'wii' THEN 'wii' WHEN 'gb' THEN 'gb'

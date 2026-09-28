@@ -5,6 +5,7 @@ import request from "supertest";
 const { mockStorage, mockImportManager } = vi.hoisted(() => ({
   mockStorage: {
     getImportConfig: vi.fn(),
+    getRomMConfig: vi.fn(),
   },
   mockImportManager: {
     confirmImport: vi.fn(),
@@ -23,7 +24,11 @@ vi.mock("../services/index.js", () => ({
 }));
 
 import { importRouter } from "../routes/import.js";
-import { makeImportConfig, createImportTestApp } from "./helpers/import-test-helpers.js";
+import {
+  makeImportConfig,
+  makeRomMConfig,
+  createImportTestApp,
+} from "./helpers/import-test-helpers.js";
 
 describe("importRouter confirmImport security", () => {
   beforeEach(() => {
@@ -31,6 +36,7 @@ describe("importRouter confirmImport security", () => {
     mockStorage.getImportConfig.mockResolvedValue(
       makeImportConfig({ renamePattern: "{Title} ({Region})" })
     );
+    mockStorage.getRomMConfig.mockResolvedValue(makeRomMConfig());
   });
 
   const createApp = () => createImportTestApp(importRouter);

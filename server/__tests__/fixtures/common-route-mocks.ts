@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
-import type { User } from "../../../shared/schema.js";
+import { DEFAULT_ROMM_CONFIG, type User } from "../../../shared/schema.js";
 import type { TimeToBeat } from "../../igdb.js";
 
 /**
@@ -64,6 +64,7 @@ export function createStorageMock() {
     getSystemConfig: vi.fn(),
     assignOrphanGamesToUser: vi.fn(),
     getUserSettings: vi.fn().mockResolvedValue({}),
+    getRomMConfig: vi.fn().mockResolvedValue(DEFAULT_ROMM_CONFIG),
     createUserSettings: vi.fn().mockResolvedValue({}),
     updateUserSettings: vi.fn().mockResolvedValue({}),
     updateGameStatus: vi.fn(),

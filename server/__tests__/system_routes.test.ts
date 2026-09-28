@@ -5,6 +5,7 @@ import request from "supertest";
 const { mockStorage, fsMock } = vi.hoisted(() => ({
   mockStorage: {
     getImportConfig: vi.fn(),
+    getRomMConfig: vi.fn(),
   },
   fsMock: {
     pathExists: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock("fs-extra", () => ({
 }));
 
 import { systemRouter } from "../routes/system.js";
+import { DEFAULT_ROMM_CONFIG } from "../../shared/schema.js";
 
 function createApp(withUser = true) {
   const app = express();
@@ -39,6 +41,7 @@ describe("systemRouter /browse", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockStorage.getImportConfig.mockResolvedValue({ libraryRoot: "/data" });
+    mockStorage.getRomMConfig.mockResolvedValue(DEFAULT_ROMM_CONFIG);
   });
 
   it("returns 401 when user is missing", async () => {

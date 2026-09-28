@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { ImportManager } from "../services/ImportManager.js";
 import { ArchiveService } from "../services/ArchiveService.js";
-import { makeGame, makeImportConfig } from "./helpers/import-test-helpers.js";
+import { makeGame, makeImportConfig, makeRomMConfig } from "./helpers/import-test-helpers.js";
 import type { ImportConfig } from "../../shared/schema.js";
 
 const cleanup: string[] = [];
@@ -44,6 +44,7 @@ function makeStorage() {
       .fn()
       .mockResolvedValue(makeGame({ id: "g1", userId: "u1", title: "My Game", platforms: [6] })),
     getImportConfig: vi.fn(),
+    getRomMConfig: vi.fn().mockResolvedValue(makeRomMConfig()),
     getDownloader: vi.fn().mockResolvedValue(undefined),
     updateGameDownloadStatus: vi.fn().mockResolvedValue(undefined),
     updateGameStatus: vi.fn().mockResolvedValue(undefined),

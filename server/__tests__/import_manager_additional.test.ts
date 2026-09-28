@@ -30,7 +30,7 @@ vi.mock("../path-security.js", () => ({
 
 import { ImportManager } from "../services/ImportManager.js";
 import { PCImportStrategy } from "../services/ImportStrategies.js";
-import { makeImportConfig } from "./helpers/import-test-helpers.js";
+import { makeImportConfig, makeRomMConfig } from "./helpers/import-test-helpers.js";
 
 beforeEach(() => {
   isSensitivePathMock.mockReturnValue(false);
@@ -41,6 +41,7 @@ function makeStorage() {
     getGameDownload: vi.fn(),
     getGame: vi.fn(),
     getImportConfig: vi.fn(),
+    getRomMConfig: vi.fn().mockResolvedValue(makeRomMConfig()),
     getDownloader: vi.fn(),
     updateGameDownloadStatus: vi.fn(),
     updateGameStatus: vi.fn(),
