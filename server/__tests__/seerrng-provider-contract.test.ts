@@ -388,7 +388,7 @@ describe("SeerrNG software-provider contract", () => {
     ).toBe(500);
   });
 
-  it("creates idempotent software requests and records successful acquisitions", async () => {
+  it("creates idempotent software requests and reports acquisition-search results", async () => {
     const invalid = await request(app)
       .post("/api/integration/seerrng/v1/requests")
       .send({ title: "" });

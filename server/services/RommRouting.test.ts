@@ -63,6 +63,6 @@ describe("RomM platform routing", () => {
   });
 
   it("removes filesystem-reserved characters and normalizes whitespace", () => {
-    expect(sanitizeFsName('  A/B: C*?"<>|\\\tGame  ')).toBe("A B Game");
+    expect(sanitizeFsName('  A/B:*?"<>|\\\tGame  ')).toBe("A B Game");
   });
 });

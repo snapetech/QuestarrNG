@@ -62,7 +62,7 @@ export function resolveRommPlatformDir(options: ResolveRommPlatformDirOptions): 
 
 export function sanitizeFsName(name: string): string {
   return name
-    .replaceAll(/[\\/:*?"<>|]/g, "")
+    .replaceAll(/[\\/:*?"<>|]/g, " ")
     .replaceAll(/\s+/g, " ")
     .trim();
 }
