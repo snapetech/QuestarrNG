@@ -31,7 +31,18 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../storage.js", () => ({ storage: mocks.storage }));
-vi.mock("../config-loader.js", () => ({ configLoader: { getConfigDir: () => mocks.configDir } }));
+vi.mock("../config-loader.js", () => ({
+  configLoader: {
+    getConfigDir: () => mocks.configDir,
+    getSslConfig: () => ({
+      enabled: false,
+      port: 5000,
+      certPath: "",
+      keyPath: "",
+      redirectHttp: false,
+    }),
+  },
+}));
 vi.mock("../logger.js", () => ({
   routesLogger: mocks.logger,
   expressLogger: mocks.expressLogger,
