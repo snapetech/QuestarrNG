@@ -54,10 +54,7 @@ const screenshotUpload = multer({
     // A first-pass check on the client-declared MIME type, purely to reject
     // obviously-wrong uploads early; the authoritative check is the
     // magic-byte sniff on the buffer itself, once multer has read it.
-    if (Object.hasOwn(ALLOWED_SCREENSHOT_MIME_TYPES, file.mimetype)) {
-      return cb(null, true);
-    }
-    cb(new Error("Only JPEG, PNG, and WebP images are allowed"));
+    cb(null, Object.hasOwn(ALLOWED_SCREENSHOT_MIME_TYPES, file.mimetype));
   },
 });
 
@@ -302,7 +299,7 @@ router.post(
       // Authoritative check: sniff the actual bytes rather than trusting the
       // client-controlled Content-Type / filename, so an uploaded file can't
       // masquerade as an image it isn't.
-      const detected = await fileTypeFromBuffer(req.file.buffer);
+      const detected = await fileTypeFromBuffer(req.file.buffer).catch(() => undefined);
       if (!detected || !Object.hasOwn(ALLOWED_SCREENSHOT_MIME_TYPES, detected.mime)) {
         return res.status(400).json({ error: "Only JPEG, PNG, and WebP images are allowed" });
       }

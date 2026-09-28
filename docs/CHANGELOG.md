@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - **Production startup**: the compiled server now resolves the shared game-journal schemas and starts successfully after a production build.
 - **Database startup**: SQLite and PostgreSQL migrations now execute the RomM platform mapping update as separate statements, so fresh and upgraded databases can start successfully.
 - **RomM import filenames**: filesystem-reserved characters now become spaces, preserving word boundaries in safe ROM destination names.
+- **Screenshot uploads**: malformed image data now returns a client error instead of surfacing as a server failure.
 - **Release images**: the tagged QuestarrNG image now publishes both `linux/amd64` and `linux/arm64`, matching the documented supported architectures.
 
 ### Security
