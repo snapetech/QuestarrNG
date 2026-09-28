@@ -241,6 +241,12 @@ const getSeerrRequest = async (userId: string, externalRequestId: string) => {
         operatingSystem: ledger.operatingSystem,
         architecture: ledger.architecture,
       },
+      actions: {
+        retry: ledger.status === "failed",
+        cancel: ["accepted", "searching", "downloading", "importing", "failed"].includes(
+          ledger.status
+        ),
+      },
     };
   }
 
@@ -291,6 +297,13 @@ const getSeerrRequest = async (userId: string, externalRequestId: string) => {
     title: game.title,
     game: { id: game.id, title: game.title, status: game.status },
     variant: game.seerrVariant ?? undefined,
+    identity: Number.isSafeInteger(game.igdbId)
+      ? { catalogProvider: "igdb", catalogId: game.igdbId }
+      : undefined,
+    actions: {
+      retry: status === "failed",
+      cancel: !["available", "cancelled"].includes(status),
+    },
   };
   if (ledger) {
     await storage.updateIntegrationRequest(userId, externalRequestId, {
@@ -308,7 +321,19 @@ const getSeerrRequest = async (userId: string, externalRequestId: string) => {
 // is versioned because SeerrNG persists the external request identity and
 // expects provider-side retry and asset routes to remain idempotent.
 integrationRouter.get("/seerrng/v1/ping", (_req: Request, res: Response) => {
-  res.json({ service: "questarr", apiVersion: 1, requestContractVersion: 1 });
+  res.json({
+    service: "QuestarrNG",
+    version: APP_VERSION,
+    apiVersion: 1,
+    requestContractVersion: 1,
+    capabilities: {
+      catalog: true,
+      pcAcquisition: true,
+      emulationAcquisition: false,
+      requestActions: { retry: true, cancel: true },
+      assetStreaming: true,
+    },
+  });
 });
 
 integrationRouter.get("/seerrng/v1/catalog/search", async (req: Request, res: Response) => {

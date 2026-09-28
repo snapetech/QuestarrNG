@@ -103,6 +103,7 @@ export default function IndexersPage() {
   const [isProwlarrDialogOpen, setIsProwlarrDialogOpen] = useState(false);
   const [prowlarrUrl, setProwlarrUrl] = useState("");
   const [prowlarrApiKey, setProwlarrApiKey] = useState("");
+  const [prowlarrAllowInsecureLan, setProwlarrAllowInsecureLan] = useState(false);
   const [editingIndexer, setEditingIndexer] = useState<Indexer | null>(null);
   const [testingIndexerId, setTestingIndexerId] = useState<string | null>(null);
   const [availableCategories, setAvailableCategories] = useState<MultiSelectOption[]>([]);
@@ -122,7 +123,11 @@ export default function IndexersPage() {
       const response = await apiFetch("/api/indexers/prowlarr/sync", {
         method: "POST",
         headers,
-        body: JSON.stringify({ url: prowlarrUrl, apiKey: prowlarrApiKey }),
+        body: JSON.stringify({
+          url: prowlarrUrl,
+          apiKey: prowlarrApiKey,
+          allowInsecureLan: prowlarrAllowInsecureLan,
+        }),
       });
       if (!response.ok) {
         const error = await response.json();
@@ -134,6 +139,7 @@ export default function IndexersPage() {
       void refreshIndexerQueries(queryClient);
       clearSearchCache();
       setIsProwlarrDialogOpen(false);
+      setProwlarrAllowInsecureLan(false);
       toast({
         title: "Sync successful",
         description: data.message,
@@ -838,6 +844,26 @@ export default function IndexersPage() {
                 value={prowlarrApiKey}
                 onChange={(e) => setProwlarrApiKey(e.target.value)}
               />
+            </div>
+            <div className="flex items-start gap-3 rounded-lg border p-3">
+              <Checkbox
+                id="prowlarr-allow-insecure-lan"
+                checked={prowlarrAllowInsecureLan}
+                onCheckedChange={(checked) => setProwlarrAllowInsecureLan(checked === true)}
+                data-testid="checkbox-prowlarr-allow-insecure-lan"
+              />
+              <div className="space-y-1">
+                <label
+                  htmlFor="prowlarr-allow-insecure-lan"
+                  className="text-sm font-medium leading-none"
+                >
+                  Send the API key to Prowlarr indexers over HTTP
+                </label>
+                <p className="text-muted-foreground text-xs">
+                  Needed when Prowlarr uses HTTP. Enable only for a trusted local network; the API
+                  key is sent without encryption.
+                </p>
+              </div>
             </div>
             <div className="flex justify-end space-x-2">
               <Button

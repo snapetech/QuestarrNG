@@ -29,7 +29,11 @@ export class ProwlarrClient {
   /**
    * Fetch all indexers from Prowlarr and convert them to Questarr Indexer format
    */
-  async getIndexers(prowlarrUrl: string, apiKey: string): Promise<Partial<Indexer>[]> {
+  async getIndexers(
+    prowlarrUrl: string,
+    apiKey: string,
+    allowInsecureLan = false
+  ): Promise<Partial<Indexer>[]> {
     // Normalize URL
     let baseUrl = prowlarrUrl.replace(/\/+$/, "");
     if (!baseUrl.startsWith("http")) {
@@ -94,6 +98,7 @@ export class ProwlarrClient {
           name: idx.name,
           url: indexerUrl,
           apiKey: apiKey, // Prowlarr uses the main API key for all indexer feeds by default
+          allowInsecureLan,
           protocol: protocol as "torznab" | "newznab",
           enabled: idx.enable,
           priority: idx.priority,

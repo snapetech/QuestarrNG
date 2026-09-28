@@ -1394,17 +1394,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Sync indexers from Prowlarr
   app.post("/api/indexers/prowlarr/sync", sensitiveEndpointLimiter, async (req, res, next) => {
     try {
-      const { url, apiKey } = req.body;
+      const { url, apiKey, allowInsecureLan = false } = req.body;
 
       if (!url || !apiKey) {
         return res.status(400).json({ error: "URL and API Key are required" });
+      }
+
+      if (typeof allowInsecureLan !== "boolean") {
+        return res.status(400).json({ error: "Invalid insecure LAN setting" });
       }
 
       if (!(await isSafeUrl(url))) {
         return res.status(400).json({ error: "Invalid or unsafe URL" });
       }
 
-      const indexers = await prowlarrClient.getIndexers(url, apiKey);
+      const indexers = await prowlarrClient.getIndexers(url, apiKey, allowInsecureLan);
 
       // ⚡ Bolt: Use batched sync method to handle all indexers in a single transaction
       const results = await storage.syncIndexers(indexers);
@@ -3101,10 +3105,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         categories,
         rssEnabled,
         autoSearchEnabled,
+        allowInsecureLan,
       } = req.body;
 
       if (!url || !apiKey) {
         return res.status(400).json({ error: "URL and API key are required" });
+      }
+
+      if (allowInsecureLan !== undefined && typeof allowInsecureLan !== "boolean") {
+        return res.status(400).json({ error: "Invalid insecure LAN setting" });
       }
 
       if (!(await isSafeUrl(url))) {
@@ -3125,7 +3134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         categories: categories || [],
         rssEnabled: rssEnabled ?? true,
         autoSearchEnabled: autoSearchEnabled ?? true,
-        allowInsecureLan: false,
+        allowInsecureLan: allowInsecureLan ?? false,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

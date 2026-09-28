@@ -259,6 +259,11 @@ export const sanitizeIndexerData = [
     .isIn(["torznab", "newznab", "g4u"])
     .withMessage("Invalid protocol"),
   body("enabled").optional().isBoolean().withMessage("Enabled must be a boolean").toBoolean(),
+  body("allowInsecureLan")
+    .optional()
+    .isBoolean()
+    .withMessage("Allow insecure LAN must be a boolean")
+    .toBoolean(),
 ];
 
 // Sanitization rules for partial indexer updates (PATCH)
@@ -308,6 +313,11 @@ export const sanitizeIndexerUpdateData = [
     .optional()
     .isBoolean()
     .withMessage("Auto search enabled must be a boolean")
+    .toBoolean(),
+  body("allowInsecureLan")
+    .optional()
+    .isBoolean()
+    .withMessage("Allow insecure LAN must be a boolean")
     .toBoolean(),
 ];
 
@@ -365,8 +375,7 @@ const downloaderLabel = () => optionalTrimmedString("label", 100, "Label");
 const downloaderUrlPath = () => optionalTrimmedString("urlPath", 200, "URL path");
 const downloaderAllowSelfSignedCertificate = () =>
   optionalBoolean("allowSelfSignedCertificate", "Allow self-signed certificate");
-const downloaderAllowInsecureLan = () =>
-  optionalBoolean("allowInsecureLan", "Allow insecure LAN");
+const downloaderAllowInsecureLan = () => optionalBoolean("allowInsecureLan", "Allow insecure LAN");
 
 export const sanitizeDownloaderData = [
   body("name")

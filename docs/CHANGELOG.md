@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.0] - 2026-09-28
+
+### Added
+
+- **RomM imports**: route matched ROM downloads into configured RomM platform folders. Import settings now include a RomM library root, transfer/conflict behavior, platform slug mappings, and manual destination selection. Existing mappings receive safe default slugs during database migration.
+- **Prowlarr HTTP opt-in**: when syncing indexers from an HTTP Prowlarr instance, administrators can explicitly allow its API key to be sent to the synced HTTP indexers. New indexers remain opted out by default, and syncing with the option off preserves existing per-indexer choices.
+
+### Fixed
+
+- **File browser scope**: directory browsing is limited to configured library and download-mapping roots, and requests through symlinks that escape those roots are rejected.
+- **Archive imports**: restored directory archive detection and categorized transfer handling so archive and categorized imports follow the maintained import pipeline.
+
+### Security
+
+- **IP address parsing dependency**: raised the `ip-address` override to `^10.7.0` (lockfile resolves 10.7.2) to include current upstream security fixes.
+
+### Breaking changes
+
+- Removed the unused legacy `PATCH /api/games/:id/notes` endpoint. API clients should use the per-user journal endpoints (`GET`/`POST /api/games/:id/journal` and `DELETE /api/games/:id/journal/:entryId`).
+
 ## [1.5.0] - 2026-09-28
 
 Addresses dependency vulnerabilities flagged by `npm audit`.

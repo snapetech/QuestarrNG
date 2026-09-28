@@ -21,6 +21,7 @@ export interface IndexerUpdateFields {
   categories: Indexer["categories"];
   rssEnabled: Indexer["rssEnabled"];
   autoSearchEnabled: Indexer["autoSearchEnabled"];
+  allowInsecureLan?: boolean;
   updatedAt: Date;
 }
 
@@ -62,6 +63,7 @@ export function buildIndexerUpdate(
     categories: idx.categories,
     rssEnabled: idx.rssEnabled,
     autoSearchEnabled: idx.autoSearchEnabled,
+    ...(idx.allowInsecureLan === true ? { allowInsecureLan: true } : {}),
     updatedAt: now,
   } as IndexerUpdateFields;
 }
@@ -84,6 +86,7 @@ export function buildNewIndexer(
     categories: idx.categories ?? [],
     rssEnabled: idx.rssEnabled ?? true,
     autoSearchEnabled: idx.autoSearchEnabled ?? true,
+    allowInsecureLan: idx.allowInsecureLan === true,
     createdAt: now,
     updatedAt: now,
   } as NewIndexerRow;

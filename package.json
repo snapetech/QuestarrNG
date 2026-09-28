@@ -1,6 +1,6 @@
 {
   "name": "questarrng",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "A video game management application inspired by the -Arr apps. Track and organize your video game collection with automated discovery and download management.",
   "type": "module",
   "packageManager": "npm@11.7.0",
@@ -216,7 +216,8 @@
     "fast-uri": "^3.1.7",
     "eslint-plugin-react": {
       "eslint": "^10.9.1"
-    }
+    },
+    "ip-address": "^10.7.0"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,
