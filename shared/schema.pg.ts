@@ -292,6 +292,56 @@ export const aiAutoDownloadHolds = pgTable(
   (t) => [uniqueIndex("ai_auto_download_holds_game_title_idx").on(t.gameId, t.releaseTitle)]
 );
 
+export const gameJournalEntries = pgTable(
+  "game_journal_entries",
+  {
+    id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    note: text("note").notNull(),
+    createdAt: timestampMs("created_at").default(sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`),
+  },
+  (t) => [index("game_journal_entries_game_user_idx").on(t.gameId, t.userId)]
+);
+
+export const gameMilestones = pgTable(
+  "game_milestones",
+  {
+    id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    completedAt: timestampMs("completed_at"),
+    createdAt: timestampMs("created_at").default(sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`),
+  },
+  (t) => [index("game_milestones_game_user_idx").on(t.gameId, t.userId)]
+);
+
+export const gameScreenshots = pgTable(
+  "game_screenshots",
+  {
+    id: text("id").primaryKey(),
+    gameId: text("game_id")
+      .notNull()
+      .references(() => games.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    filePath: text("file_path").notNull(),
+    caption: text("caption"),
+    createdAt: timestampMs("created_at").default(sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`),
+  },
+  (t) => [index("game_screenshots_game_user_idx").on(t.gameId, t.userId)]
+);
+
 export const notifications = pgTable("notifications", {
   id: text("id").primaryKey(),
   userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),

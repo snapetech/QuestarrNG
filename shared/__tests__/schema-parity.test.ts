@@ -19,10 +19,14 @@ import * as pgSchema from "../schema.pg.js";
  * two schemas against each other would pass if a table were missing from BOTH.
  */
 const EXPECTED_TABLES = [
+  "aiAutoDownloadHolds",
   "apiKeys",
   "downloaders",
   "gameDownloads",
   "gameFiles",
+  "gameJournalEntries",
+  "gameMilestones",
+  "gameScreenshots",
   "games",
   "importTaskItems",
   "importTasks",
