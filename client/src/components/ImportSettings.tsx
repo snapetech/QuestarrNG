@@ -18,7 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, FolderOpen, ArrowRight, Folder, Link, Copy, MoveRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { ImportConfig } from "@shared/schema";
+import type { ImportConfig, PlatformMapping, RomMConfig } from "@shared/schema";
 import { PathMappingSettings } from "./PathMappingSettings";
 import { FileBrowser } from "./FileBrowser";
 import { RootFolderDiscovery } from "./RootFolderDiscovery";
@@ -53,6 +53,10 @@ export default function ImportSettings() {
   const { data: config, isLoading: configLoading } = useQuery<ImportConfig>({
     queryKey: ["/api/imports/config"],
   });
+  const { data: rommConfig } = useQuery<RomMConfig>({ queryKey: ["/api/imports/romm"] });
+  const { data: platformMappings = [] } = useQuery<PlatformMapping[]>({
+    queryKey: ["/api/imports/mappings/platforms"],
+  });
   const {
     data: igdbPlatforms = [],
     isLoading: platformsLoading,
@@ -70,12 +74,20 @@ export default function ImportSettings() {
 
   // Local State
   const [localConfig, setLocalConfig] = useState<ImportConfig | null>(null);
+  const [localRommConfig, setLocalRommConfig] = useState<RomMConfig | null>(null);
+  const [rommBindingsText, setRommBindingsText] = useState("{}");
   const [platformSearch, setPlatformSearch] = useState("");
   const [libraryBrowserOpen, setLibraryBrowserOpen] = useState(false);
 
   useEffect(() => {
     if (config) setLocalConfig(config);
   }, [config]);
+  useEffect(() => {
+    if (rommConfig) {
+      setLocalRommConfig(rommConfig);
+      setRommBindingsText(JSON.stringify(rommConfig.platformBindings, null, 2));
+    }
+  }, [rommConfig]);
 
   // Mutations
   const updateConfigMutation = useMutation({
@@ -94,6 +106,48 @@ export default function ImportSettings() {
         description: "Could not update import settings.",
         variant: "destructive",
       });
+    },
+  });
+
+  const updateRommConfigMutation = useMutation({
+    mutationFn: async (data: RomMConfig) => {
+      await apiRequest("PATCH", "/api/imports/romm", data);
+    },
+    onSuccess: () => {
+      toast({ title: "Settings Saved", description: "RomM import configuration updated." });
+      queryClient.invalidateQueries({ queryKey: ["/api/imports/romm"] });
+    },
+    onError: () => {
+      if (rommConfig) setLocalRommConfig(rommConfig);
+      toast({
+        title: "Save Failed",
+        description: "Could not update RomM settings.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePlatformSlugMutation = useMutation({
+    mutationFn: async ({
+      id,
+      rommPlatformSlug,
+    }: {
+      id: string;
+      rommPlatformSlug: string | null;
+    }) => {
+      await apiRequest("PATCH", `/api/imports/mappings/platforms/${id}`, { rommPlatformSlug });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/imports/mappings/platforms"] });
+    },
+  });
+
+  const initializePlatformMappingsMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/imports/mappings/platforms/init", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/imports/mappings/platforms"] });
     },
   });
 
@@ -129,6 +183,7 @@ export default function ImportSettings() {
       <Tabs defaultValue="config" className="w-full">
         <TabsList>
           <TabsTrigger value="config">General Config</TabsTrigger>
+          <TabsTrigger value="romm">RomM</TabsTrigger>
           <TabsTrigger value="paths">Path Mappings</TabsTrigger>
           <TabsTrigger value="discover">Discover</TabsTrigger>
           <TabsTrigger value="help">Help</TabsTrigger>
@@ -424,6 +479,242 @@ export default function ImportSettings() {
           )}
         </TabsContent>
 
+        <TabsContent value="romm" className="space-y-4">
+          {localRommConfig && (
+            <Card>
+              <CardContent className="pt-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label>Route ROM imports to RomM</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Games with a configured RomM platform slug are imported into this library.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={localRommConfig.enabled}
+                    onCheckedChange={(enabled) =>
+                      setLocalRommConfig({ ...localRommConfig, enabled })
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>RomM ROM library root</Label>
+                  <Input
+                    value={localRommConfig.libraryRoot}
+                    onChange={(event) =>
+                      setLocalRommConfig({ ...localRommConfig, libraryRoot: event.target.value })
+                    }
+                    placeholder="/romm/library/roms"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use the path as mounted inside Questarr. Platform folders are created below it.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Platform folders</Label>
+                    <Select
+                      value={localRommConfig.platformRoutingMode}
+                      onValueChange={(value) =>
+                        setLocalRommConfig({
+                          ...localRommConfig,
+                          platformRoutingMode: value as RomMConfig["platformRoutingMode"],
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="slug-subfolder">RomM platform slug</SelectItem>
+                        <SelectItem value="binding-map">Custom folder bindings</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Transfer mode</Label>
+                    <Select
+                      value={localRommConfig.moveMode}
+                      onValueChange={(value) =>
+                        setLocalRommConfig({
+                          ...localRommConfig,
+                          moveMode: value as RomMConfig["moveMode"],
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="move">Move</SelectItem>
+                        <SelectItem value="copy">Copy</SelectItem>
+                        <SelectItem value="hardlink">Hardlink</SelectItem>
+                        <SelectItem value="symlink">Symlink</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Existing game policy</Label>
+                    <Select
+                      value={localRommConfig.conflictPolicy}
+                      onValueChange={(value) =>
+                        setLocalRommConfig({
+                          ...localRommConfig,
+                          conflictPolicy: value as RomMConfig["conflictPolicy"],
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="rename">Keep both with a new name</SelectItem>
+                        <SelectItem value="skip">Skip</SelectItem>
+                        <SelectItem value="overwrite">Replace existing</SelectItem>
+                        <SelectItem value="fail">Ask for review</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Single ROM placement</Label>
+                    <Select
+                      value={localRommConfig.singleFilePlacement}
+                      onValueChange={(value) =>
+                        setLocalRommConfig({
+                          ...localRommConfig,
+                          singleFilePlacement: value as RomMConfig["singleFilePlacement"],
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="root">In the platform folder</SelectItem>
+                        <SelectItem value="subfolder">In a game folder</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Unmapped platform behavior</Label>
+                    <Select
+                      value={localRommConfig.bindingMissingBehavior}
+                      onValueChange={(value) =>
+                        setLocalRommConfig({
+                          ...localRommConfig,
+                          bindingMissingBehavior: value as RomMConfig["bindingMissingBehavior"],
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="fallback">Use the platform slug</SelectItem>
+                        <SelectItem value="error">Require a custom binding</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {localRommConfig.platformRoutingMode === "binding-map" && (
+                  <div className="space-y-1.5">
+                    <Label>Platform folder bindings (JSON)</Label>
+                    <textarea
+                      className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+                      value={rommBindingsText}
+                      onChange={(event) => {
+                        setRommBindingsText(event.target.value);
+                        try {
+                          const platformBindings = JSON.parse(event.target.value) as Record<
+                            string,
+                            string
+                          >;
+                          setLocalRommConfig({ ...localRommConfig, platformBindings });
+                        } catch {
+                          // Keep the last valid map until the JSON is corrected.
+                        }
+                      }}
+                      onBlur={() => {
+                        try {
+                          const parsed = JSON.parse(rommBindingsText) as Record<string, string>;
+                          setRommBindingsText(JSON.stringify(parsed, null, 2));
+                        } catch {
+                          setRommBindingsText(
+                            JSON.stringify(localRommConfig.platformBindings, null, 2)
+                          );
+                        }
+                      }}
+                      aria-label="RomM platform folder bindings"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Keys are RomM platform slugs; values are relative folders under the library
+                      root.
+                    </p>
+                  </div>
+                )}
+                <div className="space-y-3">
+                  <div>
+                    <Label>Platform slug mappings</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Set each IGDB platform's ROMarr/RomM folder slug. Blank slugs keep that system
+                      in the PC library.
+                    </p>
+                  </div>
+                  {platformMappings.length === 0 ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={initializePlatformMappingsMutation.isPending}
+                      onClick={() => initializePlatformMappingsMutation.mutate()}
+                    >
+                      Load default platform mappings
+                    </Button>
+                  ) : (
+                    <div className="max-h-64 space-y-2 overflow-y-auto rounded-md border p-3">
+                      {platformMappings.map((mapping) => (
+                        <div
+                          key={mapping.id}
+                          className="grid grid-cols-[1fr_1fr] items-center gap-3"
+                        >
+                          <span className="truncate text-sm">
+                            {igdbPlatforms.find(
+                              (platform) => platform.id === mapping.igdbPlatformId
+                            )?.name ?? `IGDB platform ${mapping.igdbPlatformId}`}
+                          </span>
+                          <Input
+                            aria-label={`RomM slug for platform ${mapping.igdbPlatformId}`}
+                            defaultValue={mapping.rommPlatformSlug ?? ""}
+                            placeholder="e.g. ps2"
+                            onBlur={(event) => {
+                              const value = event.target.value.trim();
+                              const rommPlatformSlug = value || null;
+                              if (rommPlatformSlug !== mapping.rommPlatformSlug) {
+                                updatePlatformSlugMutation.mutate({
+                                  id: mapping.id,
+                                  rommPlatformSlug,
+                                });
+                              }
+                            }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    disabled={updateRommConfigMutation.isPending}
+                    onClick={() => updateRommConfigMutation.mutate(localRommConfig)}
+                  >
+                    {updateRommConfigMutation.isPending ? "Saving…" : "Save RomM settings"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
         <TabsContent value="paths" className="space-y-4">
           <PathMappingSettings />
         </TabsContent>
@@ -669,7 +960,7 @@ export default function ImportSettings() {
           }}
           root="/"
           title="Select Library Root"
-          initialPath={localConfig.libraryRoot || "/"}
+          initialPath="/"
         />
       )}
     </div>

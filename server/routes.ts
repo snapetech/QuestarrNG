@@ -1673,34 +1673,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-  // Update personal notes (freeform text, max 10,000 chars, or null to clear)
-  app.patch(
-    "/api/games/:id/notes",
-    sensitiveEndpointLimiter,
-    sanitizeGameId,
-    validateRequest,
-    async (req: Request, res: Response) => {
-      try {
-        const { id } = req.params as { id: string };
-        const userId = req.user!.id;
-        const { notes } = updateGameNotesSchema.parse(req.body);
-
-        const updatedGame = await storage.updateGameNotes(id, userId, notes);
-        if (!updatedGame) {
-          return res.status(404).json({ error: "Game not found" });
-        }
-
-        return res.json(updatedGame);
-      } catch (error) {
-        if (error instanceof z.ZodError) {
-          return respondWithZodError(res, error, "Invalid notes data");
-        }
-        routesLogger.error({ error }, "error updating game notes");
-        return res.status(500).json({ error: "Failed to update notes" });
-      }
-    }
-  );
-
   // Update the per-game download target, or clear it to use the account default.
   app.patch(
     "/api/games/:id/target-platform",

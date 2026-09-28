@@ -24,7 +24,9 @@ export function useGridColumns(storageKey: string, defaultValue = 5) {
   }, [safeGridColumns, gridColumns, setGridColumns]);
 
   const handleGridColumnsChange = useCallback(
-    ([value]: number[]) => setGridColumns(sanitizeGridColumns(value)),
+    ([value]: number[]) => {
+      if (value !== undefined) setGridColumns(sanitizeGridColumns(value));
+    },
     [setGridColumns]
   );
 

@@ -9,10 +9,12 @@ import z from "zod";
 import {
   insertPathMappingSchema,
   insertPlatformMappingSchema,
+  type InsertPlatformMapping,
   updatePathMappingSchema,
   importTransferModeSchema,
   IMPORT_TRANSFER_MODES,
   GAME_LINK_REQUIRED_STATUS,
+  rommConfigSchema,
 } from "../../shared/schema.js";
 import path from "node:path";
 import fs from "fs-extra";
@@ -52,7 +54,10 @@ const importConfigPatchSchema = z
   .strict();
 
 const platformMappingPatchSchema = z
-  .object({ sourcePlatformName: z.string().min(1).max(100) })
+  .object({
+    sourcePlatformName: z.string().min(1).max(100).optional(),
+    rommPlatformSlug: z.string().trim().min(1).max(100).nullable().optional(),
+  })
   .strict();
 
 function isPathInside(root: string, candidate: string): boolean {
@@ -219,7 +224,10 @@ importRouter.post("/mappings/platforms", async (req, res) => {
 
 importRouter.patch("/mappings/platforms/:id", async (req, res) => {
   try {
-    const updates = platformMappingPatchSchema.parse(req.body);
+    const parsedUpdates = platformMappingPatchSchema.parse(req.body);
+    const updates = Object.fromEntries(
+      Object.entries(parsedUpdates).filter(([, value]) => value !== undefined)
+    ) as Partial<InsertPlatformMapping>;
     const updated = await platformMappingService.updateMapping(req.params.id, updates);
     if (updated) {
       return res.json(updated);
@@ -348,6 +356,33 @@ importRouter.patch("/config", async (req, res) => {
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: zodErrorMessage(error) });
     return res.status(500).json({ error: "Failed to update import config" });
+  }
+});
+
+importRouter.get("/romm", async (_req, res) => {
+  try {
+    const userId = res.locals.userId as string;
+    return res.json(await storage.getRomMConfig(userId));
+  } catch (error) {
+    logger.error({ error }, "Error fetching RomM config");
+    return res.status(500).json({ error: "Failed to fetch RomM config" });
+  }
+});
+
+importRouter.patch("/romm", async (req, res) => {
+  try {
+    const userId = res.locals.userId as string;
+    const patch = rommConfigSchema.partial().strict().parse(req.body);
+    const current = await storage.getRomMConfig(userId);
+    const next = rommConfigSchema.parse({ ...current, ...patch });
+    if (path.resolve(next.libraryRoot) === path.parse(path.resolve(next.libraryRoot)).root) {
+      return res.status(400).json({ error: "RomM library root cannot be the filesystem root" });
+    }
+    return res.json(await storage.updateRomMConfig(userId, next));
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ error: zodErrorMessage(error) });
+    logger.error({ error }, "Error updating RomM config");
+    return res.status(500).json({ error: "Failed to update RomM config" });
   }
 });
 
@@ -555,7 +590,13 @@ importRouter.get("/:id/plan", async (req, res) => {
     const userId = res.locals.userId as string;
     const overrideSource =
       typeof req.query.sourcePath === "string" ? req.query.sourcePath : undefined;
-    const plan = await importManager.planConfirmImport(id, overrideSource, userId);
+    const requestedStrategy = req.query.strategy === "romm" ? "romm" : "pc";
+    const plan = await importManager.planConfirmImport(
+      id,
+      overrideSource,
+      userId,
+      requestedStrategy
+    );
     return res.json(plan);
   } catch (error) {
     if (error instanceof Error && error.message.includes("not found"))
@@ -571,7 +612,7 @@ importRouter.post("/:id/confirm", async (req, res) => {
     const userId = res.locals.userId as string;
 
     const schema = z.object({
-      strategy: z.enum(["pc"] as const),
+      strategy: z.enum(["pc", "romm"] as const),
       proposedPath: z.string(),
       originalPath: z.string().optional(),
       transferMode: z.enum(IMPORT_TRANSFER_MODES).optional(),
@@ -589,7 +630,11 @@ importRouter.post("/:id/confirm", async (req, res) => {
 
     const body = schema.parse(req.body);
     const config = await storage.getImportConfig(userId);
-    const targetRoot = config.libraryRoot;
+    const rommConfig = await storage.getRomMConfig(userId);
+    if (body.strategy === "romm" && !rommConfig.enabled) {
+      return res.status(400).json({ error: "RomM imports are disabled" });
+    }
+    const targetRoot = body.strategy === "romm" ? rommConfig.libraryRoot : config.libraryRoot;
     const safeProposedPath = resolveProposedPathWithinRoot(targetRoot, body.proposedPath);
 
     await importManager.confirmImport(
@@ -600,7 +645,8 @@ importRouter.post("/:id/confirm", async (req, res) => {
         proposedPath: safeProposedPath,
         needsReview: false,
         reviewReason: "Manual Confirmation",
-        transferMode: body.transferMode,
+        transferMode:
+          body.transferMode ?? (body.strategy === "romm" ? rommConfig.moveMode : undefined),
         unpack: body.unpack,
         password: body.password,
       },

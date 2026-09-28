@@ -17,6 +17,8 @@ export function makeGame(overrides: Partial<Game> = {}): Game {
     platforms: [],
     targetPlatformId: null,
     targetPlatformName: null,
+    targetOperatingSystem: null,
+    targetArchitecture: null,
     seerrExternalRequestId: null,
     seerrVariant: null,
     seerrCancelled: false,

@@ -82,6 +82,7 @@ export const platformMappings = pgTable("platform_mappings", {
   id: text("id").primaryKey(),
   igdbPlatformId: integer("igdb_platform_id").notNull(),
   sourcePlatformName: text("source_platform_name").notNull(),
+  rommPlatformSlug: text("romm_platform_slug"),
 });
 
 export const userSettings = pgTable("user_settings", {

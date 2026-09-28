@@ -19,6 +19,7 @@ interface FileStats {
 }
 
 interface BrowseResponse {
+  root: string;
   path: string;
   parent: string;
   items: FileStats[];
@@ -30,7 +31,7 @@ interface FileBrowserProps {
   onSelect: (path: string) => void;
   initialPath?: string;
   title?: string;
-  /** Override the server-side browse root (e.g. "/" to browse the full filesystem). Defaults to library root. */
+  /** Browse from a configured library or mapped download root. Defaults to the library root. */
   root?: string;
 }
 
@@ -189,7 +190,11 @@ export function FileBrowser({
           </Button>
           <Button
             onClick={() => {
-              onSelect(currentPath);
+              const relativePath = currentPath.replace(/^[/\\]+/, "");
+              const browseRoot = data?.root ?? "/";
+              onSelect(
+                relativePath ? `${browseRoot.replace(/[/\\]+$/, "")}/${relativePath}` : browseRoot
+              );
               onOpenChange(false);
             }}
           >

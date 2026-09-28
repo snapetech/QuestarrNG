@@ -5,10 +5,6 @@ import { storage } from "../storage.js";
 import { routesLogger as logger } from "../logger.js";
 import { isSensitivePath } from "../path-security.js";
 
-// Allow browsing the entire container filesystem
-// Security is maintained by container isolation and explicit volume mounts
-const FILE_BROWSER_ROOT = path.resolve("/");
-
 function isWithinRoot(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
   return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
@@ -39,28 +35,47 @@ systemRouter.use((req, res, next) => {
   return next();
 });
 
-// GET /api/system/browse?path=/data[&root=/]
-// Optional `root` param overrides the library root, allowing browsing from an arbitrary base
-// (e.g. "/" for path mapping configuration). Defaults to the user's configured library root.
+// Browsing is confined to paths the signed-in user explicitly configured.
 systemRouter.get("/browse", async (req, res) => {
   try {
     const rawPath = (req.query.path as string) || "/";
     const rawRoot = req.query.root as string | undefined;
     const userId = res.locals.userId as string;
 
-    let root: string;
-    if (rawRoot === undefined) {
-      const config = await storage.getImportConfig(userId);
-      root = path.resolve(config.libraryRoot || "/data");
-    } else {
+    const [config, rommConfig, mappings] = await Promise.all([
+      storage.getImportConfig(userId),
+      storage.getRomMConfig(userId),
+      storage.getPathMappings(),
+    ]);
+    const allowedRoots = Array.from(
+      new Set(
+        [
+          config.libraryRoot,
+          ...(rommConfig.enabled ? [rommConfig.libraryRoot] : []),
+          ...mappings.map((mapping) => mapping.localPath),
+        ]
+          .filter(Boolean)
+          .map((candidate) => path.resolve(candidate))
+          .filter((candidate) => candidate !== path.parse(candidate).root)
+      )
+    );
+    const defaultRoot = path.resolve(config.libraryRoot || "/data");
+    let root = defaultRoot;
+    if (rawRoot && rawRoot !== "/") {
       if (rawRoot.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(rawRoot)) {
-        return res.status(400).json({ error: "Invalid root: absolute host paths are not allowed" });
+        return res.status(400).json({ error: "Invalid root: host paths are not allowed" });
       }
       if (rawRoot.split(/[\\/]+/).includes("..")) {
         return res.status(400).json({ error: "Invalid root: traversal detected" });
       }
-      // Resolve against FILE_BROWSER_ROOT to constrain browsing
-      root = path.resolve(FILE_BROWSER_ROOT, rawRoot === "/" ? "." : rawRoot.replace(/^\/+/, ""));
+      const requestedRoot = path.resolve(rawRoot);
+      if (!allowedRoots.includes(requestedRoot)) {
+        return res.status(403).json({ error: "Browsing is limited to configured library paths" });
+      }
+      root = requestedRoot;
+    }
+    if (!allowedRoots.includes(root)) {
+      return res.status(403).json({ error: "No configured library path is available to browse" });
     }
 
     if (rawPath.startsWith("\\\\") || /^[a-zA-Z]:[\\/]/.test(rawPath)) {
@@ -85,14 +100,18 @@ systemRouter.get("/browse", async (req, res) => {
       return res.status(403).json({ error: "Access to this path is not allowed" });
     }
 
-    // Ensure the chosen root is within FILE_BROWSER_ROOT for security
-    if (!isWithinRoot(FILE_BROWSER_ROOT, root)) {
-      return res.status(400).json({ error: "Invalid root: outside file browser scope" });
-    }
-
     // Check if exists
     if (!(await fs.pathExists(validPath))) {
       return res.status(404).json({ error: "Path not found" });
+    }
+
+    const [realRoot, realPath] = await Promise.all([fs.realpath(root), fs.realpath(validPath)]);
+    if (
+      realRoot === path.parse(realRoot).root ||
+      !isWithinRoot(realRoot, realPath) ||
+      isSensitivePath(realPath)
+    ) {
+      return res.status(403).json({ error: "Access to this path is not allowed" });
     }
 
     const stats = await fs.stat(validPath);
@@ -115,6 +134,7 @@ systemRouter.get("/browse", async (req, res) => {
     items.sort(sortDirents);
 
     return res.json({
+      root,
       path: toVirtualPath(root, validPath),
       parent: validPath === root ? null : toVirtualPath(root, path.dirname(validPath)),
       items,

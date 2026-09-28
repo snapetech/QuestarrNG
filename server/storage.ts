@@ -44,6 +44,9 @@ import {
   type PlatformMapping,
   type InsertPlatformMapping,
   type ImportConfig,
+  type RomMConfig,
+  DEFAULT_ROMM_CONFIG,
+  rommConfigSchema,
   importConfigSchema,
   type GameFile,
   type InsertGameFile,
@@ -399,6 +402,8 @@ export interface IStorage {
 
   // Config Accessors (Helper methods)
   getImportConfig(userId?: string): Promise<ImportConfig>;
+  getRomMConfig(userId: string): Promise<RomMConfig>;
+  updateRomMConfig(userId: string, updates: Partial<RomMConfig>): Promise<RomMConfig>;
 
   // Release blacklist methods
   addReleaseBlacklist(entry: InsertReleaseBlacklist): Promise<ReleaseBlacklist>;
@@ -1723,7 +1728,11 @@ export class MemStorage implements IStorage {
 
   async addPlatformMapping(insertMapping: InsertPlatformMapping): Promise<PlatformMapping> {
     const id = randomUUID();
-    const mapping: PlatformMapping = { ...insertMapping, id };
+    const mapping: PlatformMapping = {
+      ...insertMapping,
+      rommPlatformSlug: insertMapping.rommPlatformSlug ?? null,
+      id,
+    };
     this.platformMappings.set(id, mapping);
     return mapping;
   }
@@ -1748,7 +1757,15 @@ export class MemStorage implements IStorage {
   ): Promise<PlatformMapping | undefined> {
     const existing = this.platformMappings.get(id);
     if (!existing) return undefined;
-    const updated = { ...existing, ...updates };
+    const updated: PlatformMapping = {
+      ...existing,
+      ...(updates.sourcePlatformName !== undefined
+        ? { sourcePlatformName: updates.sourcePlatformName }
+        : {}),
+      ...(updates.rommPlatformSlug !== undefined
+        ? { rommPlatformSlug: updates.rommPlatformSlug }
+        : {}),
+    };
     this.platformMappings.set(id, updated);
     return updated;
   }
@@ -1763,6 +1780,23 @@ export class MemStorage implements IStorage {
       ? Array.from(this.userSettings.values()).find((s) => s.userId === userId)
       : this.userSettings.values().next().value;
     return buildImportConfigFromSettings(scopedSettings);
+  }
+
+  async getRomMConfig(userId: string): Promise<RomMConfig> {
+    const raw = this.systemConfig.get(`romm_config:${userId}`);
+    if (!raw) return DEFAULT_ROMM_CONFIG;
+    try {
+      const parsed = rommConfigSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : DEFAULT_ROMM_CONFIG;
+    } catch {
+      return DEFAULT_ROMM_CONFIG;
+    }
+  }
+
+  async updateRomMConfig(userId: string, updates: Partial<RomMConfig>): Promise<RomMConfig> {
+    const next = rommConfigSchema.parse({ ...(await this.getRomMConfig(userId)), ...updates });
+    this.systemConfig.set(`romm_config:${userId}`, JSON.stringify(next));
+    return next;
   }
 
   async addReleaseBlacklist(entry: InsertReleaseBlacklist): Promise<ReleaseBlacklist> {
@@ -2177,6 +2211,23 @@ export class DatabaseStorage implements IStorage {
     return firstOrThrow(rows);
   }
 
+  async getRomMConfig(userId: string): Promise<RomMConfig> {
+    const raw = await this.getSystemConfig(`romm_config:${userId}`);
+    if (!raw) return DEFAULT_ROMM_CONFIG;
+    try {
+      const parsed = rommConfigSchema.safeParse(JSON.parse(raw));
+      return parsed.success ? parsed.data : DEFAULT_ROMM_CONFIG;
+    } catch {
+      return DEFAULT_ROMM_CONFIG;
+    }
+  }
+
+  async updateRomMConfig(userId: string, updates: Partial<RomMConfig>): Promise<RomMConfig> {
+    const next = rommConfigSchema.parse({ ...(await this.getRomMConfig(userId)), ...updates });
+    await this.setSystemConfig(`romm_config:${userId}`, JSON.stringify(next));
+    return next;
+  }
+
   async seedPlatformMappingsIfEmpty(
     mappings: InsertPlatformMapping[]
   ): Promise<{ seeded: boolean; count: number }> {
@@ -2442,11 +2493,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addGameJournalEntry(entry: InsertGameJournalEntry): Promise<GameJournalEntry> {
-    const [journalEntry] = await db
+    const rows = await db
       .insert(gameJournalEntries)
       .values({ id: randomUUID(), ...entry })
       .returning();
-    return journalEntry;
+    return firstOrThrow(rows);
   }
 
   async deleteGameJournalEntry(id: string, userId: string): Promise<boolean> {
@@ -2466,11 +2517,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async addGameMilestone(milestone: InsertGameMilestone): Promise<GameMilestone> {
-    const [gameMilestone] = await db
+    const rows = await db
       .insert(gameMilestones)
       .values({ id: randomUUID(), ...milestone })
       .returning();
-    return gameMilestone;
+    return firstOrThrow(rows);
   }
 
   async updateGameMilestone(
@@ -2508,7 +2559,7 @@ export class DatabaseStorage implements IStorage {
     filePath: string;
     caption?: string | null;
   }): Promise<GameScreenshot> {
-    const [gameScreenshot] = await db
+    const rows = await db
       .insert(gameScreenshots)
       .values({
         id: randomUUID(),
@@ -2518,7 +2569,7 @@ export class DatabaseStorage implements IStorage {
         caption: screenshot.caption ?? null,
       })
       .returning();
-    return gameScreenshot;
+    return firstOrThrow(rows);
   }
 
   async updateGameScreenshotCaption(

@@ -17,11 +17,12 @@ import { resolveDownloadRelativePath, buildRemoteImportPath } from "../downloade
 import fs from "fs-extra";
 import path from "node:path";
 import { parseReleaseMetadata } from "../../shared/title-utils.js";
-import { GAME_LINK_REQUIRED_STATUS } from "../../shared/schema.js";
+import { GAME_LINK_REQUIRED_STATUS, type RomMConfig } from "../../shared/schema.js";
 import { logger } from "../logger.js";
 import { extractHostnameFromUrl } from "../url-utils.js";
 import { isSensitivePath, assertWithinRoots } from "../path-security.js";
 import { notifyUser } from "../socket.js";
+import { resolveRommPlatformDir } from "./RommRouting.js";
 
 const RELEASE_PLATFORM_TO_IGDB_ID: Record<string, number> = {
   nes: 18,
@@ -124,6 +125,51 @@ export class ImportManager {
     return undefined;
   }
 
+  private async getRommPlatformSlug(
+    game: { platforms?: unknown },
+    downloadTitle: string
+  ): Promise<string | undefined> {
+    const releasePlatformId = this.getReleasePlatformIgdbId(
+      this.getReleasePlatformKey(downloadTitle)
+    );
+    const platformId = releasePlatformId ?? this.getPrimaryPlatformId(game);
+    if (platformId === undefined) return undefined;
+    return (await this.storage.getPlatformMapping(platformId))?.rommPlatformSlug ?? undefined;
+  }
+
+  private getRommPlatformDir(config: RomMConfig, slug: string): string {
+    return resolveRommPlatformDir({
+      libraryRoot: config.libraryRoot,
+      fsSlug: slug,
+      routingMode: config.platformRoutingMode,
+      bindings: config.platformBindings,
+      bindingMissingBehavior: config.bindingMissingBehavior,
+    });
+  }
+
+  private async resolveRommConflictPath(
+    destination: string,
+    conflictPolicy: RomMConfig["conflictPolicy"],
+    applyOverwrite = false
+  ): Promise<string | null> {
+    if (!(await fs.pathExists(destination))) return destination;
+    if (conflictPolicy === "skip") return null;
+    if (conflictPolicy === "fail")
+      throw new Error(`RomM destination already exists: ${destination}`);
+    if (conflictPolicy === "overwrite") {
+      if (applyOverwrite) await fs.remove(destination);
+      return destination;
+    }
+
+    const extension = path.extname(destination);
+    const stem = extension ? destination.slice(0, -extension.length) : destination;
+    for (let suffix = 2; suffix <= MAX_PATH_RETRY + 1; suffix += 1) {
+      const candidate = `${stem} (${suffix})${extension}`;
+      if (!(await fs.pathExists(candidate))) return candidate;
+    }
+    throw new Error(`Could not find a free RomM destination for ${destination}`);
+  }
+
   private isPlatformEnabled(platformId: number | undefined, allowed: number[]): boolean {
     if (!platformId) return allowed.length === 0;
     return allowed.length === 0 || allowed.includes(platformId);
@@ -182,6 +228,31 @@ export class ImportManager {
       "Refusing to process a path outside the configured downloader roots"
     );
 
+    const stats = await fs.stat(sourcePath);
+
+    if (!stats.isDirectory()) {
+      if (!this.archiveService.isArchive(sourcePath)) return null;
+      return {
+        archivePath: sourcePath,
+        isDirectorySource: false,
+        alreadyExtracted: false,
+        excludePaths: new Set(),
+        hasRemainingFiles: false,
+      };
+    }
+
+    const entries = await fs.readdir(sourcePath);
+    const archiveEntries = entries.filter((name) => this.archiveService.isArchive(name)).sort();
+    if (archiveEntries.length === 0) return null;
+
+    // Lexicographic sort puts "Game.r00" before "Game.rar" (since '0' < 'a'), but
+    // 7-Zip/unrar expect the plain .rar file as the entry point for classic RAR
+    // multi-volume sets — .r00/.r01/... are continuations, not the first volume. Only
+    // promote a .rar when the current first entry is actually one of ITS continuations
+    // (same stem) — otherwise an unrelated .rar elsewhere in the directory (a second,
+    // independent archive set) could jump the queue ahead of a correctly-ordered one.
+    const continuationMatch = /^(.*)\.r\d{2,3}$/i.exec(archiveEntries[0]!);
+    if (continuationMatch?.[1]) {
       const stem = continuationMatch[1].toLowerCase();
       const primaryRarIndex = archiveEntries.findIndex(
         (name) => /\.rar$/i.test(name) && name.slice(0, -".rar".length).toLowerCase() === stem
@@ -713,8 +784,13 @@ export class ImportManager {
       const archiveResolution = config.autoUnpack ? await this.resolveArchive(localPath) : null;
       const needsExtraction = !!archiveResolution && !archiveResolution.alreadyExtracted;
 
+      const rommConfig = await this.storage.getRomMConfig(game.userId ?? "");
+      const rommSlug = rommConfig.enabled
+        ? await this.getRommPlatformSlug(game, download.downloadTitle || "")
+        : undefined;
       const strategy = new PCImportStrategy(await this.pathService.getConfiguredRoots());
-      const libraryRoot = config.libraryRoot || "/data";
+      const isRommImport = !!rommSlug;
+      const libraryRoot = isRommImport ? rommConfig.libraryRoot : config.libraryRoot || "/data";
 
       if (
         this.shouldSkipPCPlatform(
@@ -730,7 +806,9 @@ export class ImportManager {
 
       await fs.ensureDir(libraryRoot);
 
-      const platformDir = this.resolvePlatformFolderName(download.downloadTitle || "", game);
+      const platformDir = isRommImport
+        ? path.relative(libraryRoot, this.getRommPlatformDir(rommConfig, rommSlug!))
+        : this.resolvePlatformFolderName(download.downloadTitle || "", game);
       const plan = await strategy.planImport(
         localPath,
         game,
@@ -741,6 +819,35 @@ export class ImportManager {
           ? { treatAsDirectory: true }
           : undefined
       );
+      if (isRommImport) {
+        plan.strategy = "romm";
+        plan.fileCategories = undefined;
+        const sourceStats = await fs.stat(localPath);
+        if (
+          !sourceStats.isDirectory() &&
+          !needsExtraction &&
+          rommConfig.singleFilePlacement === "subfolder"
+        ) {
+          plan.proposedPath = path.join(
+            libraryRoot,
+            platformDir,
+            sanitizeFsName(game.title),
+            path.basename(localPath)
+          );
+        }
+        const resolvedDestination = await this.resolveRommConflictPath(
+          plan.proposedPath,
+          rommConfig.conflictPolicy,
+          true
+        );
+        if (resolvedDestination === null) {
+          logger.info({ downloadId }, "[ImportManager] Skipping existing RomM destination");
+          await this.storage.updateGameDownloadStatus(downloadId, "completed");
+          return;
+        }
+        plan.proposedPath = resolvedDestination;
+        plan.needsReview = false;
+      }
 
       if (plan.needsReview) {
         await this.flagNeedsReview(downloadId, game, plan);
@@ -760,15 +867,15 @@ export class ImportManager {
       await this.storage.updateGameDownloadStatus(downloadId, "completed_pending_import");
       const result = await this.transferWithUnpack(
         plan,
-        config.transferMode,
+        isRommImport ? rommConfig.moveMode : config.transferMode,
         archiveResolution,
         game,
         password,
-        config.sortExtras
+        isRommImport ? false : config.sortExtras
       );
 
       await this.finalizeImport(downloadId, game, result.destDir);
-      await this.autoDeleteIfConfigured(downloadId, download, game, config);
+      if (!isRommImport) await this.autoDeleteIfConfigured(downloadId, download, game, config);
     } catch (err) {
       logger.error({ err, downloadId }, "[ImportManager] Import failed");
       try {
@@ -809,7 +916,8 @@ export class ImportManager {
   async planConfirmImport(
     downloadId: string,
     overrideSourcePath?: string,
-    callerUserId?: string
+    callerUserId?: string,
+    requestedStrategy: "pc" | "romm" = "pc"
   ): Promise<{
     originalPath: string | null;
     proposedPath: string;
@@ -824,7 +932,19 @@ export class ImportManager {
     if (!game) throw new Error(`Game not found for download ${downloadId}`);
 
     const config = await this.storage.getImportConfig(game.userId ?? undefined);
-    const libraryRoot = config.libraryRoot || "/data";
+    const rommConfig = await this.storage.getRomMConfig(game.userId ?? callerUserId ?? "");
+    if (requestedStrategy === "romm" && !rommConfig.enabled) {
+      throw new Error("RomM imports are disabled");
+    }
+    const rommSlug =
+      requestedStrategy === "romm"
+        ? await this.getRommPlatformSlug(game, download.downloadTitle || "")
+        : undefined;
+    if (requestedStrategy === "romm" && !rommSlug) {
+      throw new Error("No RomM platform slug is configured for this game");
+    }
+    const libraryRoot =
+      requestedStrategy === "romm" ? rommConfig.libraryRoot : config.libraryRoot || "/data";
 
     let resolvedOriginalPath: string | null = null;
     try {
@@ -834,7 +954,10 @@ export class ImportManager {
       // Source resolution failed — still return a proposed path based on game title
     }
 
-    const platformDir = this.resolvePlatformFolderName(download.downloadTitle || "", game);
+    const platformDir =
+      requestedStrategy === "romm"
+        ? path.relative(libraryRoot, this.getRommPlatformDir(rommConfig, rommSlug!))
+        : this.resolvePlatformFolderName(download.downloadTitle || "", game);
     const fallbackProposedPath = path.join(libraryRoot, platformDir, sanitizeFsName(game.title));
 
     if (resolvedOriginalPath) {
@@ -848,6 +971,25 @@ export class ImportManager {
           config,
           platformDir
         );
+        if (requestedStrategy === "romm") {
+          plan.strategy = "romm";
+          const sourceStats = await fs.stat(resolvedOriginalPath);
+          if (!sourceStats.isDirectory() && rommConfig.singleFilePlacement === "subfolder") {
+            plan.proposedPath = path.join(
+              libraryRoot,
+              platformDir,
+              sanitizeFsName(game.title),
+              path.basename(resolvedOriginalPath)
+            );
+          }
+          if (rommConfig.conflictPolicy === "rename") {
+            const resolvedDestination = await this.resolveRommConflictPath(
+              plan.proposedPath,
+              rommConfig.conflictPolicy
+            );
+            if (resolvedDestination) plan.proposedPath = resolvedDestination;
+          }
+        }
         return {
           originalPath: resolvedOriginalPath,
           proposedPath: plan.proposedPath,
@@ -879,6 +1021,7 @@ export class ImportManager {
   async confirmImport(
     downloadId: string,
     overridePlan?: ImportReview & {
+      strategy: "pc" | "romm";
       transferMode?: "move" | "copy" | "hardlink" | "symlink" | undefined;
       unpack?: boolean | undefined;
       password?: string | undefined;
@@ -924,6 +1067,12 @@ export class ImportManager {
     }
 
     const config = await this.storage.getImportConfig(game.userId ?? undefined);
+    const rommConfig = await this.storage.getRomMConfig(game.userId ?? callerUserId ?? "");
+    if (overridePlan.strategy === "romm" && !rommConfig.enabled) {
+      throw new Error("RomM imports are disabled");
+    }
+    const targetRoot =
+      overridePlan.strategy === "romm" ? rommConfig.libraryRoot : config.libraryRoot;
 
     if (!overridePlan.proposedPath) {
       throw new Error("Proposed path is required for import validation");
@@ -946,7 +1095,7 @@ export class ImportManager {
       }
     }
 
-    const resolvedRoot = path.resolve(config.libraryRoot);
+    const resolvedRoot = path.resolve(targetRoot);
     const resolvedTarget = path.resolve(proposedPath);
     const insideRoot =
       resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + path.sep);
@@ -954,7 +1103,22 @@ export class ImportManager {
       throw new Error("Proposed path is outside configured library root");
     }
 
-    const transferMode = overridePlan.transferMode ?? config.transferMode;
+    if (overridePlan.strategy === "romm") {
+      const resolvedConflict = await this.resolveRommConflictPath(
+        resolvedTarget,
+        rommConfig.conflictPolicy,
+        true
+      );
+      if (resolvedConflict === null) {
+        await this.storage.updateGameDownloadStatus(downloadId, "completed");
+        return;
+      }
+      proposedPath = resolvedConflict;
+    }
+
+    const transferMode =
+      overridePlan.transferMode ??
+      (overridePlan.strategy === "romm" ? rommConfig.moveMode : config.transferMode);
 
     const planToExecute: ImportReview = {
       ...overridePlan,
@@ -968,7 +1132,7 @@ export class ImportManager {
     };
 
     const strategy = new PCImportStrategy(await this.pathService.getConfiguredRoots());
-    if (config.sortExtras && !needsExtraction) {
+    if (overridePlan.strategy === "pc" && config.sortExtras && !needsExtraction) {
       const categorizedPlan = await strategy.planImport(
         resolvedOriginalPath,
         game,

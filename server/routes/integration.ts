@@ -594,8 +594,8 @@ integrationRouter.post(
         const recovered = await quickAddGameByTitle(req.user!.id, ledger.title, {
           status: "wanted",
           source: "api",
-          targetOperatingSystem: ledger.operatingSystem ?? undefined,
-          targetArchitecture: ledger.architecture ?? undefined,
+          targetOperatingSystem: ledger.operatingSystem,
+          targetArchitecture: ledger.architecture,
           seerrExternalRequestId: externalRequestId.data,
           seerrVariant: {
             operatingSystem: ledger.operatingSystem as "windows" | "linux" | "macos",

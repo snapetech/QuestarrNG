@@ -22,6 +22,7 @@ export const platformMappings = sqliteTable("platform_mappings", {
   id: text("id").primaryKey(),
   igdbPlatformId: integer("igdb_platform_id").notNull(),
   sourcePlatformName: text("source_platform_name").notNull(),
+  rommPlatformSlug: text("romm_platform_slug"),
 });
 
 export const userSettings = sqliteTable("user_settings", {
@@ -98,6 +99,7 @@ export const updatePathMappingSchema = z.object({
 export const insertPlatformMappingSchema = z.object({
   igdbPlatformId: z.number().int(),
   sourcePlatformName: z.string().min(1),
+  rommPlatformSlug: z.string().trim().min(1).max(100).nullable().optional(),
 });
 
 export type PathMapping = typeof pathMappings.$inferSelect;
@@ -122,6 +124,42 @@ export interface ImportConfig {
   autoDeleteAfterImport: boolean;
   sortExtras: boolean;
 }
+
+export const ROMM_PLATFORM_ROUTING_MODES = ["slug-subfolder", "binding-map"] as const;
+export const ROMM_MOVE_MODES = ["copy", "move", "hardlink", "symlink"] as const;
+export const ROMM_CONFLICT_POLICIES = ["skip", "overwrite", "rename", "fail"] as const;
+export const ROMM_SINGLE_FILE_PLACEMENTS = ["root", "subfolder"] as const;
+export const ROMM_BINDING_MISSING_BEHAVIORS = ["fallback", "error"] as const;
+
+export type RomMPlatformRoutingMode = (typeof ROMM_PLATFORM_ROUTING_MODES)[number];
+export type RomMMoveMode = (typeof ROMM_MOVE_MODES)[number];
+export type RomMConflictPolicy = (typeof ROMM_CONFLICT_POLICIES)[number];
+export type RomMSingleFilePlacement = (typeof ROMM_SINGLE_FILE_PLACEMENTS)[number];
+export type RomMBindingMissingBehavior = (typeof ROMM_BINDING_MISSING_BEHAVIORS)[number];
+
+export const rommConfigSchema = z.object({
+  enabled: z.boolean(),
+  libraryRoot: z.string().min(1).max(1024),
+  platformRoutingMode: z.enum(ROMM_PLATFORM_ROUTING_MODES),
+  platformBindings: z.record(z.string(), z.string()),
+  moveMode: z.enum(ROMM_MOVE_MODES),
+  conflictPolicy: z.enum(ROMM_CONFLICT_POLICIES),
+  singleFilePlacement: z.enum(ROMM_SINGLE_FILE_PLACEMENTS),
+  bindingMissingBehavior: z.enum(ROMM_BINDING_MISSING_BEHAVIORS),
+});
+
+export type RomMConfig = z.infer<typeof rommConfigSchema>;
+
+export const DEFAULT_ROMM_CONFIG: RomMConfig = {
+  enabled: false,
+  libraryRoot: "/data/romm/library/roms",
+  platformRoutingMode: "slug-subfolder",
+  platformBindings: {},
+  moveMode: "move",
+  conflictPolicy: "rename",
+  singleFilePlacement: "root",
+  bindingMissingBehavior: "fallback",
+};
 
 // gameDownloads.status value for a download whose linked game record can't be
 // found. Kept as a shared constant (rather than the literal repeated across

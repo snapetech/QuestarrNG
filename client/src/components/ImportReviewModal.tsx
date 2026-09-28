@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import type { ImportConfig } from "@shared/schema";
+import type { ImportConfig, RomMConfig } from "@shared/schema";
 import {
   Dialog,
   DialogContent,
@@ -50,9 +50,10 @@ export default function ImportReviewModal({
   const { data: importConfig } = useQuery<ImportConfig>({
     queryKey: ["/api/imports/config"],
   });
+  const { data: rommConfig } = useQuery<RomMConfig>({ queryKey: ["/api/imports/romm"] });
 
   // State
-  const [strategy] = useState<"pc">("pc");
+  const [strategy, setStrategy] = useState<"pc" | "romm">("pc");
   const [sourcePath, setSourcePath] = useState("");
   const [destinationPath, setDestinationPath] = useState("");
   const [transferMode, setTransferMode] = useState<"move" | "copy" | "hardlink" | "symlink">(
@@ -65,9 +66,7 @@ export default function ImportReviewModal({
 
   const planApplied = useRef(false);
 
-  const planUrl = sourcePath
-    ? `/api/imports/${downloadId}/plan?sourcePath=${encodeURIComponent(sourcePath)}`
-    : `/api/imports/${downloadId}/plan`;
+  const planUrl = `/api/imports/${downloadId}/plan?strategy=${strategy}${sourcePath ? `&sourcePath=${encodeURIComponent(sourcePath)}` : ""}`;
 
   const { data: planData } = useQuery<{
     originalPath: string;
@@ -80,13 +79,13 @@ export default function ImportReviewModal({
     enabled: open,
     retry: false,
     staleTime: 30_000,
-    placeholderData: keepPreviousData,
   });
 
   // Reset state on open, defaulting transfer mode to the user's configured setting
   useEffect(() => {
     if (open) {
       planApplied.current = false;
+      setStrategy("pc");
       setSourcePath("");
       setDestinationPath(importConfig?.libraryRoot ?? "");
       setTransferMode(importConfig?.transferMode ?? "move");
@@ -96,6 +95,27 @@ export default function ImportReviewModal({
       setPassword("");
     }
   }, [open, downloadId, importConfig?.libraryRoot, importConfig?.transferMode, passwordRequired]);
+
+  useEffect(() => {
+    planApplied.current = false;
+    if (strategy === "romm") {
+      setDestinationPath(rommConfig?.libraryRoot ?? "");
+      setTransferMode(rommConfig?.moveMode ?? "move");
+    } else {
+      setDestinationPath(importConfig?.libraryRoot ?? "");
+      setTransferMode(importConfig?.transferMode ?? "move");
+    }
+  }, [
+    strategy,
+    rommConfig?.libraryRoot,
+    rommConfig?.moveMode,
+    importConfig?.libraryRoot,
+    importConfig?.transferMode,
+  ]);
+
+  useEffect(() => {
+    planApplied.current = false;
+  }, [sourcePath, strategy]);
 
   // Pre-fill paths from plan once when it loads
   useEffect(() => {
@@ -167,7 +187,8 @@ export default function ImportReviewModal({
       });
       return;
     }
-    const libraryRoot = importConfig?.libraryRoot ?? "";
+    const libraryRoot =
+      strategy === "romm" ? (rommConfig?.libraryRoot ?? "") : (importConfig?.libraryRoot ?? "");
     if (libraryRoot && destinationPath === libraryRoot) {
       toast({
         title: "Validation Error",
@@ -200,6 +221,23 @@ export default function ImportReviewModal({
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {rommConfig?.enabled && (
+              <div className="space-y-2">
+                <Label>Import destination</Label>
+                <Select
+                  value={strategy}
+                  onValueChange={(value) => setStrategy(value as "pc" | "romm")}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pc">PC game library</SelectItem>
+                    <SelectItem value="romm">RomM ROM library</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             {/* Source Path */}
             <div className="space-y-2">
               <Label htmlFor="import-review-source-path">
@@ -370,7 +408,7 @@ export default function ImportReviewModal({
         open={isSourceBrowserOpen}
         onOpenChange={setIsSourceBrowserOpen}
         onSelect={(path) => setSourcePath(path)}
-        initialPath={sourcePath || "/"}
+        initialPath="/"
         title="Select Source"
         root="/"
       />
@@ -378,9 +416,9 @@ export default function ImportReviewModal({
         open={isDestBrowserOpen}
         onOpenChange={setIsDestBrowserOpen}
         onSelect={(path) => setDestinationPath(path)}
-        initialPath={destinationPath || importConfig?.libraryRoot || "/"}
+        initialPath="/"
         title="Select Destination"
-        root="/"
+        root={strategy === "romm" ? (rommConfig?.libraryRoot ?? "/") : "/"}
       />
     </>
   );

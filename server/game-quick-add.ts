@@ -40,6 +40,8 @@ export async function quickAddGameByTitle(
     igdbId?: number;
     seerrExternalRequestId?: string;
     seerrVariant?: NonNullable<Game["seerrVariant"]>;
+    targetOperatingSystem?: Game["targetOperatingSystem"];
+    targetArchitecture?: Game["targetArchitecture"];
   } = {}
 ): Promise<QuickAddResult> {
   const igdbResult = options.igdbId
@@ -90,6 +92,12 @@ export async function quickAddGameByTitle(
       ? { seerrExternalRequestId: options.seerrExternalRequestId }
       : {}),
     ...(options.seerrVariant ? { seerrVariant: options.seerrVariant } : {}),
+    ...(options.targetOperatingSystem !== undefined
+      ? { targetOperatingSystem: options.targetOperatingSystem }
+      : {}),
+    ...(options.targetArchitecture !== undefined
+      ? { targetArchitecture: options.targetArchitecture }
+      : {}),
     platforms: match.platforms,
     genres: match.genres,
     themes: match.themes,
@@ -127,6 +135,12 @@ export async function quickAddGameByTitle(
               targetPlatformId: matchedPlatform.id,
               targetPlatformName: matchedPlatform.name,
             }
+          : {}),
+        ...(options.targetOperatingSystem !== undefined
+          ? { targetOperatingSystem: options.targetOperatingSystem }
+          : {}),
+        ...(options.targetArchitecture !== undefined
+          ? { targetArchitecture: options.targetArchitecture }
           : {}),
         ...(existingGame.seerrCancelled || existingGame.status === "shelved"
           ? { status: options.status ?? "wanted" }
