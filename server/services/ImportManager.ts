@@ -182,31 +182,6 @@ export class ImportManager {
       "Refusing to process a path outside the configured downloader roots"
     );
 
-    const stats = await fs.stat(sourcePath);
-
-    if (!stats.isDirectory()) {
-      if (!this.archiveService.isArchive(sourcePath)) return null;
-      return {
-        archivePath: sourcePath,
-        isDirectorySource: false,
-        alreadyExtracted: false,
-        excludePaths: new Set(),
-        hasRemainingFiles: false,
-      };
-    }
-
-    const entries = await fs.readdir(sourcePath);
-    const archiveEntries = entries.filter((name) => this.archiveService.isArchive(name)).sort();
-    if (archiveEntries.length === 0) return null;
-
-    // Lexicographic sort puts "Game.r00" before "Game.rar" (since '0' < 'a'), but
-    // 7-Zip/unrar expect the plain .rar file as the entry point for classic RAR
-    // multi-volume sets — .r00/.r01/... are continuations, not the first volume. Only
-    // promote a .rar when the current first entry is actually one of ITS continuations
-    // (same stem) — otherwise an unrelated .rar elsewhere in the directory (a second,
-    // independent archive set) could jump the queue ahead of a correctly-ordered one.
-    const continuationMatch = /^(.*)\.r\d{2,3}$/i.exec(archiveEntries[0]!);
-    if (continuationMatch?.[1]) {
       const stem = continuationMatch[1].toLowerCase();
       const primaryRarIndex = archiveEntries.findIndex(
         (name) => /\.rar$/i.test(name) && name.slice(0, -".rar".length).toLowerCase() === stem

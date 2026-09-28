@@ -490,67 +490,6 @@ export class PCImportStrategy implements ImportStrategy {
       "Refusing to process a path outside the configured downloader roots"
     );
 
-    if (review.fileCategories && review.fileCategories.length > 0) {
-      const filesPlaced: string[] = [];
-      const conflictsResolved: string[] = [];
-      // Keep modeUsed as the originally-requested batch mode: a per-file fallback
-      // (e.g. hardlink -> copy for one file among many) is recorded per-entry in
-      // conflictsResolved instead, so it isn't lost by being overwritten here.
-      const modeUsed: TransferMode = transferMode;
-
-      const plannedTransfers = review.fileCategories
-        .map((entry) => ({
-          entry,
-          sourceFile: resolveContainedPath(
-            review.originalPath,
-            path.join(review.originalPath, entry.name)
-          ),
-          destinationFile: resolveContainedPath(
-            review.proposedPath,
-            destinationForFile(review.proposedPath, entry)
-          ),
-        }))
-        // Excluded entries (e.g. a raw archive already extracted straight to the
-        // destination) stay untransferred — same as the plain-directory path below.
-        .filter(({ sourceFile }) => !excludePaths?.has(path.resolve(sourceFile)));
-
-      // If exclusions consumed the entire plan (isAlreadyExtracted's match doesn't
-      // guarantee any file survives outside the excluded volume set), fail loudly the
-      // same way transferDirectoryPerFile does — silently "succeeding" with an empty
-      // filesPlaced would still finalize the import and, in move mode, remove
-      // originalPath below despite having transferred nothing.
-      if (plannedTransfers.length === 0) {
-        throw new Error("No files to transfer after applying exclusions");
-      }
-
-      const destinations = new Set<string>();
-      for (const { destinationFile } of plannedTransfers) {
-        const resolvedDestination = path.resolve(destinationFile);
-        if (destinations.has(resolvedDestination)) {
-          throw new Error(`Duplicate import destination: ${resolvedDestination}`);
-        }
-        destinations.add(resolvedDestination);
-      }
-
-      // The check above only catches planned destinations colliding with each other.
-      // For this transfer mode (unpackViaLinkedExtraction), destination can already
-      // hold files an archive extracted straight into it before this runs, and
-      // transferSingleFile's unconditional overwrite would otherwise silently replace
-      // an extracted file with an unrelated loose one of the same name — the same
-      // failure mode transferDirectoryPerFile guards against above.
-      for (const { destinationFile } of plannedTransfers) {
-        if (await fs.pathExists(destinationFile)) {
-          throw new Error(`Destination already exists, refusing to overwrite: ${destinationFile}`);
-        }
-      }
-
-      for (const { entry, sourceFile, destinationFile } of plannedTransfers) {
-        const entryMode = await transferSingleFile(
-          sourceFile,
-          destinationFile,
-          transferMode,
-          review.proposedPath
-        );
         filesPlaced.push(destinationFile);
         if (entryMode !== transferMode) {
           conflictsResolved.push(`${entry.name} (mode fallback: ${entryMode})`);

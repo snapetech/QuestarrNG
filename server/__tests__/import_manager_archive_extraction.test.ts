@@ -283,7 +283,6 @@ describe("ImportManager archive extraction (library-side)", () => {
     // Nothing was read or transferred out of the rejected source.
     expect(await fs.pathExists(sourceDir)).toBe(true);
   });
-
   it("move mode: picks the primary .rar volume over .rNN continuations as the extraction entry point", async () => {
     // Regression test: a plain lexicographic sort puts "game.r00" before "game.rar"
     // ('0' < 'a'), which would hand 7-Zip/unrar the continuation volume instead of the

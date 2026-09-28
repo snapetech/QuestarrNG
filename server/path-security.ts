@@ -97,4 +97,3 @@ export async function assertWithinRoots(
     }
   }
   throw new Error(errorMessage);
-}

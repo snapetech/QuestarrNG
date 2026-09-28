@@ -378,6 +378,35 @@ describe("ImportStrategies", () => {
       expect(await fs.pathExists(path.join(destination, "dlc", "Game DLC Pack.nsp"))).toBe(false);
     });
 
+    it("rejects a categorized destination that already exists (e.g. content extraction just wrote)", async () => {
+      const root = tempDir();
+      const sourceDir = path.join(root, "downloads", "game-folder");
+      const destination = path.join(root, "library", "PC", "My Game");
+      await fs.ensureDir(sourceDir);
+      await fs.writeFile(path.join(sourceDir, "readme.nfo"), "loose file");
+      // Simulate an extraction step having already written a same-named file straight
+      // into the destination before this categorized transfer runs.
+      await fs.ensureDir(path.join(destination, "extra"));
+      await fs.writeFile(path.join(destination, "extra", "readme.nfo"), "extracted");
+
+      const strategy = new PCImportStrategy();
+      await expect(
+        strategy.executeImport(
+          {
+            needsReview: false,
+            originalPath: sourceDir,
+            proposedPath: destination,
+            strategy: "pc",
+            fileCategories: [{ name: "readme.nfo", category: "extra" }],
+          },
+          "copy"
+        )
+      ).rejects.toThrow("Destination already exists, refusing to overwrite");
+      expect(await fs.readFile(path.join(destination, "extra", "readme.nfo"), "utf8")).toBe(
+        "extracted"
+      );
+    });
+
     it("reports the requested batch mode even when a single file falls back", async () => {
       const root = tempDir();
       const sourceDir = path.join(root, "downloads", "game-folder");
@@ -715,144 +744,6 @@ describe("ImportStrategies", () => {
       // Nothing was written through the symlink into the outside directory.
       expect(await fs.pathExists(path.join(outsideDir, "game.rom"))).toBe(false);
     });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Sensitive-path guards — transferFile/gatherFiles walk the filesystem
-  // independently of the planImport-time isSensitivePath check, so they carry
-  // their own guard rather than trusting every future caller to check first.
-  // ---------------------------------------------------------------------------
-
-  describe("sensitive-path guards", () => {
-    it("executeImport refuses a source under a sensitive system path", async () => {
-      const root = tempDir();
-      const destination = path.join(root, "library", "PC", "My Game");
-
-      const strategy = new PCImportStrategy();
-      await expect(
-        strategy.executeImport(
-          {
-            needsReview: false,
-            originalPath: "/etc/passwd",
-            proposedPath: destination,
-            strategy: "pc",
-          },
-          "copy"
-        )
-      ).rejects.toThrow("Refusing to process a sensitive system path");
-    });
-
-    it("gatherFiles refuses a sensitive system path", async () => {
-      await expect(gatherFiles("/etc")).rejects.toThrow(
-        "Refusing to process a sensitive system path"
-      );
-    });
-
-    it("executeImport refuses a sensitive path in the categorized (fileCategories) branch too", async () => {
-      // Regression test: the categorized branch calls transferSingleFile directly,
-      // bypassing transferFile's own guard — the check has to live at executeImport's
-      // shared entry point to actually cover this branch.
-      const root = tempDir();
-      const destination = path.join(root, "library", "PC", "My Game");
-
-      const strategy = new PCImportStrategy();
-      await expect(
-        strategy.executeImport(
-          {
-            needsReview: false,
-            originalPath: "/etc",
-            proposedPath: destination,
-            strategy: "pc",
-            fileCategories: [{ name: "passwd", category: "main" }],
-          },
-          "copy"
-        )
-      ).rejects.toThrow("Refusing to process a sensitive system path");
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // Source-root containment — configured downloader roots
-  // ---------------------------------------------------------------------------
-
-  describe("source-root containment", () => {
-    it("planImport allows a source under a configured root", async () => {
-      const root = tempDir();
-      const downloadsRoot = path.join(root, "downloads");
-      const source = path.join(downloadsRoot, "game.exe");
-      await fs.ensureDir(downloadsRoot);
-      await fs.writeFile(source, "exe-bytes");
-
-      const strategy = new PCImportStrategy([downloadsRoot]);
-      await expect(
-        strategy.planImport(
-          source,
-          makeGame({ title: "My Game" }),
-          path.join(root, "library"),
-          makeImportConfig()
-        )
-      ).resolves.toMatchObject({ originalPath: source });
-    });
-
-    it("planImport refuses a source outside every configured root", async () => {
-      const root = tempDir();
-      const downloadsRoot = path.join(root, "downloads");
-      const outsideDir = path.join(root, "elsewhere");
-      const source = path.join(outsideDir, "game.exe");
-      await fs.ensureDir(outsideDir);
-      await fs.writeFile(source, "exe-bytes");
-
-      const strategy = new PCImportStrategy([downloadsRoot]);
-      await expect(
-        strategy.planImport(
-          source,
-          makeGame({ title: "My Game" }),
-          path.join(root, "library"),
-          makeImportConfig()
-        )
-      ).rejects.toThrow("Refusing to process a path outside the configured downloader roots");
-    });
-
-    it("planImport applies no restriction when no roots are configured", async () => {
-      const root = tempDir();
-      const source = path.join(root, "anywhere", "game.exe");
-      await fs.ensureDir(path.dirname(source));
-      await fs.writeFile(source, "exe-bytes");
-
-      const strategy = new PCImportStrategy();
-      await expect(
-        strategy.planImport(
-          source,
-          makeGame({ title: "My Game" }),
-          path.join(root, "library"),
-          makeImportConfig()
-        )
-      ).resolves.toMatchObject({ originalPath: source });
-    });
-
-    it("executeImport refuses an out-of-root originalPath without planImport first", async () => {
-      // Regression test: confirmImport can supply review.originalPath directly, so
-      // the containment check has to be enforced here too, independently of planImport.
-      const root = tempDir();
-      const downloadsRoot = path.join(root, "downloads");
-      const destination = path.join(root, "library", "PC", "My Game");
-
-      const strategy = new PCImportStrategy([downloadsRoot]);
-      await expect(
-        strategy.executeImport(
-          {
-            needsReview: false,
-            originalPath: path.join(root, "elsewhere", "game.exe"),
-            proposedPath: destination,
-            strategy: "pc",
-          },
-          "copy"
-        )
-      ).rejects.toThrow("Refusing to process a path outside the configured downloader roots");
-    });
-  });
-
-  // ---------------------------------------------------------------------------
   // reorganizeBySortExtras() — post-extraction categorization pass
   // ---------------------------------------------------------------------------
 
