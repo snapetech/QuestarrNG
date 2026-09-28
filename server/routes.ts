@@ -3256,6 +3256,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           postImportCategory,
           settings,
           allowSelfSignedCertificate,
+          allowInsecureLan,
         } = req.body;
 
         // Check for SSRF
@@ -3284,7 +3285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           postImportCategory: postImportCategory || null,
           settings: settings || null,
           allowSelfSignedCertificate: allowSelfSignedCertificate ?? false,
-          allowInsecureLan: false,
+          allowInsecureLan: allowInsecureLan ?? false,
           createdAt: new Date(),
           updatedAt: new Date(),
         };

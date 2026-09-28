@@ -350,6 +350,8 @@ const downloaderLabel = () => optionalTrimmedString("label", 100, "Label");
 const downloaderUrlPath = () => optionalTrimmedString("urlPath", 200, "URL path");
 const downloaderAllowSelfSignedCertificate = () =>
   optionalBoolean("allowSelfSignedCertificate", "Allow self-signed certificate");
+const downloaderAllowInsecureLan = () =>
+  optionalBoolean("allowInsecureLan", "Allow insecure LAN");
 
 export const sanitizeDownloaderData = [
   body("name")
@@ -368,6 +370,7 @@ export const sanitizeDownloaderData = [
   downloaderLabel(),
   downloaderUrlPath(),
   downloaderAllowSelfSignedCertificate(),
+  downloaderAllowInsecureLan(),
 ];
 
 // Sanitization rules for POST /api/downloaders/test -- validates the full
@@ -393,6 +396,7 @@ export const sanitizeDownloaderTestData = [
   optionalBoolean("removeCompleted", "removeCompleted"),
   optionalTrimmedString("postImportCategory", 100, "Post-import category"),
   downloaderAllowSelfSignedCertificate(),
+  downloaderAllowInsecureLan(),
 ];
 
 // Sanitization rules for partial downloader updates (PATCH)
@@ -424,6 +428,7 @@ export const sanitizeDownloaderUpdateData = [
   downloaderLabel(),
   downloaderUrlPath(),
   downloaderAllowSelfSignedCertificate(),
+  downloaderAllowInsecureLan(),
 ];
 
 // Sanitization rules for download add requests
