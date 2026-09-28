@@ -355,7 +355,10 @@ describe("SeerrNG software-provider contract", () => {
     expect(detail.status).toBe(200);
     expect(detail.body.publishers).toHaveLength(20);
     expect(detail.body.screenshots).toHaveLength(12);
-    expect(detail.body.videos).toEqual([{ name: "Trailer", videoId: "abcdefghijk" }]);
+    expect(detail.body.videos).toEqual([
+      { name: "Trailer", videoId: "abcdefghijk" },
+      { name: "", videoId: "12345678901" },
+    ]);
     expect(detail.body.rating).toBe(90);
     mocks.igdb.getGameById.mockRejectedValueOnce(new Error("IGDB error"));
     expect((await request(app).get("/api/integration/seerrng/v1/catalog/games/42")).status).toBe(
@@ -411,6 +414,10 @@ describe("SeerrNG software-provider contract", () => {
     expect(duplicate.status).toBe(409);
 
     ledger = undefined;
+    mocks.checkAutoSearch.mockImplementationOnce(async () => {
+      const game = games.find((candidate) => candidate.id === "game-1");
+      if (game) game.searchResultsAvailable = true;
+    });
     const created = await request(app).post("/api/integration/seerrng/v1/requests").send({
       externalRequestId: "request-created",
       title: "New Game",
