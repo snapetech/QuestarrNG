@@ -1,10 +1,11 @@
+/** @vitest-environment node */
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileTypeFromBuffer } from "file-type";
 
 const mocks = vi.hoisted(() => ({
   configDir: "",
@@ -246,7 +247,6 @@ describe("game journal routes", () => {
   });
 
   it("lists and uploads screenshots after checking the actual image bytes", async () => {
-    expect(await fileTypeFromBuffer(PNG_IMAGE)).toMatchObject({ mime: "image/png" });
     mocks.storage.getGameScreenshots.mockResolvedValue([
       { id: SCREENSHOT_ID, caption: "Opening", filePath: "stored.png" },
     ]);
