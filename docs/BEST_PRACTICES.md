@@ -87,8 +87,8 @@ Assessed 2026-07-06 against `tsconfig.json`, `eslint.config.js`, and `.github/wo
   common runtime issues (missing security headers, verbose error output, cookie flags,
   outdated libraries, etc.) — varying inputs by construction, satisfying the criterion
   independent of the project's static coverage numbers.
-- Runs on every push to `main`/`release/*` (so it's applied ahead of any tag cut from those
-  branches) plus a weekly schedule and manual dispatch, mirroring the cadence already used by
+- Runs on every push to `main` (so it's applied ahead of any tag cut from that
+  branch) plus a weekly schedule and manual dispatch, mirroring the cadence already used by
   [vulnerability-scan.yml](/.github/workflows/vulnerability-scan.yml).
 - `fail_action: true`, `rules_file_name: .zap/rules.tsv`: blocking, matching the gate
   [sast.yml](/.github/workflows/sast.yml) already has for Semgrep. See

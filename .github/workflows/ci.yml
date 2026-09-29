@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, release/*]
+    branches: [main]
   pull_request:
-    branches: [main, release/*]
+    branches: [main]
   # Allow manual trigger
   workflow_dispatch:
 

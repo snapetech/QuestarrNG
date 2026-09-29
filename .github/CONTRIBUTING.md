@@ -80,7 +80,7 @@ npm run test:e2e
 
 #### Running tests in CI
 
-The `build` job in `.github/workflows/ci.yml` runs on every push/PR to `main` and `release/*` branches (and can be triggered manually via `workflow_dispatch`). For each push it runs, in order: `npm run lint`, `npm run check` (TypeScript), then the test step:
+The `build` job in `.github/workflows/ci.yml` runs on every push/PR to `main` (and can be triggered manually via `workflow_dispatch`). For each push it runs, in order: `npm run lint`, `npm run check` (TypeScript), then the test step:
 
 ```bash
 npm test -- --coverage --reporter=junit --outputFile=test-report.junit.xml
