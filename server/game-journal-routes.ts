@@ -50,12 +50,6 @@ const screenshotUpload = multer({
     fields: 1, // only the "caption" text field is allowed alongside the file
     fieldSize: 1024,
   },
-  fileFilter: (_req, file, cb) => {
-    // A first-pass check on the client-declared MIME type, purely to reject
-    // obviously-wrong uploads early; the authoritative check is the
-    // magic-byte sniff on the buffer itself, once multer has read it.
-    cb(null, Object.hasOwn(ALLOWED_SCREENSHOT_MIME_TYPES, file.mimetype));
-  },
 });
 
 /**
