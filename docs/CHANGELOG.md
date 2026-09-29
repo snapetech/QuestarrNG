@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.6.1] - 2026-09-28
+
+### Changed
+
+- Versioned images and installation manifests now report QuestarrNG 1.6.1 consistently. This maintenance release also removes unused release-branch triggers; application behavior is unchanged.
+
 ## [1.6.0] - 2026-09-28
 
 ### Added
