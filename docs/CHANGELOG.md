@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.0] - 2026-09-29
+
+### Added
+
+- The SeerrNG catalog endpoint can return the exact day-precision IGDB release date for a requested platform, including `null` when IGDB has no complete date.
+
 ## [1.6.1] - 2026-09-28
 
 ### Changed
