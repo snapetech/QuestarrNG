@@ -268,6 +268,7 @@ describe("game journal routes", () => {
       .post(`/api/games/${GAME_ID}/screenshots`)
       .field("caption", "  Boss fight  ")
       .attach("file", PNG_IMAGE, { filename: "shot.png", contentType: "image/png" });
+    expect(uploaded.body).toMatchObject({ id: SCREENSHOT_ID, caption: "Boss fight" });
     expect(uploaded.status).toBe(201);
     expect(uploaded.body.caption).toBe("Boss fight");
     expect(uploaded.body.filePath).toContain(path.join("screenshots", GAME_ID));
