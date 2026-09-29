@@ -419,4 +419,36 @@ describe("NewznabClient — HTTP API-key policy", () => {
       expect(new URL(url).searchParams.has("apikey")).toBe(false);
     }
   });
+
+  it("explains HTTP 401 when policy withheld the key and does not log the key", async () => {
+    (safeFetch as Mock).mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+    });
+
+    await expect(newznabClient.search(mockIndexer, { query: "test" })).rejects.toThrow(
+      /API key withheld for this HTTP feed/i
+    );
+
+    const requestLog = (routesLogger.info as Mock).mock.calls.find(
+      ([, message]) => message === "searching newznab indexer"
+    )?.[0];
+    expect(JSON.stringify(requestLog)).not.toContain(mockIndexer.apiKey);
+    expect(requestLog).toEqual(
+      expect.objectContaining({ apiKeySent: false, indexer: mockIndexer.name })
+    );
+  });
+
+  it("explains withheld HTTP API keys in the connection test result", async () => {
+    (safeFetch as Mock).mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+    });
+
+    const result = await newznabClient.testConnection(mockIndexer);
+    expect(result.success).toBe(false);
+    expect(result.message).toMatch(/API key withheld for this HTTP feed/i);
+  });
 });

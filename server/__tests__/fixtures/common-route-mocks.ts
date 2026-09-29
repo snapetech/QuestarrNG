@@ -256,6 +256,7 @@ export function createLoggerMocks() {
     },
     downloadersLogger: {
       info: vi.fn(),
+      debug: vi.fn(),
       error: vi.fn(),
       child: vi.fn().mockReturnThis(),
     },

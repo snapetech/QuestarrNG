@@ -52,7 +52,8 @@ export function assertCredentialsAllowed(
   if (downloaderAllowsCredentials(downloader, resolvedUrl)) return;
   throw new Error(
     `${clientName}: refusing to send ${credentialKind} over unencrypted HTTP. ` +
-      "Enable SSL on the downloader or turn on 'Allow insecure LAN' to acknowledge the risk."
+      "QuestarrNG received Allow insecure LAN as disabled for this request. Enable SSL or " +
+      "turn on 'Allow insecure LAN' in the downloader settings or current test form."
   );
 }
 

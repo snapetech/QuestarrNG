@@ -80,6 +80,38 @@ export function indexerAllowsApiKey(indexer: Pick<Indexer, "url" | "allowInsecur
 }
 
 /**
+ * Explain an indexer 401 without encouraging credentials to be sent over HTTP.
+ * A Prowlarr sync can import the credential while intentionally leaving the
+ * per-indexer HTTP opt-in disabled, so the feed responds as if no key arrived.
+ */
+export function formatIndexerHttpError(
+  indexer: Pick<Indexer, "url" | "apiKey" | "allowInsecureLan">,
+  status: number,
+  statusText: string
+): string {
+  const message = `HTTP ${status}: ${statusText}`;
+  if (status !== 401) return message;
+
+  if (indexer.apiKey && !indexerAllowsApiKey(indexer)) {
+    return `${message} (API key withheld for this HTTP feed; enable Allow insecure LAN for this indexer or re-sync Prowlarr with “Send the API key to Prowlarr indexers over HTTP” enabled. This is separate from the downloader setting.)`;
+  }
+
+  return `${message} (check the indexer API key; re-sync from Prowlarr if its key changed).`;
+}
+
+/** Remove credentials from URLs before they enter application logs. */
+export function redactIndexerUrl(value: string | URL): string {
+  try {
+    const url = new URL(value);
+    url.searchParams.delete("apikey");
+    url.searchParams.delete("api_key");
+    return url.toString();
+  } catch {
+    return "[invalid indexer URL]";
+  }
+}
+
+/**
  * Build a list of reasonable candidate caps URLs to try in order. Indexers
  * vary in whether their stored base URL already includes the /api path
  * segment, so try both the normalized (`buildApiUrl`) form and the raw

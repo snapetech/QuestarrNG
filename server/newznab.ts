@@ -3,7 +3,9 @@ import { type Indexer } from "@shared/schema";
 import {
   DEFAULT_GAME_CATEGORIES,
   discoverCapsCategories,
+  formatIndexerHttpError,
   indexerAllowsApiKey,
+  redactIndexerUrl,
   resolveSearchCategories,
 } from "./indexer-caps.js";
 import { routesLogger } from "./logger.js";
@@ -117,9 +119,10 @@ class NewznabClient {
       }
 
       const url = this.buildApiUrl(indexer.url);
+      const sendsApiKey = indexerAllowsApiKey(indexer);
 
       // Build Newznab search parameters
-      if (indexerAllowsApiKey(indexer)) {
+      if (sendsApiKey) {
         url.searchParams.set("apikey", indexer.apiKey);
       }
       url.searchParams.set("t", "search"); // Newznab search function
@@ -142,11 +145,15 @@ class NewznabClient {
       url.searchParams.set("extended", "1");
 
       routesLogger.info(
-        { indexer: indexer.name, url: url.toString(), params },
+        {
+          indexer: indexer.name,
+          url: redactIndexerUrl(url),
+          apiKeySent: sendsApiKey,
+          params,
+        },
         "searching newznab indexer"
       );
 
-      const sendsApiKey = indexerAllowsApiKey(indexer);
       const requireHttps = sendsApiKey && url.protocol === "https:";
 
       const response = await safeFetch(url.toString(), {
@@ -158,7 +165,7 @@ class NewznabClient {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(formatIndexerHttpError(indexer, response.status, response.statusText));
       }
 
       const xmlText = await response.text();
@@ -400,7 +407,11 @@ class NewznabClient {
       if (!response.ok) {
         return {
           success: false,
-          message: `Connection failed: HTTP ${response.status}`,
+          message: `Connection failed: ${formatIndexerHttpError(
+            indexer,
+            response.status,
+            response.statusText
+          )}`,
         };
       }
 

@@ -661,6 +661,31 @@ describe("TorznabClient — getCategories", () => {
       vi.useRealTimers();
     }
   });
+
+  it("explains HTTP 401 when a Prowlarr feed key was withheld", async () => {
+    mockSafeFetch.mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      text: async () => "",
+    } as Response);
+
+    const indexer = makeIndexer({
+      url: "http://prowlarr:9696/24/api",
+      apiKey: "prowlarr-secret",
+      allowInsecureLan: false,
+    });
+
+    await expect(client.searchGames(indexer, { query: "game" })).rejects.toThrow(
+      /API key withheld for this HTTP feed/i
+    );
+
+    const log = vi
+      .mocked(torznabLogger.info)
+      .mock.calls.find(([, message]) => message === "searching torznab indexer")?.[0];
+    expect(JSON.stringify(log)).not.toContain("prowlarr-secret");
+    expect(log).toEqual(expect.objectContaining({ apiKeySent: false, indexer: indexer.name }));
+  });
 });
 
 describe("TorznabClient — HTTP API-key policy", () => {

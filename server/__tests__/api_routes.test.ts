@@ -2570,6 +2570,63 @@ describe("API Routes - Extended Coverage", () => {
         expect.objectContaining({ allowSelfSignedCertificate: false })
       );
     });
+
+    it("passes the selected insecure-LAN opt-in to an unsaved downloader test", async () => {
+      const response = await request(app).post("/api/downloaders/test").send({
+        type: "sabnzbd",
+        url: "http://example.com",
+        username: "sabnzbd-api-key",
+        allowInsecureLan: true,
+      });
+
+      expect(response.status).toBe(200);
+      expect(DownloaderManager.testDownloader).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "sabnzbd",
+          allowInsecureLan: true,
+        })
+      );
+    });
+
+    it("uses the selected insecure-LAN opt-in through the real SABnzbd test client", async () => {
+      const ssrf = await import("../ssrf.js");
+      const actualDownloaders =
+        await vi.importActual<typeof import("../downloaders.js")>("../downloaders.js");
+      const isSafeUrl = vi.spyOn(ssrf, "isSafeUrl").mockResolvedValue(true);
+      const safeFetch = vi.spyOn(ssrf, "safeFetch").mockResolvedValue(
+        new Response(JSON.stringify({ version: "4.4.0" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+      vi.mocked(DownloaderManager.testDownloader).mockImplementationOnce((downloader) =>
+        actualDownloaders.DownloaderManager.testDownloader(downloader)
+      );
+
+      try {
+        const response = await request(app).post("/api/downloaders/test").send({
+          type: "sabnzbd",
+          url: "http://192.168.1.21",
+          port: 8080,
+          urlPath: "sabnzbd",
+          username: "sabnzbd-api-key",
+          useSsl: false,
+          allowInsecureLan: true,
+        });
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({
+          success: true,
+          message: "Connected to SABnzbd v4.4.0",
+        });
+        expect(safeFetch).toHaveBeenCalledTimes(1);
+        const [requestUrl] = safeFetch.mock.calls[0] as [string];
+        expect(new URL(requestUrl).searchParams.get("apikey")).toBe("sabnzbd-api-key");
+      } finally {
+        safeFetch.mockRestore();
+        isSafeUrl.mockRestore();
+      }
+    });
   });
 
   // ─── Download details route ───

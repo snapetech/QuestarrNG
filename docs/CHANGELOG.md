@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.7.1] - 2026-09-29
+
+### Fixed
+
+- Indexer HTTP 401 errors now explain when Questarr withheld an API key because the feed uses HTTP, and distinguish the Prowlarr/indexer opt-in from the downloader setting. Indexer search logs no longer retain feed API keys in request URLs. Downloader test failures now state when the HTTP opt-in did not reach the test request.
+
 ## [1.7.0] - 2026-09-29
 
 ### Added

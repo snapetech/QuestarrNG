@@ -219,6 +219,22 @@ describe("SABnzbd HTTP credential policy (allow)", () => {
   });
 });
 
+describe("SABnzbd HTTP credential policy (deny diagnostics)", () => {
+  it("states that the effective Allow insecure LAN value was disabled", async () => {
+    const client = new SABnzbdClient(
+      makeDownloader({ type: "sabnzbd", username: "mykey", allowInsecureLan: false })
+    );
+
+    const result = await client.testConnection();
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain(
+      "QuestarrNG received Allow insecure LAN as disabled for this request."
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
 // Transmission, NZBGet and rTorrent all authenticate the same way once the
 // policy permits it -- a Basic Authorization header -- so their opt-in cases
 // share one table instead of three near-identical describe/it pairs.

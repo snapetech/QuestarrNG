@@ -2,7 +2,9 @@ import { type Indexer } from "@shared/schema";
 import {
   DEFAULT_GAME_CATEGORIES,
   discoverCapsCategories,
+  formatIndexerHttpError,
   indexerAllowsApiKey,
+  redactIndexerUrl,
   resolveSearchCategories,
 } from "./indexer-caps.js";
 import { torznabLogger } from "./logger.js";
@@ -108,7 +110,12 @@ export class TorznabClient {
     const searchUrl = this.buildSearchUrl(indexer, params);
 
     torznabLogger.info(
-      { indexer: indexer.name, url: searchUrl, params },
+      {
+        indexer: indexer.name,
+        url: redactIndexerUrl(searchUrl),
+        apiKeySent: indexerAllowsApiKey(indexer),
+        params,
+      },
       "searching torznab indexer"
     );
 
@@ -127,7 +134,10 @@ export class TorznabClient {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "No error details available");
-        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+        const statusMessage = formatIndexerHttpError(indexer, response.status, response.statusText);
+        throw new Error(
+          response.status === 401 ? statusMessage : `${statusMessage} - ${errorText}`
+        );
       }
 
       const xmlData = await response.text();
