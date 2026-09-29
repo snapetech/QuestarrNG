@@ -112,6 +112,54 @@ export interface IGDBGame {
   }>;
 }
 
+interface IGDBReleaseDate {
+  d?: number;
+  m?: number;
+  y?: number;
+  release_region?: { region?: string };
+}
+
+interface IGDBMultiQueryResult {
+  name: string;
+  result?: unknown[];
+}
+
+const exactReleaseDate = (value: unknown): string | undefined => {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as IGDBReleaseDate;
+  if (
+    !Number.isSafeInteger(row.y) ||
+    !Number.isSafeInteger(row.m) ||
+    !Number.isSafeInteger(row.d) ||
+    row.y! < 1 ||
+    row.y! > 9999 ||
+    row.m! < 1 ||
+    row.m! > 12 ||
+    row.d! < 1 ||
+    row.d! > 31
+  ) {
+    return undefined;
+  }
+
+  const date = `${String(row.y).padStart(4, "0")}-${String(row.m).padStart(2, "0")}-${String(row.d).padStart(2, "0")}`;
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === date
+    ? date
+    : undefined;
+};
+
+const selectPlatformReleaseDate = (rows: unknown[]): string | null => {
+  const dates = rows
+    .filter((row): row is IGDBReleaseDate => !!row && typeof row === "object")
+    .flatMap((row) => {
+      const date = exactReleaseDate(row);
+      return date ? [{ date, region: row.release_region?.region?.toLowerCase() }] : [];
+    })
+    .sort((left, right) => left.date.localeCompare(right.date));
+
+  return dates.find((entry) => entry.region === "worldwide")?.date ?? dates[0]?.date ?? null;
+};
+
 export interface TimeToBeat {
   hastily?: number | undefined;
   normally?: number | undefined;
@@ -947,6 +995,52 @@ class IGDBClient {
     // ⚡ Bolt: Cache game data for 24 hours as it's unlikely to change frequently.
     const results = await this.makeRequest<IGDBGame[]>("games", igdbQuery, 24 * 60 * 60 * 1000);
     return results[0] ?? null;
+  }
+
+  async getGameByIdForPlatform(
+    id: number,
+    platformId: number,
+    includeVideos = false
+  ): Promise<(IGDBGame & { platformReleaseDate: string | null }) | null> {
+    if (!(await this.ensureConfigured())) return null;
+    if (
+      !Number.isSafeInteger(id) ||
+      id <= 0 ||
+      !Number.isSafeInteger(platformId) ||
+      platformId <= 0 ||
+      platformId > 1_000_000
+    ) {
+      throw new Error("A valid IGDB game and platform ID are required.");
+    }
+
+    const gameFields = `${IGDB_GAME_FIELDS}${includeVideos ? ", videos.name, videos.video_id" : ""}`;
+    const query = `
+      query games "SeerrNG Game" {
+        fields ${gameFields};
+        where id = ${id};
+        limit 1;
+      };
+      query release_dates "Platform Release Dates" {
+        fields d, m, y, release_region.region;
+        where game = ${id} & platform = ${platformId} & d != null & m != null & y != null;
+        sort date asc;
+        limit 100;
+      };
+    `;
+    const results = await this.makeRequest<IGDBMultiQueryResult[]>(
+      "multiquery",
+      query,
+      24 * 60 * 60 * 1000
+    );
+    const gameResults = results.find((entry) => entry.name === "SeerrNG Game")?.result;
+    const releaseDates =
+      results.find((entry) => entry.name === "Platform Release Dates")?.result ?? [];
+    const game =
+      Array.isArray(gameResults) && gameResults[0] && typeof gameResults[0] === "object"
+        ? (gameResults[0] as IGDBGame)
+        : null;
+
+    return game ? { ...game, platformReleaseDate: selectPlatformReleaseDate(releaseDates) } : null;
   }
 
   async getGameIdBySteamAppId(steamAppId: number): Promise<number | null> {

@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => ({
     getPopularGames: vi.fn(),
     getPlatforms: vi.fn(),
     getGameById: vi.fn(),
+    getGameByIdForPlatform: vi.fn(),
   },
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   checkAutoSearch: vi.fn(),
@@ -334,6 +335,23 @@ describe("SeerrNG software-provider contract", () => {
     expect((await request(app).get("/api/integration/seerrng/v1/catalog/games/0")).status).toBe(
       400
     );
+    expect(
+      (await request(app).get("/api/integration/seerrng/v1/catalog/games/42?platformId=0")).status
+    ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .get("/api/integration/seerrng/v1/catalog/games/42")
+          .query({ platformId: [48, 49] })
+      ).status
+    ).toBe(400);
+    expect(
+      (
+        await request(app)
+          .get("/api/integration/seerrng/v1/catalog/games/42")
+          .query({ platformId: "1e2" })
+      ).status
+    ).toBe(400);
     expect((await request(app).get("/api/integration/seerrng/v1/catalog/games/999")).status).toBe(
       404
     );
@@ -360,6 +378,17 @@ describe("SeerrNG software-provider contract", () => {
       { name: "", videoId: "12345678901" },
     ]);
     expect(detail.body.rating).toBe(90);
+    mocks.igdb.getGameByIdForPlatform.mockResolvedValueOnce({
+      igdbId: 42,
+      title: "Details",
+      platformReleaseDate: "2026-10-12",
+    });
+    const platformDetail = await request(app)
+      .get("/api/integration/seerrng/v1/catalog/games/42")
+      .query({ platformId: 48 });
+    expect(platformDetail.status).toBe(200);
+    expect(platformDetail.body.platformReleaseDate).toBe("2026-10-12");
+    expect(mocks.igdb.getGameByIdForPlatform).toHaveBeenCalledWith(42, 48, true);
     mocks.igdb.getGameById.mockRejectedValueOnce(new Error("IGDB error"));
     expect((await request(app).get("/api/integration/seerrng/v1/catalog/games/42")).status).toBe(
       502

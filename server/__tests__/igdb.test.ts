@@ -361,6 +361,50 @@ describe("IGDBClient - Fallback Mechanism", { timeout: 20000 }, () => {
     expect(result).toBeNull();
   });
 
+  it("returns the exact release date for a selected platform from one multi-query", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ access_token: "test-token", expires_in: 3600, token_type: "bearer" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          { name: "SeerrNG Game", result: [{ id: 42, name: "Ported Game" }] },
+          {
+            name: "Platform Release Dates",
+            result: [
+              {
+                y: 2026,
+                m: 10,
+                d: 9,
+                release_region: { region: "North America" },
+              },
+              {
+                y: 2026,
+                m: 10,
+                d: 12,
+                release_region: { region: "Worldwide" },
+              },
+              { y: 2026, m: 10, release_region: { region: "Europe" } },
+            ],
+          },
+        ],
+      });
+
+    const { igdbClient } = await import("../igdb.js");
+    const game = await igdbClient.getGameByIdForPlatform(42, 48, true);
+
+    expect(game?.platformReleaseDate).toBe("2026-10-12");
+    expect(game?.name).toBe("Ported Game");
+    const multiQueryCall = fetchMock.mock.calls.find(
+      ([url]) => typeof url === "string" && url.endsWith("/multiquery")
+    );
+    expect(multiQueryCall).toBeDefined();
+    expect(String(multiQueryCall?.[1]?.body)).toContain("game = 42 & platform = 48");
+    expect(String(multiQueryCall?.[1]?.body)).toContain("d != null & m != null & y != null");
+  });
+
   describe("Discovery Methods", () => {
     // Common mock response for list methods
     const mockGamesList = [

@@ -470,11 +470,26 @@ integrationRouter.get("/seerrng/v1/catalog/games/:igdbId", async (req: Request, 
   if (!Number.isSafeInteger(igdbId) || igdbId <= 0) {
     return res.status(400).json({ error: "Invalid IGDB game ID." });
   }
+  const rawPlatformId = req.query.platformId;
+  const platformId =
+    typeof rawPlatformId === "string" && /^[1-9]\d{0,6}$/.test(rawPlatformId)
+      ? Number(rawPlatformId)
+      : undefined;
+  if (rawPlatformId !== undefined && (!platformId || platformId > 1_000_000)) {
+    return res.status(400).json({ error: "Invalid IGDB platform ID." });
+  }
   try {
-    const game = await igdbClient.getGameById(igdbId, true);
-    return game
-      ? res.json(seerrGameDetailSchema(game))
-      : res.status(404).json({ error: "Game not found." });
+    const game =
+      platformId === undefined
+        ? await igdbClient.getGameById(igdbId, true)
+        : await igdbClient.getGameByIdForPlatform(igdbId, platformId, true);
+    if (!game) return res.status(404).json({ error: "Game not found." });
+    const detail = seerrGameDetailSchema(game);
+    if (platformId === undefined) return res.json(detail);
+    return res.json({
+      ...detail,
+      platformReleaseDate: "platformReleaseDate" in game ? game.platformReleaseDate : null,
+    });
   } catch (error) {
     logger.error({ error, igdbId }, "SeerrNG catalog game fetch failed");
     return res.status(502).json({ error: "IGDB catalog is unavailable." });
