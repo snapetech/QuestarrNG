@@ -6,4 +6,5 @@ RUN python -m pip install --break-system-packages --no-deps --only-binary=:all: 
       -r /tmp/semgrep-security-overrides.txt && \
     rm /tmp/semgrep-security-overrides.txt
 
+USER 1000
 WORKDIR /src
