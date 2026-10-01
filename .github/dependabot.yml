@@ -1,9 +1,10 @@
 version: 2
+# The default branch is main. Keep target-branch unset so security-update
+# groups in this file are applied by Dependabot.
 updates:
   # Enable version updates for npm
   - package-ecosystem: "npm"
     directory: "/"
-    target-branch: "main"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -37,11 +38,47 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Track the .NET SDK pinned for the Windows service build.
+  - package-ecosystem: "dotnet-sdk"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "automated"
+
+  # Keep the Windows service host's NuGet packages and lock file current.
+  - package-ecosystem: "nuget"
+    directory: "/installer/windows/Questarr.Service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "automated"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "main"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -57,19 +94,55 @@ updates:
       all-actions:
         patterns:
           - "*"
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: docker
     directory: /
-    target-branch: "main"
     schedule:
       interval: daily
     cooldown:
       default-days: 7
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
 
   - package-ecosystem: docker
     directory: /questarr
-    target-branch: "main"
     schedule:
       interval: daily
     cooldown:
       default-days: 7
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /casaos
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  - package-ecosystem: docker
+    directory: /doezer-questarr
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"

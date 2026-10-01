@@ -172,10 +172,13 @@ linked file as the source of truth.
 - **Secrets encryption at rest:** `server/credential-crypto.ts` (AES-256-GCM) — indexer API
   keys and downloader username/passwords; see [`docs/SECRETS.md`](./SECRETS.md) §4 for the
   full mechanism (key resolution, legacy-plaintext-row handling, masked-sentinel rotation)
-- **Secrets scanning / dependency hygiene:** `.github/workflows/ci.yml` (`secretlint`),
-  `.github/dependabot.yml`
-- **SAST:** CodeQL (GitHub default setup, `javascript-typescript` + `actions` queries — no
-  workflow file needed, configured at the repo level)
+- **Secrets scanning / dependency hygiene:** GitHub secret scanning and push protection,
+  `.github/workflows/ci.yml` (`secretlint`), `.github/dependabot.yml`, and
+  `.github/workflows/dependency-review.yml`
+- **SAST:** CodeQL advanced setup in `.github/workflows/codeql.yml` (JavaScript/TypeScript,
+  C#, and GitHub Actions) plus Semgrep in `.github/workflows/sast.yml`
+- **Container image scanning:** Trivy in `.github/workflows/vulnerability-scan.yml`, on
+  main pushes, weekly, and pull requests that change image or dependency inputs
 - **Supply-chain scoring:** `.github/workflows/scorecard.yml` (OpenSSF Scorecard)
 - **SBOM:** [`docs/SBOM.md`](./SBOM.md) — Syft-generated, attached to Docker releases
 - **Disclosure process / access governance:** [`.github/SECURITY.md`](../.github/SECURITY.md),
@@ -215,7 +218,6 @@ authentication or a narrowly-scoped, low-sensitivity response.
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Socket.io (`server/socket.ts`) has no per-connection authentication; `notifyUser()` broadcasts via plain `io.emit()` to every connected client regardless of which user owns the event                           | **Accepted risk / documented assumption** | Connections are restricted to configured origins (CORS), so this is a same-install, cross-account metadata leak (e.g. one user seeing another's download progress), not an externally exposed one. Questarr is not a multi-user application (see [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) §9) — the supported deployment has one trusted operator, so this is low severity by design, not a gap awaiting a fix. |
 | Path-traversal checks in `sanitizeDownloaderData`/`sanitizeIndexerData` use a `!value.includes("..")` blocklist rather than the resolve-and-prefix-check pattern `server/routes.ts`'s file-browser endpoint uses | **Recommended follow-up**                 | Downstream consumers don't currently perform direct filesystem access with these values, so risk is low; migrating to the stronger pattern is still worthwhile for consistency. File a follow-up issue.                                                                                                                                                                                                          |
-| No container image scanning (Trivy/Grype) in CI — `docker-build` builds the image but doesn't scan it                                                                                                            | **Recommended follow-up**                 | CodeQL SAST is now enabled (GitHub default setup) and OpenSSF Scorecard runs via `.github/workflows/scorecard.yml`, closing the SAST half of this gap; image scanning is a separate CI infrastructure change deserving its own review (tool choice, false-positive tuning, gating vs. advisory). File a follow-up issue against `.github/workflows/ci.yml`.                                                      |
 | Flat, single-tier trust model — an authenticated user has full access with no RBAC/admin split                                                                                                                   | **Accepted risk / documented assumption** | Deliberate simplicity tradeoff for a small, self-hosted app with one trusted operator per instance — Questarr is not a multi-user application (see [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) §9).                                                                                                                                                                                                                |
 
 ---

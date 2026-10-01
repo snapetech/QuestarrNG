@@ -25,11 +25,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Explicit language list — this repo has no C#/Java/etc., so autodetection
-        # (GitHub's "Default" code-scanning setup) picking those up and failing
-        # autobuild with "No source files found" is not a real finding. Advanced
-        # setup with a fixed matrix reflects what's actually in the repo.
+        # Explicit language list keeps analysis aligned with source in the repo.
         include:
+          - language: csharp
+            build-mode: manual
           - language: javascript-typescript
             build-mode: none
           - language: actions
@@ -46,11 +45,25 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Setup .NET 10 SDK
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+
+      - name: Restore C# service dependencies
+        if: matrix.language == 'csharp'
+        run: dotnet restore installer/windows/Questarr.Service/Questarr.Service.csproj --runtime win-x64 --locked-mode
+
+      - name: Build C# service for CodeQL
+        if: matrix.language == 'csharp'
+        run: dotnet build installer/windows/Questarr.Service/Questarr.Service.csproj --configuration Release --no-restore --runtime win-x64
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4.38.0
