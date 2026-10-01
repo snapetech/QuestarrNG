@@ -1,5 +1,5 @@
 # Build stage with shared dependencies
-FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS base
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS base
 WORKDIR /app
 
 # better-sqlite3 bundles a prebuilt binary for this platform, so no C++
@@ -19,7 +19,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS production
+FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS production
 
 WORKDIR /app
 
@@ -39,8 +39,11 @@ ENV UMASK=022
 # shim, needed below to run RARLAB's official unrar binary), curl (to fetch that binary
 # with strict HTTPS enforcement, see below), and Python + Apprise for local CLI
 # notifications.
-RUN apk add --no-cache 7zip curl gcompat py3-pip python3 shadow su-exec && \
-    python3 -m pip install --no-cache-dir --break-system-packages --only-binary :all: apprise==1.9.4
+RUN apk add --no-cache 7zip curl gcompat py3-pip python3 shadow su-exec
+COPY security/requirements.txt /tmp/questarr-python-runtime.txt
+RUN python3 -m pip install --no-cache-dir --break-system-packages --only-binary :all: \
+      --require-hashes -r /tmp/questarr-python-runtime.txt && \
+    rm /tmp/questarr-python-runtime.txt
 
 # Fetch RARLAB's official unrar binary for RAR extraction (legacy and RAR5, including
 # multi-volume sets). Alpine dropped its own `unrar` package because RARLAB's license
@@ -67,6 +70,11 @@ COPY --from=base /app/node_modules ./node_modules
 COPY package*.json ./
 
 RUN npm prune --omit=dev
+
+# The runtime starts Node directly and does not need npm. Removing the bundled
+# package manager also keeps its independently updated dependencies out of the
+# published application image.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Copy necessary files from build stage
 COPY --from=builder /app/dist ./dist
@@ -96,11 +104,11 @@ EXPOSE 5000
 # nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint -- see comment above
 ENTRYPOINT ["/entrypoint.sh"]
 # nosemgrep: dockerfile.security.missing-user.missing-user -- entrypoint.sh drops to the unprivileged questarr user via su-exec before this CMD ever runs
-CMD ["npm", "run", "start"]
+CMD ["node", "dist/server/index.js"]
 
 LABEL org.opencontainers.image.title="QuestarrNG"
 LABEL org.opencontainers.image.description="QuestarrNG game discovery and acquisition for SeerrNG."
 LABEL org.opencontainers.image.authors="Doezer and Snapetech contributors"
 LABEL org.opencontainers.image.source="https://github.com/snapetech/QuestarrNG"
 LABEL org.opencontainers.image.licenses="GPL-3.0-only"
-LABEL org.opencontainers.image.version="1.7.0"
+LABEL org.opencontainers.image.version="1.7.2"

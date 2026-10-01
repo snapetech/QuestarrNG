@@ -4,7 +4,13 @@ import { hashPassword, comparePassword, generateToken, authenticateToken } from 
 import { storage } from "../storage.js";
 import jwt from "jsonwebtoken";
 
-const MOCK_JWT_SECRET = "questarr-default-secret-change-me"; // NOSONAR - test-only value
+const { MOCK_JWT_SECRET, WRONG_JWT_SECRET } = vi.hoisted(() => {
+  const randomSecret = () =>
+    Array.from(globalThis.crypto.getRandomValues(new Uint8Array(32)), (byte) =>
+      byte.toString(16).padStart(2, "0")
+    ).join("");
+  return { MOCK_JWT_SECRET: randomSecret(), WRONG_JWT_SECRET: randomSecret() };
+});
 
 vi.mock("../storage.js", () => ({
   storage: {
@@ -17,7 +23,7 @@ vi.mock("../storage.js", () => ({
 vi.mock("../config.js", () => ({
   config: {
     auth: {
-      jwtSecret: "questarr-default-secret-change-me",
+      jwtSecret: MOCK_JWT_SECRET,
     },
   },
 }));
@@ -57,7 +63,7 @@ describe("auth Module", () => {
 
       expect(typeof token).toBe("string");
 
-      const decoded = jwt.verify(token, MOCK_JWT_SECRET) as import("jsonwebtoken").JwtPayload; // NOSONAR - test-only value
+      const decoded = jwt.verify(token, MOCK_JWT_SECRET) as import("jsonwebtoken").JwtPayload;
       expect(decoded.id).toBe(123);
       expect(decoded.username).toBe("testuser");
     });
@@ -95,7 +101,7 @@ describe("auth Module", () => {
     });
 
     it("should return 401 if user not found", async () => {
-      const token = jwt.sign({ id: "nonexistent", username: "ghost" }, MOCK_JWT_SECRET); // NOSONAR - test-only value
+      const token = jwt.sign({ id: "nonexistent", username: "ghost" }, MOCK_JWT_SECRET);
 
       const req = mockRequest(token);
       const res = mockResponse();
@@ -111,7 +117,7 @@ describe("auth Module", () => {
     });
 
     it("should call next() if token and user are valid", async () => {
-      const token = jwt.sign({ id: "valid_id", username: "valid_user" }, MOCK_JWT_SECRET); // NOSONAR - test-only value
+      const token = jwt.sign({ id: "valid_id", username: "valid_user" }, MOCK_JWT_SECRET);
 
       const req = mockRequest(token);
       const res = mockResponse();
@@ -143,7 +149,7 @@ describe("auth Module", () => {
     });
 
     it("should return 403 on invalid signature", async () => {
-      const maliciousToken = jwt.sign({ id: "valid_id" }, "wrong-secret");
+      const maliciousToken = jwt.sign({ id: "valid_id" }, WRONG_JWT_SECRET);
 
       const req = mockRequest(maliciousToken);
       const res = mockResponse();

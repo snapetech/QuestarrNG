@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { type Server } from "http";
 import { nanoid } from "nanoid";
+import rateLimit from "express-rate-limit";
 import { expressLogger } from "./logger.js";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -48,6 +49,14 @@ export async function setupVite(app: Express, server: Server) {
       appType: "custom",
     });
 
+    const developmentRequestLimiter = rateLimit({
+      windowMs: 60 * 1000,
+      max: 600,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: "Too many development-server requests, please try again shortly",
+    });
+    app.use(developmentRequestLimiter);
     app.use(vite.middlewares);
 
     app.use("*", async (req, res, next) => {

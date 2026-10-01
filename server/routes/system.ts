@@ -5,11 +5,6 @@ import { storage } from "../storage.js";
 import { routesLogger as logger } from "../logger.js";
 import { isSensitivePath } from "../path-security.js";
 
-function isWithinRoot(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function toVirtualPath(root: string, absolutePath: string): string {
   const relative = path.relative(root, absolutePath);
   if (!relative || relative === ".") return "/";
@@ -92,7 +87,12 @@ systemRouter.get("/browse", async (req, res) => {
     }
 
     const validPath = path.resolve(root, userPath);
-    if (!isWithinRoot(root, validPath)) {
+    const relativePath = path.relative(root, validPath);
+    if (
+      relativePath === ".." ||
+      relativePath.startsWith(".." + path.sep) ||
+      path.isAbsolute(relativePath)
+    ) {
       return res.status(400).json({ error: "Invalid path: traversal detected" });
     }
 
@@ -106,26 +106,29 @@ systemRouter.get("/browse", async (req, res) => {
     }
 
     const [realRoot, realPath] = await Promise.all([fs.realpath(root), fs.realpath(validPath)]);
+    const relativeRealPath = path.relative(realRoot, realPath);
     if (
       realRoot === path.parse(realRoot).root ||
-      !isWithinRoot(realRoot, realPath) ||
+      relativeRealPath === ".." ||
+      relativeRealPath.startsWith(".." + path.sep) ||
+      path.isAbsolute(relativeRealPath) ||
       isSensitivePath(realPath)
     ) {
       return res.status(403).json({ error: "Access to this path is not allowed" });
     }
 
-    const stats = await fs.stat(validPath);
+    const stats = await fs.stat(realPath);
     if (!stats.isDirectory()) {
       return res.status(400).json({ error: "Path is not a directory" });
     }
 
-    const files = await fs.readdir(validPath, { withFileTypes: true });
+    const files = await fs.readdir(realPath, { withFileTypes: true });
 
     // Format output using root-relative virtual paths so subsequent requests
     // are consistent across platforms and do not expose host absolute paths.
     const items = files.map((f: import("node:fs").Dirent) => ({
       name: f.name,
-      path: toVirtualPath(root, path.join(validPath, f.name)),
+      path: toVirtualPath(realRoot, path.join(realPath, f.name)),
       isDirectory: f.isDirectory(),
       size: 0, // Getting size for all files might be slow
     }));

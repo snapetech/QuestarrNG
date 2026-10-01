@@ -83,6 +83,7 @@ import { config as appConfig } from "./config.js";
 import { configLoader } from "./config-loader.js";
 import { prowlarrClient } from "./prowlarr.js";
 import { isSafeUrl, safeFetch } from "./ssrf.js";
+import { assertWithinRoots } from "./path-security.js";
 import {
   hashPassword,
   comparePassword,
@@ -615,7 +616,8 @@ function registerIgdbParamListRoute(
 ) {
   app.get(path, igdbRateLimiter, async (req, res) => {
     try {
-      const paramValue = req.params[paramName];
+      const rawParamValue = req.params[paramName];
+      const paramValue = typeof rawParamValue === "string" ? rawParamValue : "";
       const { limit, offset } = validatePaginationParams(
         req.query as { limit?: string; offset?: string }
       );
@@ -1035,22 +1037,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (typeof port !== "number") return res.status(400).json({ error: "Invalid 'port' value" });
 
       // Security check for file paths
-      let resolvedCertPath: string | undefined = certPath;
-      let resolvedKeyPath: string | undefined = keyPath;
+      let resolvedCertPath: string | undefined;
+      let resolvedKeyPath: string | undefined;
       if (certPath || keyPath) {
-        const normalizedRoot = FILE_BROWSER_ROOT.endsWith(path.sep)
-          ? FILE_BROWSER_ROOT
-          : FILE_BROWSER_ROOT + path.sep;
+        const allowedSslRoots = [FILE_BROWSER_ROOT, path.join(configLoader.getConfigDir(), "ssl")];
 
         if (certPath) {
-          resolvedCertPath = path.resolve(FILE_BROWSER_ROOT, certPath);
-          if (!resolvedCertPath.startsWith(normalizedRoot)) {
+          try {
+            resolvedCertPath = await assertWithinRoots(
+              path.resolve(FILE_BROWSER_ROOT, certPath),
+              allowedSslRoots,
+              "Access to cert path is not allowed"
+            );
+          } catch {
             return res.status(403).json({ error: "Access to cert path is not allowed" });
           }
         }
         if (keyPath) {
-          resolvedKeyPath = path.resolve(FILE_BROWSER_ROOT, keyPath);
-          if (!resolvedKeyPath.startsWith(normalizedRoot)) {
+          try {
+            resolvedKeyPath = await assertWithinRoots(
+              path.resolve(FILE_BROWSER_ROOT, keyPath),
+              allowedSslRoots,
+              "Access to key path is not allowed"
+            );
+          } catch {
             return res.status(403).json({ error: "Access to key path is not allowed" });
           }
         }
@@ -1060,7 +1070,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (enabled) {
         if (certPath && keyPath) {
           const { validateCertFiles } = await import("./ssl.js"); // Dynamic import to avoid circular deps if any
-          const { valid, error } = await validateCertFiles(certPath, keyPath);
+          const { valid, error } = await validateCertFiles(
+            resolvedCertPath ?? certPath,
+            resolvedKeyPath ?? keyPath
+          );
           if (!valid) {
             return res.status(400).json({ error: `Invalid SSL configuration: ${error}` });
           }
@@ -1248,12 +1261,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Resolve against the root and normalize
         const resolvedPath = path.resolve(FILE_BROWSER_ROOT, queryPath);
-
-        const normalizedRoot = FILE_BROWSER_ROOT.endsWith(path.sep)
-          ? FILE_BROWSER_ROOT
-          : FILE_BROWSER_ROOT + path.sep;
-
-        if (resolvedPath !== FILE_BROWSER_ROOT && !resolvedPath.startsWith(normalizedRoot)) {
+        const relativePath = path.relative(FILE_BROWSER_ROOT, resolvedPath);
+        if (
+          relativePath === ".." ||
+          relativePath.startsWith(".." + path.sep) ||
+          path.isAbsolute(relativePath)
+        ) {
           return res.status(403).json({ error: "Access to this path is not allowed" });
         }
 
@@ -1269,7 +1282,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw error;
         }
 
-        if (currentPath !== FILE_BROWSER_ROOT && !currentPath.startsWith(normalizedRoot)) {
+        const canonicalRelativePath = path.relative(FILE_BROWSER_ROOT, currentPath);
+        if (
+          canonicalRelativePath === ".." ||
+          canonicalRelativePath.startsWith(".." + path.sep) ||
+          path.isAbsolute(canonicalRelativePath)
+        ) {
           return res.status(403).json({ error: "Access to this path is not allowed" });
         }
 
@@ -1288,16 +1306,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const files = await Promise.all(
           entries.map(async (entry) => {
             const fullPath = path.join(currentPath, entry.name);
-            let isDirectory = entry.isDirectory();
-            // Handle symbolic links
-            if (entry.isSymbolicLink()) {
-              try {
-                const stat = await fs.promises.stat(fullPath);
-                isDirectory = stat.isDirectory();
-              } catch {
-                isDirectory = false; // Broken link or permission denied
-              }
-            }
+            // Do not follow symlinks from the file browser: even a metadata-only
+            // stat can reveal whether a link points to a directory outside this root.
+            const isDirectory = entry.isDirectory();
 
             const relativePath = path.relative(FILE_BROWSER_ROOT, fullPath);
 
@@ -2612,12 +2623,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
               : NaN;
         const limitNum =
           Number.isNaN(parsedLimit) || parsedLimit < 1 ? 20 : Math.min(parsedLimit, 100);
+        // Express 5 exposes req.query as a fresh object on each access, so the
+        // express-validator sanitizers do not persist their coerced values there.
+        // Read the validated strings directly to keep the route's established types.
+        const includeUndatedValue = includeUndated === "true";
+        const platformId =
+          typeof platform === "number"
+            ? platform
+            : typeof platform === "string"
+              ? Number.parseInt(platform, 10)
+              : undefined;
+        const releaseYear =
+          typeof year === "number"
+            ? year
+            : typeof year === "string"
+              ? Number.parseInt(year, 10)
+              : undefined;
         const searchOptions = {
-          ...(typeof includeUndated === "boolean"
-            ? { includeUndated, undatedFirst: includeUndated }
-            : {}),
-          ...(typeof platform === "number" ? { platformId: platform } : {}),
-          ...(typeof year === "number" ? { releaseYear: year } : {}),
+          ...(includeUndatedValue ? { includeUndated: true, undatedFirst: true } : {}),
+          ...(platformId !== undefined && Number.isFinite(platformId) ? { platformId } : {}),
+          ...(releaseYear !== undefined && Number.isFinite(releaseYear) ? { releaseYear } : {}),
         };
         const formattedGames = await fetchFilteredIgdbGames(req.user!.id, limitNum, (fetchLimit) =>
           igdbClient.searchGames(q, fetchLimit, searchOptions)
@@ -4212,7 +4237,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 archive.append(Buffer.from(buffer), { name: filename });
               }
             } catch (error) {
-              console.error(`Error adding ${download.title} to bundle:`, error);
+              routesLogger.error(
+                { error, title: download.title },
+                "Error adding download to bundle"
+              );
             }
           })
         );

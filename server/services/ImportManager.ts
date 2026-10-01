@@ -222,18 +222,18 @@ export class ImportManager {
       throw new Error("Refusing to process a sensitive system path");
     }
 
-    await assertWithinRoots(
+    const safeSourcePath = await assertWithinRoots(
       sourcePath,
       await this.pathService.getConfiguredRoots(),
       "Refusing to process a path outside the configured downloader roots"
     );
 
-    const stats = await fs.stat(sourcePath);
+    const stats = await fs.stat(safeSourcePath);
 
     if (!stats.isDirectory()) {
-      if (!this.archiveService.isArchive(sourcePath)) return null;
+      if (!this.archiveService.isArchive(safeSourcePath)) return null;
       return {
-        archivePath: sourcePath,
+        archivePath: safeSourcePath,
         isDirectorySource: false,
         alreadyExtracted: false,
         excludePaths: new Set(),
@@ -241,7 +241,7 @@ export class ImportManager {
       };
     }
 
-    const entries = await fs.readdir(sourcePath);
+    const entries = await fs.readdir(safeSourcePath);
     const archiveEntries = entries.filter((name) => this.archiveService.isArchive(name)).sort();
     if (archiveEntries.length === 0) return null;
 
@@ -264,11 +264,14 @@ export class ImportManager {
     }
 
     // 7zip/unrar handle multi-part archives when given the first part.
-    const mainArchive = path.join(sourcePath, archiveEntries[0]!);
-    const allAbsolutePaths = entries.map((name) => path.join(sourcePath, name));
+    const mainArchive = path.join(safeSourcePath, archiveEntries[0]!);
+    const allAbsolutePaths = entries.map((name) => path.join(safeSourcePath, name));
     const volumeSiblings = this.archiveService.findVolumeSiblings(mainArchive, allAbsolutePaths);
     const excludePaths = new Set(volumeSiblings.map((p) => path.resolve(p)));
-    const alreadyExtracted = await this.archiveService.isAlreadyExtracted(mainArchive, sourcePath);
+    const alreadyExtracted = await this.archiveService.isAlreadyExtracted(
+      mainArchive,
+      safeSourcePath
+    );
     const hasRemainingFiles = allAbsolutePaths.some((p) => !excludePaths.has(path.resolve(p)));
 
     return {
@@ -490,12 +493,11 @@ export class ImportManager {
       // Rejecting here (rather than only inside planImport/executeImport later) stops
       // an out-of-root path from having its directory contents disclosed through this
       // preview listing before the import flow ever gets to reject it.
-      await assertWithinRoots(
+      const resolved = await assertWithinRoots(
         sourcePath,
         await this.pathService.getConfiguredRoots(),
         "Refusing to process a path outside the configured downloader roots"
       );
-      const resolved = path.resolve(sourcePath);
       const stats = await fs.stat(resolved);
       let allNames: string[];
       if (stats.isDirectory()) {
@@ -757,13 +759,13 @@ export class ImportManager {
       await this.storage.updateGameDownloadStatus(downloadId, "unpacking");
 
       const resolved = await this.resolveLocalPath(remoteDownloadPath, download.downloaderId);
-      const localPath = resolved.localPath;
+      let localPath = resolved.localPath;
       const downloaderName = resolved.downloaderName;
 
       // Before even probing for existence: verifyLocalPath's fs.pathExists() call
       // below would otherwise leak whether an out-of-root path exists on disk to
       // an import flow that should never have been allowed to look at it at all.
-      await assertWithinRoots(
+      localPath = await assertWithinRoots(
         localPath,
         await this.pathService.getConfiguredRoots(),
         "Refusing to process a path outside the configured downloader roots"
@@ -961,11 +963,29 @@ export class ImportManager {
     const fallbackProposedPath = path.join(libraryRoot, platformDir, sanitizeFsName(game.title));
 
     if (resolvedOriginalPath) {
-      const { files, hasArchive, totalCount } = await this.readSourceFiles(resolvedOriginalPath);
+      let safeOriginalPath: string;
+      try {
+        safeOriginalPath = await assertWithinRoots(
+          resolvedOriginalPath,
+          await this.pathService.getConfiguredRoots(),
+          "Refusing to process a path outside the configured downloader roots"
+        );
+      } catch {
+        // Preserve the review flow for invalid/unavailable source paths without
+        // probing the filesystem or returning any source file listing.
+        return {
+          originalPath: null,
+          proposedPath: fallbackProposedPath,
+          files: [],
+          hasArchive: false,
+          totalCount: 0,
+        };
+      }
+      const { files, hasArchive, totalCount } = await this.readSourceFiles(safeOriginalPath);
       try {
         const strategy = new PCImportStrategy(await this.pathService.getConfiguredRoots());
         const plan = await strategy.planImport(
-          resolvedOriginalPath,
+          safeOriginalPath,
           game,
           libraryRoot,
           config,
@@ -973,13 +993,13 @@ export class ImportManager {
         );
         if (requestedStrategy === "romm") {
           plan.strategy = "romm";
-          const sourceStats = await fs.stat(resolvedOriginalPath);
+          const sourceStats = await fs.stat(safeOriginalPath);
           if (!sourceStats.isDirectory() && rommConfig.singleFilePlacement === "subfolder") {
             plan.proposedPath = path.join(
               libraryRoot,
               platformDir,
               sanitizeFsName(game.title),
-              path.basename(resolvedOriginalPath)
+              path.basename(safeOriginalPath)
             );
           }
           if (rommConfig.conflictPolicy === "rename") {
@@ -991,7 +1011,7 @@ export class ImportManager {
           }
         }
         return {
-          originalPath: resolvedOriginalPath,
+          originalPath: safeOriginalPath,
           proposedPath: plan.proposedPath,
           files,
           hasArchive,
@@ -1000,7 +1020,7 @@ export class ImportManager {
       } catch {
         // Source not yet accessible (e.g. still in incomplete folder) — path is known but can't be stat'd
         return {
-          originalPath: resolvedOriginalPath,
+          originalPath: safeOriginalPath,
           proposedPath: fallbackProposedPath,
           files,
           hasArchive,
@@ -1051,14 +1071,14 @@ export class ImportManager {
 
     // Before the existence probe below: overridePlan.originalPath can come from a
     // manually-typed path in the review UI, not just a translated downloader path.
-    await assertWithinRoots(
+    const safeOriginalPath = await assertWithinRoots(
       resolvedOriginalPath,
       await this.pathService.getConfiguredRoots(),
       "Refusing to process a path outside the configured downloader roots"
     );
 
-    if (!(await fs.pathExists(resolvedOriginalPath))) {
-      throw new Error(`Source path not found: ${resolvedOriginalPath}`);
+    if (!(await fs.pathExists(safeOriginalPath))) {
+      throw new Error(`Source path not found: ${safeOriginalPath}`);
     }
 
     const game = await this.storage.getGame(download.gameId);
@@ -1079,7 +1099,7 @@ export class ImportManager {
     }
 
     const archiveResolution = overridePlan.unpack
-      ? await this.resolveArchive(resolvedOriginalPath)
+      ? await this.resolveArchive(safeOriginalPath)
       : null;
     const needsExtraction = !!archiveResolution && !archiveResolution.alreadyExtracted;
 
@@ -1089,7 +1109,7 @@ export class ImportManager {
     // place that knows both the resolved archive and the confirmed unpack intent.
     let proposedPath = overridePlan.proposedPath;
     if (needsExtraction && !archiveResolution!.isDirectorySource) {
-      const ext = path.extname(resolvedOriginalPath);
+      const ext = path.extname(safeOriginalPath);
       if (ext && proposedPath.toLowerCase().endsWith(ext.toLowerCase())) {
         proposedPath = proposedPath.slice(0, -ext.length);
       }
@@ -1127,14 +1147,14 @@ export class ImportManager {
       // categories applied afterward instead, via transferWithUnpack's post-extraction
       // reorganizeBySortExtras pass, since there's nothing to categorize here yet.
       fileCategories: undefined,
-      originalPath: resolvedOriginalPath,
+      originalPath: safeOriginalPath,
       proposedPath,
     };
 
     const strategy = new PCImportStrategy(await this.pathService.getConfiguredRoots());
     if (overridePlan.strategy === "pc" && config.sortExtras && !needsExtraction) {
       const categorizedPlan = await strategy.planImport(
-        resolvedOriginalPath,
+        safeOriginalPath,
         game,
         config.libraryRoot,
         config

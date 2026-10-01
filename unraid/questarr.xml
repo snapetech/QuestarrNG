@@ -16,7 +16,7 @@
   <ReadMe>https://github.com/snapetech/QuestarrNG/blob/main/README.md</ReadMe>
   <Category>MediaApp:Other</Category>
   <ExtraSearchTerms>questarrng questarr pc game igdb seerrng</ExtraSearchTerms>
-  <Changes>Standalone optional companion template for SeerrNG.</Changes>
+  <Changes>1.7.2: .NET 10 Windows service support, dependency updates, and security hardening.</Changes>
   <Requires>Docker and persistent appdata. Configure this app independently before connecting it to SeerrNG.</Requires>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
 

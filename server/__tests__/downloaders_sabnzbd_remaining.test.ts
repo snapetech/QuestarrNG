@@ -1,17 +1,8 @@
-import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Downloader } from "../../shared/schema.js";
 
-const fetchMock = vi.fn();
 const safeFetchMock = vi.fn();
-const httpsRequestMock = vi.fn();
-
-vi.mock("https", () => ({
-  default: {
-    request: httpsRequestMock,
-  },
-}));
 
 vi.mock("../logger.js", () => ({
   downloadersLogger: {
@@ -25,10 +16,7 @@ vi.mock("../logger.js", () => ({
 vi.mock("../ssrf.js", () => ({
   isSafeUrl: vi.fn().mockResolvedValue(true),
   safeFetch: safeFetchMock,
-  resolveSafeAddress: vi.fn().mockResolvedValue({ address: "127.0.0.1", family: 4 }),
 }));
-
-global.fetch = fetchMock as unknown as typeof fetch;
 
 const { isSafeUrl } = await import("../ssrf.js");
 const { SABnzbdClient } = await import("../downloaders/sabnzbd.js");
@@ -91,38 +79,21 @@ const spyOnFetchWithFallback = (client: InstanceType<typeof SABnzbdClient>) =>
     "fetchWithFallback"
   );
 
-class MockRequest extends EventEmitter {
-  public writes: Array<Buffer | string> = [];
-
-  destroy = vi.fn();
-
-  write = vi.fn((chunk: Buffer | string) => {
-    this.writes.push(chunk);
-  });
-
-  end = vi.fn();
-}
-
 describe("sabnzbd remaining regression coverage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchMock.mockReset();
     safeFetchMock.mockReset();
-    httpsRequestMock.mockReset();
     vi.mocked(isSafeUrl).mockResolvedValue(true);
   });
 
-  it("covers URL normalization, fetchInsecure branches, testConnection, and addDownload edge paths", async () => {
+  it("covers URL normalization, testConnection, and addDownload edge paths", async () => {
     const helperClient = new SABnzbdClient(
       createDownloader({
         url: "sab.local/root/",
         useSsl: true,
         port: 8085,
       })
-    ) as unknown as {
-      getBaseUrl(): string;
-      fetchInsecure(url: string, options: RequestInit): Promise<Response>;
-    };
+    ) as unknown as { getBaseUrl(): string };
     expect(helperClient.getBaseUrl()).toBe("https://sab.local:8085/root");
 
     const invalidUrlClient = new SABnzbdClient(
@@ -133,76 +104,6 @@ describe("sabnzbd remaining regression coverage", () => {
       getBaseUrl(): string;
     };
     expect(invalidUrlClient.getBaseUrl()).toBe("http://bad host");
-
-    httpsRequestMock.mockImplementationOnce(
-      (
-        _url: string,
-        _options: Record<string, unknown>,
-        callback: (response: EventEmitter & Record<string, unknown>) => void
-      ) => {
-        const request = new MockRequest();
-        request.end.mockImplementation(() => {
-          const response = new EventEmitter() as EventEmitter & Record<string, unknown>;
-          response.statusCode = 200;
-          response.statusMessage = "OK";
-          response.headers = { "content-type": "application/json" };
-          callback(response);
-          response.emit("data", Buffer.from('{"ok":true}'));
-          response.emit("end");
-        });
-        return request;
-      }
-    );
-    const insecureJson = await helperClient.fetchInsecure("https://sab.local", {
-      method: "POST",
-      body: "payload",
-      headers: { Accept: "application/json" },
-    });
-    await expect(insecureJson.clone().text()).resolves.toBe('{"ok":true}');
-    await expect(insecureJson.json()).resolves.toEqual({ ok: true });
-    expect(insecureJson.headers.get("content-type")).toBe("application/json");
-
-    httpsRequestMock.mockImplementationOnce(
-      (
-        _url: string,
-        _options: Record<string, unknown>,
-        callback: (response: EventEmitter & Record<string, unknown>) => void
-      ) => {
-        const request = new MockRequest();
-        request.end.mockImplementation(() => {
-          const response = new EventEmitter() as EventEmitter & Record<string, unknown>;
-          response.statusCode = 200;
-          response.statusMessage = "OK";
-          response.headers = {};
-          callback(response);
-          response.emit("data", Buffer.from("not-json"));
-          response.emit("end");
-        });
-        return request;
-      }
-    );
-    const insecureInvalidJson = await helperClient.fetchInsecure("https://sab.local", {});
-    await expect(insecureInvalidJson.json()).rejects.toThrow();
-
-    httpsRequestMock.mockImplementationOnce(() => {
-      const request = new MockRequest();
-      request.end.mockImplementation(() => {
-        request.emit("timeout");
-      });
-      return request;
-    });
-    await expect(helperClient.fetchInsecure("https://sab.local", {})).rejects.toThrow("Timeout");
-
-    httpsRequestMock.mockImplementationOnce(() => {
-      const request = new MockRequest();
-      request.end.mockImplementation(() => {
-        request.emit("error", new Error("socket boom"));
-      });
-      return request;
-    });
-    await expect(helperClient.fetchInsecure("https://sab.local", {})).rejects.toThrow(
-      "socket boom"
-    );
 
     const client = new SABnzbdClient(createDownloader());
     const privateClient = client as unknown as {
@@ -294,9 +195,8 @@ describe("sabnzbd remaining regression coverage", () => {
           ? expect.stringContaining(`password=${expectedPassword}`)
           : expect.not.stringContaining("password="),
         expect.anything(),
-        // A request carrying a password must disable the insecure-cert fallback,
-        // never silently downgrade transport security for a credential.
-        !expectedPassword
+        // A request carrying a password must require HTTPS on every request hop.
+        Boolean(expectedPassword)
       );
       return spy;
     };
@@ -404,7 +304,7 @@ describe("sabnzbd remaining regression coverage", () => {
     expect(postOptionsWithoutCredentials.requireHttps).toBe(false);
   });
 
-  it("does not downgrade to the insecure self-signed-cert fallback when a password is sent", async () => {
+  it("requires HTTPS for password requests and never retries with unverified TLS", async () => {
     safeFetchMock.mockImplementation(async (_url: string, options: RequestInit = {}) => {
       // The NZB content fetch (no method override) should succeed normally; only the
       // addfile POST needs to hit the self-signed-cert failure this test is probing.
@@ -414,22 +314,13 @@ describe("sabnzbd remaining regression coverage", () => {
           arrayBuffer: async () => new TextEncoder().encode("nzb").buffer,
         } as Response;
       }
-      // A recognized cause.code is required for doFetchWithFallback to treat this
-      // as an SSL error at all -- without it, the test would pass even if the
-      // allowInsecureFallback guard it's probing were removed entirely.
       const error = new Error("self-signed certificate") as Error & { cause?: { code: string } };
       error.cause = { code: "DEPTH_ZERO_SELF_SIGNED_CERT" };
       throw error;
     });
 
-    // allowSelfSignedCertificate must be on too, or the SSL-error branch returns
-    // before ever consulting allowInsecureFallback (see downloaders_sabnzbd_tls.test.ts).
     const client = new SABnzbdClient(
       createDownloader({ useSsl: true, allowSelfSignedCertificate: true })
-    );
-    const fetchInsecureSpy = vi.spyOn(
-      client as unknown as { fetchInsecure: (...args: unknown[]) => Promise<Response> },
-      "fetchInsecure"
     );
 
     await expect(
@@ -442,7 +333,10 @@ describe("sabnzbd remaining regression coverage", () => {
       success: false,
       message: "Failed to add NZB to SABnzbd: self-signed certificate",
     });
-    expect(fetchInsecureSpy).not.toHaveBeenCalled();
+    const postCall = safeFetchMock.mock.calls.find(
+      ([, options]) => (options as RequestInit)?.method === "POST"
+    ) as [string, RequestInit & { requireHttps?: boolean }] | undefined;
+    expect(postCall?.[1].requireHttps).toBe(true);
   });
 
   it("covers queue/history status variants, details fallbacks, and control error branches", async () => {

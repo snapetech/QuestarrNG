@@ -1,8 +1,7 @@
 import type { Downloader, DownloadStatus, DownloadDetails } from "../../shared/schema.js";
 import { resolveArchivePassword } from "../../shared/archive-password.js";
 import { downloadersLogger } from "../logger.js";
-import https from "https";
-import { isSafeUrl, resolveSafeAddress, safeFetch } from "../ssrf.js";
+import { isSafeUrl, safeFetch } from "../ssrf.js";
 import type { DownloadRequest, DownloaderClient } from "./types.js";
 import {
   assertCredentialsAllowed,
@@ -29,22 +28,6 @@ function redactApiKey(url: string): string {
     return url;
   }
 }
-
-/**
- * Node TLS error codes that genuinely indicate a self-signed or otherwise
- * untrusted certificate chain -- the specific failure modes
- * allowSelfSignedCertificate exists to bypass. Deliberately excludes
- * CERT_HAS_EXPIRED and any other certificate-related code: an expired
- * certificate is a different, unrelated problem that this opt-in was never
- * meant to paper over.
- */
-const SELF_SIGNED_TLS_ERROR_CODES = new Set([
-  "DEPTH_ZERO_SELF_SIGNED_CERT",
-  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
-  "SELF_SIGNED_CERT_IN_CHAIN",
-  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
-  "UNABLE_TO_GET_ISSUER_CERT",
-]);
 
 interface SABnzbdQueue {
   slots: Array<{
@@ -154,9 +137,9 @@ export class SABnzbdClient implements DownloaderClient {
   private async fetchWithFallback(
     url: string,
     options: RequestInit = {},
-    allowInsecureFallback = true
+    requireHttps = false
   ): Promise<Response> {
-    const response = await this.doFetchWithFallback(url, options, allowInsecureFallback);
+    const response = await this.doFetchWithFallback(url, options, requireHttps);
     await logDownloaderDebugResponse("sabnzbd", options.method ?? "GET", url, response);
     return response;
   }
@@ -164,111 +147,27 @@ export class SABnzbdClient implements DownloaderClient {
   private async doFetchWithFallback(
     url: string,
     options: RequestInit = {},
-    allowInsecureFallback = true
+    requireHttps = false
   ): Promise<Response> {
     try {
-      // Refuse to follow a redirect to a non-HTTPS hop whenever this request carries
-      // a credential: either the archive password (allowInsecureFallback is false
-      // exactly then, see addDownload) or the API key that getApiUrl() embeds in
-      // every routine request once the connection is configured for TLS. Without
-      // this, a compromised or MITM'd SABnzbd could bounce a credential-bearing
-      // HTTPS request to a plaintext endpoint mid-flight.
+      // API keys are embedded in SABnzbd request URLs. Keep redirects on HTTPS
+      // whenever TLS is configured, and also when the request carries an archive
+      // password and explicitly requires HTTPS.
       return await safeFetch(url, {
         ...options,
         allowPrivate: true,
-        requireHttps: !allowInsecureFallback || isHttpsUrl(url),
+        requireHttps: requireHttps || isHttpsUrl(url),
       });
     } catch (error) {
-      const isSslError =
-        error instanceof Error &&
-        // Only Node's self-signed/untrusted-chain TLS error codes qualify for
-        // the insecure retry -- NOT a generic message.includes("certificate")
-        // (too broad) or CERT_HAS_EXPIRED (an expired cert is a different,
-        // unrelated failure that allowSelfSignedCertificate was never meant
-        // to bypass).
-        SELF_SIGNED_TLS_ERROR_CODES.has((error.cause as { code?: string })?.code ?? "");
-
-      // The insecure fallback (rejectUnauthorized: false) accepts *any* certificate,
-      // including one presented by an attacker impersonating the configured host. That's
-      // an acceptable trade-off for routine status polling, but never for a request
-      // carrying the archive password -- callers pass allowInsecureFallback: false there
-      // so a cert failure surfaces as an error instead of silently downgrading transport
-      // security for a credential.
-      if (isSslError && allowInsecureFallback) {
-        const redactedUrl = redactApiKey(url);
-        if (!this.downloader.allowSelfSignedCertificate) {
-          downloadersLogger.warn(
-            { url: redactedUrl, downloaderId: this.downloader.id },
-            "SSL verification failed; not retrying insecurely because " +
-              "allowSelfSignedCertificate is disabled for this downloader"
-          );
-          throw error;
-        }
-        downloadersLogger.debug(
-          { url: redactedUrl },
-          "SSL verification failed, retrying with insecure connection (allowSelfSignedCertificate enabled)"
+      if (this.downloader.allowSelfSignedCertificate && isHttpsUrl(url)) {
+        downloadersLogger.warn(
+          { url: redactApiKey(url), downloaderId: this.downloader.id },
+          "TLS certificate verification failed. Configure the trusted certificate with " +
+            "NODE_EXTRA_CA_CERTS; certificate validation cannot be disabled."
         );
-        return this.fetchInsecure(url, options);
       }
       throw error;
     }
-  }
-
-  private async fetchInsecure(url: string, options: RequestInit): Promise<Response> {
-    const parsedUrl = new URL(url);
-    const { address, family } = await resolveSafeAddress(parsedUrl.hostname, true);
-    const safeUrl = new URL(url);
-    safeUrl.hostname = family === 6 ? `[${address}]` : address;
-
-    const headers = new Headers(options.headers || {});
-    headers.set("Host", parsedUrl.host);
-
-    return new Promise((resolve, reject) => {
-      const req = https.request(
-        safeUrl.toString(),
-        {
-          method: options.method || "GET",
-          headers: Object.fromEntries(headers.entries()) as import("http").OutgoingHttpHeaders,
-          rejectUnauthorized: false,
-          timeout: 30000,
-        },
-        (res) => {
-          const chunks: Buffer[] = [];
-          res.on("data", (chunk) => chunks.push(chunk));
-          res.on("end", () => {
-            const body = Buffer.concat(chunks).toString();
-            const responseHeaders = new Headers();
-            for (const [name, value] of Object.entries(res.headers)) {
-              if (value === undefined) continue;
-              for (const v of Array.isArray(value) ? value : [value]) {
-                responseHeaders.append(name, v);
-              }
-            }
-            // Build a native Response so downstream consumers (including
-            // logDownloaderDebugResponse, which calls clone() and
-            // headers.entries()) get the full standard Response surface.
-            resolve(
-              new Response(body, {
-                status: res.statusCode || 200,
-                statusText: res.statusMessage || "",
-                headers: responseHeaders,
-              })
-            );
-          });
-        }
-      );
-
-      req.on("error", reject);
-      req.on("timeout", () => {
-        req.destroy();
-        reject(new Error("Timeout"));
-      });
-
-      if (options.body) {
-        req.write(options.body as Buffer | string);
-      }
-      req.end();
-    });
   }
 
   async testConnection(): Promise<{ success: boolean; message: string }> {
@@ -389,8 +288,8 @@ export class SABnzbdClient implements DownloaderClient {
         ...(password ? { password } : {}),
       });
 
-      // Build multipart body manually so fetchInsecure (self-signed HTTPS fallback)
-      // can write it as a Buffer — FormData is not serialisable via req.write().
+      // Build the multipart body explicitly so its filename remains stable across
+      // Node's fetch implementations.
       const boundary = `questarr${Date.now().toString(16)}`;
       const safeName = request.title.replace(/["\\]/g, "_");
       const multipartBody = Buffer.concat([
@@ -409,7 +308,7 @@ export class SABnzbdClient implements DownloaderClient {
           headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
           signal: AbortSignal.timeout(30000),
         },
-        !password
+        Boolean(password)
       );
 
       if (!response.ok) {

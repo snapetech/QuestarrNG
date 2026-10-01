@@ -197,16 +197,10 @@ async function fetchValidatedOnce(
 ): Promise<Response> {
   const target = await resolveSafeFetchTarget(url, allowPrivate);
 
-  if (target.isHttps) {
-    return fetch(url.toString(), fetchOptions);
-  }
-
-  // Pin the TCP connection to the already-validated address instead of rewriting the
-  // URL/Host to the IP: Node's fetch silently ignores an explicitly-set Host header, so
-  // rewriting the URL was actually sending the resolved IP as Host to the upstream server
-  // (breaking name-based virtual hosting, e.g. Docker service names). A custom dns lookup
-  // on the dispatcher keeps the original hostname on the wire while still preventing
-  // DNS-rebinding, since the connection only ever goes to the address we already checked.
+  // Pin the TCP connection to the already-validated address for both HTTP and HTTPS
+  // instead of rewriting the URL/Host to the IP. The original hostname remains available
+  // for virtual hosting and TLS certificate verification, while the connection cannot
+  // be redirected by a second DNS lookup after validation.
   const pinnedLookup: LookupFunction = (_hostname, _options, callback) => {
     callback(null, [{ address: target.address, family: target.family }]);
   };

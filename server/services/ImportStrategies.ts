@@ -430,15 +430,16 @@ export class PCImportStrategy implements ImportStrategy {
       throw new Error("Refusing to process a sensitive system path");
     }
 
-    await assertWithinRoots(
+    const safeSourcePath = await assertWithinRoots(
       sourcePath,
       this.sourceRoots,
       "Refusing to process a path outside the configured downloader roots"
     );
 
-    const stats = await fs.stat(sourcePath);
+    const stats = await fs.stat(safeSourcePath);
     const cleanTitle = sanitizeFsName(game.title);
-    const ext = options?.treatAsDirectory || stats.isDirectory() ? "" : path.extname(sourcePath);
+    const ext =
+      options?.treatAsDirectory || stats.isDirectory() ? "" : path.extname(safeSourcePath);
     const destination = path.join(targetRoot, platformDir ?? "PC", cleanTitle + ext);
 
     // sanitizeFsName strips filesystem-illegal characters but not ".." segments, so a
@@ -452,7 +453,7 @@ export class PCImportStrategy implements ImportStrategy {
 
     const fileCategories =
       stats.isDirectory() && config.sortExtras
-        ? await categorizeSourceFiles(sourcePath)
+        ? await categorizeSourceFiles(safeSourcePath)
         : undefined;
 
     const destinationExists = await fs.pathExists(destination);
@@ -461,7 +462,7 @@ export class PCImportStrategy implements ImportStrategy {
     return {
       needsReview,
       reviewReason: needsReview ? "Destination already exists" : undefined,
-      originalPath: sourcePath,
+      originalPath: safeSourcePath,
       proposedPath: destination,
       strategy: "pc",
       fileCategories,
@@ -484,7 +485,7 @@ export class PCImportStrategy implements ImportStrategy {
     // Same containment check as planImport, applied here too since executeImport is a
     // second, independent entry point: a confirmImport call can supply review.originalPath
     // directly, without ever going through planImport first.
-    await assertWithinRoots(
+    review.originalPath = await assertWithinRoots(
       review.originalPath,
       this.sourceRoots,
       "Refusing to process a path outside the configured downloader roots"

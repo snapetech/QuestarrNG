@@ -1,6 +1,6 @@
 {
   "name": "questarrng",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "description": "A video game management application inspired by the -Arr apps. Track and organize your video game collection with automated discovery and download management.",
   "type": "module",
   "packageManager": "npm@11.7.0",
@@ -85,7 +85,7 @@
     "drizzle-orm": "^0.45.2",
     "drizzle-zod": "^0.8.3",
     "embla-carousel-react": "^8.6.0",
-    "express": "^4.22.2",
+    "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "express-session": "^1.19.0",
     "express-validator": "^7.3.2",
@@ -145,7 +145,7 @@
     "@types/archiver": "^8.0.0",
     "@types/bcryptjs": "^3.0.0",
     "@types/better-sqlite3": "^9.6.0",
-    "@types/express": "4.17.21",
+    "@types/express": "5.0.6",
     "@types/express-session": "^1.19.0",
     "@types/fs-extra": "^11.0.4",
     "@types/js-yaml": "^4.0.9",
@@ -209,7 +209,6 @@
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.0"
     },
-    "body-parser": "1.20.6",
     "qs": "^6.16.0",
     "brace-expansion": "^5.0.12",
     "minimatch": "^10.2.5",

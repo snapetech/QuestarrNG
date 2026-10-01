@@ -40,6 +40,7 @@ function mockDnsResolvesOnce(address = "1.2.3.4"): void {
 describe("isSafeUrl Security Check", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(dns.lookup).mockReset();
   });
 
   afterEach(() => {
@@ -136,8 +137,11 @@ describe("isSafeUrl Security Check", () => {
 describe("safeFetch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock global fetch
-    global.fetch = vi.fn();
+    vi.mocked(dns.lookup).mockReset();
+    vi.mocked(undiciFetch).mockReset();
+    // safeFetch uses undici directly so its validated DNS lookup and dispatcher
+    // stay under test. Keep the old fetch assertions pointed at the same mock.
+    global.fetch = undiciFetch as unknown as typeof fetch;
   });
 
   afterEach(() => {
@@ -440,7 +444,10 @@ describe("safeFetch", () => {
 });
 
 describe("resolveSafeAddress", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(dns.lookup).mockReset();
+  });
 
   it("returns address and family for a safe IP", async () => {
     const result = await resolveSafeAddress("192.168.1.1");

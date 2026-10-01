@@ -45,6 +45,12 @@ import { appriseClient } from "../apprise.js";
 import fsExtra from "fs-extra";
 import { normalizeTitle } from "../../shared/title-utils.js";
 
+const safeFetchMock = vi.hoisted(() => vi.fn());
+vi.mock("../ssrf.js", async () => {
+  const actual = await vi.importActual<typeof import("../ssrf.js")>("../ssrf.js");
+  return { ...actual, safeFetch: safeFetchMock };
+});
+
 // Mock dependencies (factory bodies live in ./fixtures/common-route-mocks.ts so they can be
 // shared with other test files that also boot the full app via registerRoutes())
 vi.mock("../storage.js", () => ({ storage: createStorageMock() }));
@@ -3443,7 +3449,7 @@ describe("API Routes - Extended Coverage", () => {
       "data:image/png;base64," + Buffer.from("fake-png-data").toString("base64");
 
     beforeEach(() => {
-      vi.stubGlobal("fetch", vi.fn());
+      safeFetchMock.mockReset();
     });
 
     it("should return 400 when no webhook is configured", async () => {
@@ -3488,7 +3494,7 @@ describe("API Routes - Extended Coverage", () => {
       vi.mocked(storage.getSystemConfig).mockResolvedValue(
         "https://discord.com/api/webhooks/123/abc"
       );
-      vi.mocked(fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      safeFetchMock.mockResolvedValue({
         ok: true,
       });
       const response = await request(app)
@@ -3496,7 +3502,7 @@ describe("API Routes - Extended Coverage", () => {
         .send({ image: validImageDataUrl, message: "My stats" });
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ success: true });
-      expect(fetch).toHaveBeenCalledWith(
+      expect(safeFetchMock).toHaveBeenCalledWith(
         "https://discord.com/api/webhooks/123/abc",
         expect.objectContaining({ method: "POST" })
       );
@@ -3506,7 +3512,7 @@ describe("API Routes - Extended Coverage", () => {
       vi.mocked(storage.getSystemConfig).mockResolvedValue(
         "https://discord.com/api/webhooks/123/abc"
       );
-      vi.mocked(fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      safeFetchMock.mockResolvedValue({
         ok: false,
         status: 400,
         text: vi.fn().mockResolvedValue("Bad Request"),

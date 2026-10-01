@@ -1,17 +1,8 @@
-import { EventEmitter } from "node:events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Downloader } from "../../shared/schema.js";
 
-const fetchMock = vi.fn();
 const safeFetchMock = vi.fn();
-const httpsRequestMock = vi.fn();
-
-vi.mock("https", () => ({
-  default: {
-    request: httpsRequestMock,
-  },
-}));
 
 const loggerWarnMock = vi.fn();
 vi.mock("../logger.js", () => ({
@@ -26,10 +17,7 @@ vi.mock("../logger.js", () => ({
 vi.mock("../ssrf.js", () => ({
   isSafeUrl: vi.fn().mockResolvedValue(true),
   safeFetch: safeFetchMock,
-  resolveSafeAddress: vi.fn().mockResolvedValue({ address: "127.0.0.1", family: 4 }),
 }));
-
-global.fetch = fetchMock as unknown as typeof fetch;
 
 const { SABnzbdClient } = await import("../downloaders/sabnzbd.js");
 
@@ -62,94 +50,42 @@ const createDownloader = (overrides: Partial<Downloader> = {}): Downloader => {
   };
 };
 
-class MockRequest extends EventEmitter {
-  public writes: Array<Buffer | string> = [];
-  destroy = vi.fn();
-  write = vi.fn((chunk: Buffer | string) => {
-    this.writes.push(chunk);
-  });
-  end = vi.fn();
-}
-
 const selfSignedError = () => {
   const err = new Error("self-signed certificate") as Error & { cause?: { code: string } };
   err.cause = { code: "DEPTH_ZERO_SELF_SIGNED_CERT" };
   return err;
 };
 
-const expiredCertError = () => {
-  const err = new Error("certificate has expired") as Error & { cause?: { code: string } };
-  err.cause = { code: "CERT_HAS_EXPIRED" };
-  return err;
-};
-
-describe("SABnzbd TLS self-signed-certificate opt-in", () => {
+describe("SABnzbd TLS certificate validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    fetchMock.mockReset();
     safeFetchMock.mockReset();
-    httpsRequestMock.mockReset();
   });
 
-  it("throws the original SSL error and never retries insecurely when opt-in is off", async () => {
+  it("does not make an insecure retry when the legacy opt-in is off", async () => {
     safeFetchMock.mockRejectedValue(selfSignedError());
 
     const client = new SABnzbdClient(createDownloader({ allowSelfSignedCertificate: false }));
 
     const result = await client.testConnection();
     expect(result.success).toBe(false);
-    expect(httpsRequestMock).not.toHaveBeenCalled();
-    expect(loggerWarnMock).toHaveBeenCalledWith(
-      expect.objectContaining({ downloaderId: "sab-tls", url: expect.any(String) }),
-      expect.stringContaining("not retrying insecurely")
-    );
-    // The downloader's SABnzbd API key (its `username`) must never reach the
-    // logger unredacted -- it's embedded in the request URL's `apikey` param.
-    const [loggedFields] = loggerWarnMock.mock.calls[0];
-    expect(loggedFields.url).not.toContain("api-key");
-    expect(loggedFields.url).toContain("apikey=%5Bredacted%5D");
+    expect(loggerWarnMock).not.toHaveBeenCalled();
   });
 
-  it("never retries insecurely for an expired certificate, even with opt-in on", async () => {
-    // CERT_HAS_EXPIRED is a different failure mode than a self-signed/untrusted
-    // chain -- allowSelfSignedCertificate must not paper over it.
-    safeFetchMock.mockRejectedValue(expiredCertError());
+  it("never disables certificate validation when the legacy opt-in is on", async () => {
+    safeFetchMock.mockRejectedValue(selfSignedError());
 
     const client = new SABnzbdClient(createDownloader({ allowSelfSignedCertificate: true }));
     const result = await client.testConnection();
 
     expect(result.success).toBe(false);
-    expect(httpsRequestMock).not.toHaveBeenCalled();
-  });
+    expect(loggerWarnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ downloaderId: "sab-tls", url: expect.any(String) }),
+      expect.stringContaining("NODE_EXTRA_CA_CERTS")
+    );
 
-  it("falls back to an insecure connection when allowSelfSignedCertificate is true", async () => {
-    safeFetchMock.mockRejectedValue(selfSignedError());
-
-    const mockReq = new MockRequest();
-    httpsRequestMock.mockImplementation((_urlOrOptions, optionsOrCallback, maybeCallback) => {
-      const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
-      const res = new EventEmitter() as EventEmitter & {
-        headers: Record<string, string>;
-        statusCode: number;
-        statusMessage: string;
-      };
-      res.headers = { "content-type": "application/json" };
-      res.statusCode = 200;
-      res.statusMessage = "OK";
-      queueMicrotask(() => {
-        callback(res);
-        res.emit("data", Buffer.from(JSON.stringify({ version: "4.0.0" })));
-        res.emit("end");
-      });
-      return mockReq;
-    });
-
-    const client = new SABnzbdClient(createDownloader({ allowSelfSignedCertificate: true }));
-    const result = await client.testConnection();
-
-    expect(httpsRequestMock).toHaveBeenCalled();
-    const [, requestOptions] = httpsRequestMock.mock.calls[0];
-    expect(requestOptions.rejectUnauthorized).toBe(false);
-    expect(result.success).toBe(true);
+    const [loggedFields] = loggerWarnMock.mock.calls[0];
+    expect(loggedFields.url).not.toContain("api-key");
+    expect(loggedFields.url).toContain("apikey=%5Bredacted%5D");
   });
 });

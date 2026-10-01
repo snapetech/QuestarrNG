@@ -10,12 +10,14 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -32,7 +34,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install Semgrep
-        run: pip install "--only-binary=:all:" semgrep==1.171.0
+        run: python -m pip install --only-binary=:all: --require-hashes -r .github/requirements/requirements.txt
 
       # Blocking policy and suppression process documented in
       # docs/VULNERABILITY_MANAGEMENT.md (OSPS-VM-06.02). Scan is run

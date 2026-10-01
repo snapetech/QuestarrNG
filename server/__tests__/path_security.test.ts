@@ -6,29 +6,29 @@ import path from "node:path";
 import { assertWithinRoots } from "../path-security.js";
 
 describe("assertWithinRoots", () => {
-  it("never throws when no roots are configured", async () => {
-    await expect(
-      assertWithinRoots("/anywhere/at/all", [], "outside roots")
-    ).resolves.toBeUndefined();
+  it("preserves the no-mapping trust mode and returns an absolute path", async () => {
+    await expect(assertWithinRoots("/anywhere/at/all", [], "outside roots")).resolves.toBe(
+      path.resolve("/anywhere/at/all")
+    );
   });
 
   it("allows a path nested inside a configured root", async () => {
     await expect(
       assertWithinRoots("/data/downloads/release/game.zip", ["/data/downloads"], "outside roots")
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(path.resolve("/data/downloads/release/game.zip"));
   });
 
   it("allows a path exactly equal to a configured root", async () => {
     await expect(
       assertWithinRoots("/data/downloads", ["/data/downloads"], "outside roots")
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(path.resolve("/data/downloads"));
   });
 
   it("allows a path inside any of several configured roots", async () => {
     const roots = ["/data/downloads", "/data/incoming"];
     await expect(
       assertWithinRoots("/data/incoming/release/game.zip", roots, "outside roots")
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(path.resolve("/data/incoming/release/game.zip"));
   });
 
   it("rejects a path outside every configured root", async () => {
@@ -62,7 +62,7 @@ describe("assertWithinRoots", () => {
     // a traversal sequence, since it doesn't have a path separator after the dots.
     await expect(
       assertWithinRoots("/data/downloads/..game.exe", ["/data/downloads"], "outside roots")
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(path.resolve("/data/downloads/..game.exe"));
   });
 
   it("rejects a path that resolves to exactly the parent of the configured root", async () => {
@@ -117,9 +117,9 @@ describe("assertWithinRoots", () => {
       const link = path.join(downloadsRoot, "release");
       await fs.symlink(realDir, link);
 
-      await expect(
-        assertWithinRoots(link, [downloadsRoot], "outside roots")
-      ).resolves.toBeUndefined();
+      await expect(assertWithinRoots(link, [downloadsRoot], "outside roots")).resolves.toBe(
+        await fs.realpath(realDir)
+      );
     });
 
     it("allows a not-yet-existing path under a configured root that is itself a symlink", async () => {
@@ -140,7 +140,7 @@ describe("assertWithinRoots", () => {
           [symlinkRoot],
           "outside roots"
         )
-      ).resolves.toBeUndefined();
+      ).resolves.toBe(path.join(await fs.realpath(realRoot), "not-here-yet.zip"));
     });
 
     it("falls back to pathname-only containment for a path that doesn't exist yet", async () => {
@@ -157,7 +157,25 @@ describe("assertWithinRoots", () => {
           [downloadsRoot],
           "outside roots"
         )
-      ).resolves.toBeUndefined();
+      ).resolves.toBe(path.join(await fs.realpath(downloadsRoot), "not-here-yet.zip"));
+    });
+
+    it("rejects a missing path whose existing parent symlink escapes the root", async () => {
+      const root = tempDir();
+      const downloadsRoot = path.join(root, "downloads");
+      const outsideDir = path.join(root, "outside");
+      await fs.ensureDir(downloadsRoot);
+      await fs.ensureDir(outsideDir);
+      const outsideLink = path.join(downloadsRoot, "linked");
+      await fs.symlink(outsideDir, outsideLink);
+
+      await expect(
+        assertWithinRoots(
+          path.join(outsideLink, "not-here-yet.zip"),
+          [downloadsRoot],
+          "outside roots"
+        )
+      ).rejects.toThrow("outside roots");
     });
   });
 });

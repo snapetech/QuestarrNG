@@ -8,6 +8,24 @@ const SENSITIVE_PATH_REGEX = new RegExp(
   `^(?:${SENSITIVE_PATH_PREFIXES.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?:/|$)`
 );
 
+async function canonicalizeConfiguredRoot(root: string): Promise<string> {
+  let existingPath = root;
+  const missingSegments: string[] = [];
+  while (true) {
+    try {
+      const canonicalExistingPath = await fs.realpath(existingPath);
+      return path.join(canonicalExistingPath, ...missingSegments);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+      const parent = path.dirname(existingPath);
+      if (parent === existingPath) throw error;
+      missingSegments.unshift(path.basename(existingPath));
+      existingPath = parent;
+    }
+  }
+}
+
 /**
  * Returns true if the given path resolves to a sensitive system directory.
  * Resolves the path before comparing so traversal tricks like /data/../etc are caught.
@@ -17,54 +35,20 @@ export function isSensitivePath(rawPath: string): boolean {
   return SENSITIVE_PATH_REGEX.test(resolved);
 }
 
-// Roots come from configuration, not request input, so resolving symlinks in them
-// carries no taint for CodeQL's path-injection analysis; a shared helper is fine here.
-async function canonicalizeRoot(resolvedRoot: string): Promise<string> {
-  try {
-    return await fs.realpath(resolvedRoot);
-  } catch {
-    return resolvedRoot;
-  }
-}
-
-// realpath requires the whole path (including the final component) to already exist.
-// A path that doesn't exist yet — e.g. a download still in flight, being polled for
-// existence — can't be canonicalized itself. Canonicalize just the root instead (it
-// does exist) and re-append the already-checked relative segment, rather than falling
-// back to the fully lexical candidate: that would break containment when `root` is
-// itself a symlink, since the canonical-roots check that follows resolves it to its
-// real target. Not part of the guard shape gating fs.realpath() in assertWithinRoots
-// below, so — unlike that check — this can safely live in its own function.
-async function canonicalizeMissingCandidate(root: string, relative: string): Promise<string> {
-  const canonicalRoot = await canonicalizeRoot(root);
-  return relative === "" ? canonicalRoot : path.join(canonicalRoot, relative);
-}
-
-// Not used to gate any filesystem call directly, so — unlike the inline check in
-// assertWithinRoots below — this can safely live in its own function: CodeQL's
-// path-injection sanitizer recognition only needs the guard textually inline when a
-// sink in the same function depends on it, and nothing here touches the filesystem.
-function isContainedIn(candidate: string, root: string): boolean {
-  const relative = path.relative(root, candidate);
-  return relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative);
-}
-
-function isContainedInAnyRoot(candidate: string, roots: string[]): boolean {
-  return roots.some((root) => isContainedIn(candidate, root));
-}
-
 /**
- * Throws unless candidatePath resolves inside one of the given roots. An empty
- * roots list means no restriction is configured — callers pass [] deliberately in
- * that case (rather than skipping the call) to keep this the single place the
- * containment logic lives.
+ * Returns the canonical candidate only when it resolves inside one of the configured
+ * roots. Walking up to the deepest existing ancestor also handles paths whose final
+ * components do not exist yet, while still resolving symlinks in every existing
+ * component before accepting the path.
  */
 export async function assertWithinRoots(
   candidatePath: string,
   roots: string[],
   errorMessage: string
-): Promise<void> {
-  if (roots.length === 0) return;
+): Promise<string> {
+  // No path mappings means the downloader's local path is trusted wholesale; callers
+  // intentionally preserve that existing configuration mode.
+  if (roots.length === 0) return path.resolve(candidatePath);
 
   const resolvedCandidate = path.resolve(candidatePath);
   const resolvedRoots = roots.map((root) => path.resolve(root));
@@ -79,19 +63,35 @@ export async function assertWithinRoots(
   for (const root of resolvedRoots) {
     const relative = path.relative(root, resolvedCandidate);
     if (relative !== ".." && !relative.startsWith(".." + path.sep) && !path.isAbsolute(relative)) {
-      // path.resolve() doesn't follow symlinks, so a symlink sitting inside this root
-      // could still point outside it — canonicalize and check containment again to
-      // catch that.
-      let canonicalCandidate: string;
-      try {
-        canonicalCandidate = await fs.realpath(resolvedCandidate);
-      } catch {
-        canonicalCandidate = await canonicalizeMissingCandidate(root, relative);
+      // Resolve the candidate when it exists. For a not-yet-created suffix, walk up
+      // to the deepest existing ancestor so a symlink anywhere in the path is still
+      // followed and checked before the missing suffix is re-appended.
+      let existingPath = resolvedCandidate;
+      const missingSegments: string[] = [];
+      let canonicalExistingPath: string;
+      while (true) {
+        try {
+          canonicalExistingPath = await fs.realpath(existingPath);
+          break;
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          if (code !== "ENOENT" && code !== "ENOTDIR") throw error;
+          const parent = path.dirname(existingPath);
+          if (parent === existingPath) throw error;
+          missingSegments.unshift(path.basename(existingPath));
+          existingPath = parent;
+        }
       }
 
-      const canonicalRoots = await Promise.all(resolvedRoots.map(canonicalizeRoot));
-      if (isContainedInAnyRoot(canonicalCandidate, canonicalRoots)) {
-        return;
+      const canonicalCandidate = path.join(canonicalExistingPath, ...missingSegments);
+      const canonicalRoot = await canonicalizeConfiguredRoot(root);
+      const canonicalRelative = path.relative(canonicalRoot, canonicalCandidate);
+      if (
+        canonicalRelative !== ".." &&
+        !canonicalRelative.startsWith(".." + path.sep) &&
+        !path.isAbsolute(canonicalRelative)
+      ) {
+        return canonicalCandidate;
       }
       throw new Error(errorMessage);
     }

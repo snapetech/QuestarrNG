@@ -16,6 +16,12 @@ updates:
       - "dependencies"
       - "automated"
     versioning-strategy: increase
+    ignore:
+      # typescript-eslint 8.71.0 and the current parser ecosystem support TypeScript <6.1.
+      # Re-enable TypeScript 7 after upstream peer ranges include it.
+      - dependency-name: "typescript"
+        update-types:
+          - "version-update:semver-major"
     groups:
       # Group React related dependencies
       react:
@@ -60,6 +66,44 @@ updates:
   # Keep the Windows service host's NuGet packages and lock file current.
   - package-ecosystem: "nuget"
     directory: "/installer/windows/Questarr.Service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "automated"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Track the pinned Apprise runtime and its hash-locked transitive packages.
+  - package-ecosystem: "pip"
+    directory: "/security"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "automated"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Keep the hash-locked Semgrep scanner used by SAST up to date.
+  - package-ecosystem: "pip"
+    directory: "/.github/requirements"
     schedule:
       interval: "weekly"
       day: "monday"

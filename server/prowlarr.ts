@@ -1,6 +1,26 @@
 import { type Indexer } from "../shared/schema.js";
+import { XMLParser } from "fast-xml-parser";
 import { torznabLogger } from "./logger.js";
 import { safeFetch } from "./ssrf.js";
+
+function stripTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
+}
+
+function extractXmlError(body: string): string {
+  try {
+    const parsed = new XMLParser({ ignoreAttributes: false }).parse(body) as {
+      error?: string | { "#text"?: string; "@_description"?: string };
+    };
+    const error = parsed.error;
+    if (typeof error === "string") return error;
+    return error?.["@_description"] ?? error?.["#text"] ?? "";
+  } catch {
+    return "";
+  }
+}
 
 const redactDiagnosticDetail = (value: string, apiKey: string): string => {
   let detail = value;
@@ -55,7 +75,7 @@ export class ProwlarrClient {
     allowInsecureLan = false
   ): Promise<Partial<Indexer>[]> {
     // Normalize URL
-    let baseUrl = prowlarrUrl.replace(/\/+$/, "");
+    let baseUrl = stripTrailingSlashes(prowlarrUrl);
     if (!baseUrl.startsWith("http")) {
       baseUrl = `http://${baseUrl}`;
     }
@@ -158,7 +178,7 @@ export class ProwlarrClient {
       layer: "indexer-feed";
     }[];
   }> {
-    let baseUrl = prowlarrUrl.replace(/\/+$/, "");
+    let baseUrl = stripTrailingSlashes(prowlarrUrl);
     if (!baseUrl.startsWith("http")) baseUrl = `http://${baseUrl}`;
     const headers = { "X-Api-Key": apiKey, "User-Agent": "Questarr/1.0" };
     const safeOptions = {
@@ -254,11 +274,7 @@ export class ProwlarrClient {
             const response = await safeFetch(feed.toString(), safeOptions);
             const responseStatus = response.status;
             const body = (await response.text()).slice(0, 16384);
-            const xmlError = body.match(/<error\b[^>]*\bdescription=["']([^"']*)["'][^>]*>/i);
-            const errorBody = body
-              .match(/<error\b[^>]*>([\s\S]*?)<\/error>/i)?.[1]
-              ?.replace(/<[^>]*>/g, " ");
-            const description = redactDiagnosticDetail(xmlError?.[1] || errorBody || "", apiKey);
+            const description = redactDiagnosticDetail(extractXmlError(body), apiKey);
             const htmlError =
               response.headers.get("content-type")?.toLowerCase().includes("text/html") ||
               /<\s*html\b/i.test(body);

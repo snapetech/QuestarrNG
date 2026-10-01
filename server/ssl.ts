@@ -2,6 +2,7 @@ import forge from "node-forge";
 import fs from "fs";
 import path from "path";
 import { configLoader } from "./config-loader.js";
+import { assertWithinRoots } from "./path-security.js";
 
 const { mkdir, writeFile, readFile } = fs.promises;
 
@@ -78,23 +79,28 @@ export async function validateCertFiles(
   keyPath: string
 ): Promise<{ valid: boolean; error?: string; expiry?: Date }> {
   try {
-    if (certPath.includes("\0") || certPath.includes("..")) {
-      return { valid: false, error: "Invalid certificate path" };
-    }
-    if (keyPath.includes("\0") || keyPath.includes("..")) {
-      return { valid: false, error: "Invalid private key path" };
-    }
+    const allowedRoots = [process.cwd(), SSL_DIR];
+    const safeCertPath = await assertWithinRoots(
+      certPath,
+      allowedRoots,
+      "Certificate path is outside the allowed directories"
+    );
+    const safeKeyPath = await assertWithinRoots(
+      keyPath,
+      allowedRoots,
+      "Private key path is outside the allowed directories"
+    );
 
-    if (!fs.existsSync(certPath)) {
+    if (!fs.existsSync(safeCertPath)) {
       return { valid: false, error: "Certificate file missing" };
     }
-    if (!fs.existsSync(keyPath)) {
+    if (!fs.existsSync(safeKeyPath)) {
       return { valid: false, error: "Private key file missing" };
     }
 
     // Read files
-    const certPem = await readFile(certPath, "utf8");
-    const keyPem = await readFile(keyPath, "utf8");
+    const certPem = await readFile(safeCertPath, "utf8");
+    const keyPem = await readFile(safeKeyPath, "utf8");
 
     // 1. Basic Content Check
     if (!certPem.includes("BEGIN CERTIFICATE")) {

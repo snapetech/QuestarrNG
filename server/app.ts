@@ -8,6 +8,9 @@ import { truncateLogData } from "./log-response.js";
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
+  // Express 4 defaulted to the extended query parser. Keep that behavior across
+  // the Express 5 upgrade so bracketed query fields keep their existing shape.
+  app.set("query parser", "extended");
 
   // Registered first, before CORS, body-parsing, and the rate limiter, so
   // these headers/routes still apply on every response those can produce on

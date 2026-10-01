@@ -33,7 +33,16 @@ export const screenshotsRootDir = () => path.join(configLoader.getConfigDir(), "
 
 /** Per-game screenshot directory, exported for reuse by the game-deletion cleanup. */
 export function screenshotDirForGame(gameId: string): string {
-  return path.join(screenshotsRootDir(), gameId);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(gameId)) {
+    throw new Error("Invalid game ID for screenshot path");
+  }
+  const root = path.resolve(screenshotsRootDir());
+  const directory = path.resolve(root, gameId);
+  const relative = path.relative(root, directory);
+  if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
+    throw new Error("Screenshot directory escapes its root");
+  }
+  return directory;
 }
 
 const ALLOWED_SCREENSHOT_MIME_TYPES: Record<string, string> = {
@@ -62,7 +71,8 @@ const screenshotUpload = multer({
 function resolveWithinDir(dir: string, filePath: string): string {
   const resolvedDir = path.resolve(dir);
   const resolvedPath = path.resolve(filePath);
-  if (resolvedPath !== resolvedDir && !resolvedPath.startsWith(resolvedDir + path.sep)) {
+  const relative = path.relative(resolvedDir, resolvedPath);
+  if (relative === ".." || relative.startsWith(".." + path.sep) || path.isAbsolute(relative)) {
     throw new Error("Resolved path escapes the screenshots directory");
   }
   return resolvedPath;
@@ -70,7 +80,7 @@ function resolveWithinDir(dir: string, filePath: string): string {
 
 /** Verifies the game exists and belongs to the requesting user; returns 404 otherwise. */
 async function requireOwnedGame(req: Request, res: Response): Promise<string | null> {
-  const id = req.params.id ?? "";
+  const id = typeof req.params.id === "string" ? req.params.id : "";
   const user = req.user as User;
   const game = await storage.getGame(id);
   if (!game || game.userId !== user.id) {
@@ -138,7 +148,8 @@ router.delete(
       const gameId = await requireOwnedGame(req, res);
       if (!gameId) return;
       const user = req.user as User;
-      const deleted = await storage.deleteGameJournalEntry(req.params.entryId!, user.id);
+      const entryId = typeof req.params.entryId === "string" ? req.params.entryId : "";
+      const deleted = await storage.deleteGameJournalEntry(entryId, user.id);
       if (!deleted) return res.status(404).json({ error: "Journal entry not found" });
       return res.status(204).send();
     } catch (error) {
@@ -209,7 +220,7 @@ router.patch(
       const { completed } = updateGameMilestoneSchema.parse(req.body);
 
       const updated = await storage.updateGameMilestone(
-        req.params.milestoneId!,
+        typeof req.params.milestoneId === "string" ? req.params.milestoneId : "",
         user.id,
         completed
       );
@@ -237,7 +248,8 @@ router.delete(
       const gameId = await requireOwnedGame(req, res);
       if (!gameId) return;
       const user = req.user as User;
-      const deleted = await storage.deleteGameMilestone(req.params.milestoneId!, user.id);
+      const milestoneId = typeof req.params.milestoneId === "string" ? req.params.milestoneId : "";
+      const deleted = await storage.deleteGameMilestone(milestoneId, user.id);
       if (!deleted) return res.status(404).json({ error: "Milestone not found" });
       return res.status(204).send();
     } catch (error) {
@@ -350,7 +362,9 @@ router.get(
       const user = req.user as User;
 
       const screenshots = await storage.getGameScreenshots(gameId, user.id);
-      const screenshot = screenshots.find((s) => s.id === req.params.screenshotId!);
+      const screenshotId =
+        typeof req.params.screenshotId === "string" ? req.params.screenshotId : "";
+      const screenshot = screenshots.find((s) => s.id === screenshotId);
       if (!screenshot) return res.status(404).json({ error: "Screenshot not found" });
 
       const filePath = resolveWithinDir(screenshotDirForGame(gameId), screenshot.filePath);
@@ -382,7 +396,7 @@ router.patch(
       const { caption } = updateGameScreenshotSchema.parse(req.body);
 
       const updated = await storage.updateGameScreenshotCaption(
-        req.params.screenshotId!,
+        typeof req.params.screenshotId === "string" ? req.params.screenshotId : "",
         user.id,
         caption
       );
@@ -410,7 +424,9 @@ router.delete(
       const gameId = await requireOwnedGame(req, res);
       if (!gameId) return;
       const user = req.user as User;
-      const deleted = await storage.deleteGameScreenshot(req.params.screenshotId!, user.id);
+      const screenshotId =
+        typeof req.params.screenshotId === "string" ? req.params.screenshotId : "";
+      const deleted = await storage.deleteGameScreenshot(screenshotId, user.id);
       if (!deleted) return res.status(404).json({ error: "Screenshot not found" });
 
       const filePath = resolveWithinDir(screenshotDirForGame(gameId), deleted.filePath);

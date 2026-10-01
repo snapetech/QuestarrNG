@@ -17,6 +17,44 @@ import {
   findTorrentByTagNull,
 } from "./utils.js";
 
+function trimSlashes(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value[start] === "/") start += 1;
+  while (end > start && value[end - 1] === "/") end -= 1;
+  return value.slice(start, end);
+}
+
+function trimTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === "/") end -= 1;
+  return value.slice(0, end);
+}
+
+function contentDispositionFilename(header: string): string | undefined {
+  for (const parameter of header.split(";").slice(1)) {
+    const separator = parameter.indexOf("=");
+    if (separator < 0) continue;
+    const name = parameter.slice(0, separator).trim().toLowerCase();
+    let value = parameter.slice(separator + 1).trim();
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1).replaceAll('\\"', '"');
+    }
+    if (name === "filename*") {
+      const encodingEnd = value.indexOf("''");
+      if (encodingEnd >= 0) {
+        try {
+          return decodeURIComponent(value.slice(encodingEnd + 2));
+        } catch {
+          return value.slice(encodingEnd + 2);
+        }
+      }
+    }
+    if (name === "filename") return value;
+  }
+  return undefined;
+}
+
 interface SynologyApiDescriptor {
   path: string;
   minVersion: number;
@@ -146,7 +184,7 @@ export class SynologyDownloadStationClient implements DownloaderClient {
       baseUrl = protocol + baseUrl;
     }
 
-    const normalizedUrlPath = (this.downloader.urlPath ?? "").trim().replace(/^\/+|\/+$/g, "");
+    const normalizedUrlPath = trimSlashes((this.downloader.urlPath ?? "").trim());
 
     try {
       const urlObj = new URL(baseUrl);
@@ -163,7 +201,7 @@ export class SynologyDownloadStationClient implements DownloaderClient {
         prefix: pathParts.length > 0 ? `/${pathParts.join("/")}` : "",
       };
     } catch {
-      const trimmedBaseUrl = baseUrl.replace(/\/$/, "");
+      const trimmedBaseUrl = trimTrailingSlashes(baseUrl);
       return {
         origin: trimmedBaseUrl,
         prefix: normalizedUrlPath ? `/${normalizedUrlPath}` : "",
@@ -173,7 +211,7 @@ export class SynologyDownloadStationClient implements DownloaderClient {
 
   private getWebApiUrl(apiPath: string): string {
     const { origin, prefix } = this.getBaseUrlParts();
-    return `${origin}${prefix}/webapi/${apiPath.replace(/^\/+/, "")}`;
+    return `${origin}${prefix}/webapi/${trimSlashes(apiPath)}`;
   }
 
   private getPreferredApiVersion(descriptor: SynologyApiDescriptor, preferred: number): number {
@@ -988,11 +1026,9 @@ export class SynologyDownloadStationClient implements DownloaderClient {
     response: Response
   ): Promise<{ success: boolean; id?: string | undefined; message: string }> {
     const contentDisposition = response.headers.get("content-disposition") || "";
-    const fileNameMatch = contentDisposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
     const fileName =
-      fileNameMatch?.[1] != null
-        ? decodeURIComponent(fileNameMatch[1].replace(/"/g, ""))
-        : `${request.title || "download"}.${request.downloadType === "usenet" ? "nzb" : "torrent"}`;
+      contentDispositionFilename(contentDisposition) ??
+      `${request.title || "download"}.${request.downloadType === "usenet" ? "nzb" : "torrent"}`;
 
     const fileContents =
       typeof response.arrayBuffer === "function"

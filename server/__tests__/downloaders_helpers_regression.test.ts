@@ -123,7 +123,7 @@ describe("downloaders helper regression coverage", () => {
     expect(client.parseValueObj({ _text: "fallback" })).toBe("fallback");
   });
 
-  it("covers SABnzbd URL building and SSL fallback retry", async () => {
+  it("covers SABnzbd URL building and refuses unverified TLS", async () => {
     const client = new SABnzbdClient(
       createDownloader({
         type: "sabnzbd",
@@ -137,7 +137,6 @@ describe("downloaders helper regression coverage", () => {
       getBaseUrl(): string;
       getApiUrl(mode: string, params?: Record<string, string>): string;
       fetchWithFallback(url: string, options?: RequestInit): Promise<Response>;
-      fetchInsecure(url: string, options: RequestInit): Promise<Response>;
     };
 
     expect(client.getBaseUrl()).toBe("http://sab.local:8085/root");
@@ -148,24 +147,19 @@ describe("downloaders helper regression coverage", () => {
     expect(apiUrl.searchParams.get("mode")).toBe("queue");
     expect(apiUrl.searchParams.get("start")).toBe("0");
 
-    const insecureResponse = { ok: true } as Response;
-    const insecureSpy = vi.spyOn(client, "fetchInsecure").mockResolvedValue(insecureResponse);
     fetchMock.mockRejectedValueOnce(
       Object.assign(new Error("self-signed certificate"), {
         cause: { code: "DEPTH_ZERO_SELF_SIGNED_CERT" },
       })
     );
 
-    await expect(client.fetchWithFallback("https://sab.local", {})).resolves.toBe(insecureResponse);
-    expect(insecureSpy).toHaveBeenCalled();
-    // fetchWithFallback must route through the SSRF-safe wrapper, not raw fetch.
+    await expect(client.fetchWithFallback("https://sab.local", {})).rejects.toThrow(
+      "self-signed certificate"
+    );
     expect(safeFetch).toHaveBeenCalledWith(
       "https://sab.local",
-      expect.objectContaining({ allowPrivate: true })
+      expect.objectContaining({ allowPrivate: true, requireHttps: true })
     );
-
-    fetchMock.mockRejectedValueOnce(new Error("network boom"));
-    await expect(client.fetchWithFallback("https://sab.local", {})).rejects.toThrow("network boom");
   });
 
   it("covers Transmission helper mapping branches", () => {

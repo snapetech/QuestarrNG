@@ -22,7 +22,9 @@ vi.mock("../downloaders.js", () => ({ DownloaderManager: downloadersMock }));
 const isSensitivePathMock = vi.hoisted(() =>
   vi.fn<(path: string) => boolean>().mockReturnValue(false)
 );
-const assertWithinRootsMock = vi.hoisted(() => vi.fn());
+const assertWithinRootsMock = vi.hoisted(() =>
+  vi.fn<(candidatePath: string, roots: string[], errorMessage: string) => Promise<string>>()
+);
 vi.mock("../path-security.js", () => ({
   isSensitivePath: isSensitivePathMock,
   assertWithinRoots: assertWithinRootsMock,
@@ -34,6 +36,8 @@ import { makeImportConfig, makeRomMConfig } from "./helpers/import-test-helpers.
 
 beforeEach(() => {
   isSensitivePathMock.mockReturnValue(false);
+  assertWithinRootsMock.mockReset();
+  assertWithinRootsMock.mockImplementation(async (candidatePath) => candidatePath);
 });
 
 function makeStorage() {
