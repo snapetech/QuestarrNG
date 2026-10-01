@@ -114,6 +114,12 @@ updates:
     labels:
       - "dependencies"
       - "automated"
+    ignore:
+      # Semgrep's bundled MCP integration still uses the v1 API. The v2 SDK is
+      # a breaking rewrite; revisit once the pinned scanner supports that line.
+      - dependency-name: "mcp"
+        update-types:
+          - "version-update:semver-major"
     groups:
       security-updates:
         applies-to: security-updates
