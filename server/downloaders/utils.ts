@@ -1,3 +1,4 @@
+import path from "node:path";
 import { downloadersLogger } from "../logger.js";
 import { isSafeUrl, safeFetch } from "../ssrf.js";
 import { isDownloaderDebugLoggingEnabled } from "./debug-logging.js";
@@ -400,12 +401,26 @@ export function stripTrailingPathSeparators(value: string): string {
 
 export function buildRemoteImportPath(downloadDir: string, relativePath: string): string {
   const normalizedDir = stripTrailingPathSeparators(downloadDir);
-  const normalizedRelative = relativePath.replace(/^[\\/]+/, "");
+  if (
+    relativePath.includes("\0") ||
+    path.posix.isAbsolute(relativePath) ||
+    path.win32.isAbsolute(relativePath)
+  ) {
+    throw new Error("Download path must be relative to its download directory");
+  }
+
+  const separator = normalizedDir.includes("\\") ? "\\" : "/";
+  const normalizedRelative = relativePath.replace(/[\\/]/g, separator);
+  const relativeSegments = normalizedRelative.split(/[\\/]/);
+  if (relativeSegments.includes("..")) {
+    throw new Error("Download path escapes its download directory");
+  }
+
   const lastSegment = normalizedDir.split(/[\\/]/).pop()?.toLowerCase();
   if (lastSegment && lastSegment === normalizedRelative.toLowerCase()) {
     return normalizedDir;
   }
-  return `${normalizedDir}/${normalizedRelative}`;
+  return `${normalizedDir}${separator}${normalizedRelative}`;
 }
 
 // Shared no-op for downloaders that don't support tag-based torrent lookup.

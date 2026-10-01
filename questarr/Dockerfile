@@ -20,7 +20,7 @@ RUN ln -sfn /data /app/data
 COPY ha-entrypoint.sh /ha-entrypoint.sh
 RUN chmod +x /ha-entrypoint.sh
 
-# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint -- ha-entrypoint.sh must run as root first, then drops privileges with su-exec
+# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
 ENTRYPOINT ["/ha-entrypoint.sh"]
-# nosemgrep: dockerfile.security.missing-user.missing-user -- runtime process is exec'd as the unprivileged questarr user by ha-entrypoint.sh
+# nosemgrep: dockerfile.security.missing-user.missing-user
 CMD ["node", "dist/server/index.js"]

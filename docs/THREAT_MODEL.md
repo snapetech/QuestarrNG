@@ -107,6 +107,9 @@ Mitigations:
   clients gate search-result URLs the same way before fetching.
 - `server/middleware.ts:300,373,427` — `sanitizeDownloaderData`/`sanitizeIndexerData` block
   `..` in user-supplied download paths at write time (see residual risk in Section 8).
+- `server/downloaders/utils.ts:buildRemoteImportPath` rejects absolute and parent-directory
+  components in downloader-reported relative paths before joining them. Manual import path
+  overrides without explicit path mappings must remain inside the tracked download directory.
 
 Note: raw `fetch()`/RPC calls inside `downloaders.ts` that target the **admin-configured
 download client itself** (e.g. the Transmission/qBittorrent control API) are not SSRF-gated,

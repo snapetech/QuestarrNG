@@ -1044,6 +1044,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (certPath) {
           try {
+            // The certificate path is canonicalized and confined to these trusted roots.
+            // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
             resolvedCertPath = await assertWithinRoots(
               path.resolve(FILE_BROWSER_ROOT, certPath),
               allowedSslRoots,
@@ -1055,6 +1057,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         if (keyPath) {
           try {
+            // The key path uses the same canonical root check as the certificate path.
+            // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
             resolvedKeyPath = await assertWithinRoots(
               path.resolve(FILE_BROWSER_ROOT, keyPath),
               allowedSslRoots,
@@ -1259,7 +1263,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(403).json({ error: "Access to this path is not allowed" });
         }
 
-        // Resolve against the root and normalize
+        // Resolve against the root and normalize. The following checks verify both
+        // lexical and canonical containment before the filesystem is accessed.
+        // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
         const resolvedPath = path.resolve(FILE_BROWSER_ROOT, queryPath);
         const relativePath = path.relative(FILE_BROWSER_ROOT, resolvedPath);
         if (
@@ -1305,6 +1311,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const files = await Promise.all(
           entries.map(async (entry) => {
+            // entry.name comes from readdir on the already-canonicalized in-root directory.
+            // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
             const fullPath = path.join(currentPath, entry.name);
             // Do not follow symlinks from the file browser: even a metadata-only
             // stat can reveal whether a link points to a directory outside this root.
@@ -1921,7 +1929,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Canonicalize before the uniqueness check and probe so equivalent
         // paths (`/mnt/games`, `/mnt/games/.`, `/mnt/other/../games`) can't
         // bypass the unique-path constraint and get scanned as duplicates.
-        // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal -- root folders are intentionally arbitrary admin-supplied absolute paths (same trust level as the existing libraryRoot/downloadPath config), not a filename joined onto a fixed destination directory to be escaped
+        // Root folders are intentionally arbitrary administrator-configured absolute paths.
+        // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
         data.path = path.resolve(data.path);
 
         const existing = await storage.getRootFolderByPath(data.path);
@@ -1970,7 +1979,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (updates.path) {
           // Same canonicalization as the create route — resolve before the
           // uniqueness check and probe so equivalent paths can't collide.
-          // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal -- same as the create route: an arbitrary admin-supplied absolute path, not a filename joined onto a fixed destination
+          // Root folders are intentionally arbitrary administrator-configured absolute paths.
+          // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
           updates.path = path.resolve(updates.path);
           const clash = await storage.getRootFolderByPath(updates.path);
           if (clash && clash.id !== id) {

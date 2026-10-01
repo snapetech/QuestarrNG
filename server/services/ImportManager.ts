@@ -899,7 +899,11 @@ export class ImportManager {
     overridePath: string | undefined,
     download: NonNullable<Awaited<ReturnType<IStorage["getGameDownload"]>>>
   ): Promise<string | undefined> {
-    if (overridePath) return overridePath;
+    const configuredRoots = await this.pathService.getConfiguredRoots();
+    // Explicit path mappings are the administrator's allow-list for alternate
+    // local download roots. Without mappings, an override must remain inside the
+    // exact download directory reported for this tracked download.
+    if (overridePath && configuredRoots.length > 0) return overridePath;
 
     const downloader = await this.storage.getDownloader(download.downloaderId);
     if (!downloader) return undefined;
@@ -912,7 +916,17 @@ export class ImportManager {
       resolveDownloadRelativePath(details)
     );
     const remoteHost = this.extractRemoteHost(downloader.url);
-    return this.pathService.translatePath(remotePath, remoteHost);
+    const expectedPath = await this.pathService.translatePath(remotePath, remoteHost);
+
+    if (overridePath) {
+      return assertWithinRoots(
+        overridePath,
+        [expectedPath],
+        "Manual source path must remain inside the tracked download directory"
+      );
+    }
+
+    return expectedPath;
   }
 
   async planConfirmImport(

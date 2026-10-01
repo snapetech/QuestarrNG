@@ -115,6 +115,18 @@ describe("downloaders utils", () => {
     );
   });
 
+  it.each([
+    "../outside",
+    "folder/../../outside",
+    "..\\outside",
+    "/etc/passwd",
+    "C:\\Windows\\win.ini",
+  ])("rejects unsafe downloader relative paths: %s", (relativePath) => {
+    expect(() => buildRemoteImportPath("/downloads/complete", relativePath)).toThrow(
+      /relative to its download directory|escapes its download directory/
+    );
+  });
+
   describe("resolveDownloadRelativePath", () => {
     it("returns the torrent name when files list is absent", () => {
       expect(resolveDownloadRelativePath({ name: "Game Title NSP" })).toBe("Game Title NSP");

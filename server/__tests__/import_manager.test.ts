@@ -42,7 +42,9 @@ describe("ImportManager", () => {
 
   const pathService = {
     translatePath: vi.fn(),
-    getConfiguredRoots: vi.fn().mockResolvedValue([]),
+    // This suite focuses on ImportManager orchestration. A configured filesystem
+    // root lets its explicit path overrides pass the production containment guard.
+    getConfiguredRoots: vi.fn().mockResolvedValue(["/"]),
   };
 
   const platformService = {
