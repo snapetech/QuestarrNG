@@ -101,7 +101,7 @@ updates:
         patterns:
           - "*"
 
-  # Keep the hash-locked Semgrep scanner used by SAST up to date.
+  # Keep the hash-locked security overrides for the Semgrep scanner up to date.
   - package-ecosystem: "pip"
     directory: "/.github/requirements"
     schedule:
@@ -111,6 +111,25 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "automated"
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # Track the pinned Semgrep scanner image used by the SAST job.
+  - package-ecosystem: "docker"
+    directory: "/.github/semgrep"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
     labels:
       - "dependencies"
       - "automated"

@@ -7,6 +7,7 @@ const { fsMock, downloadersMock } = vi.hoisted(() => ({
     copy: vi.fn().mockResolvedValue(undefined),
     remove: vi.fn().mockResolvedValue(undefined),
     pathExists: vi.fn().mockResolvedValue(true),
+    realpath: vi.fn(async (input: string) => input),
     stat: vi.fn().mockResolvedValue({ isDirectory: () => false }),
     readdir: vi.fn().mockResolvedValue([]),
   },
@@ -58,6 +59,7 @@ describe("ImportManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fsMock.pathExists.mockResolvedValue(true);
+    fsMock.realpath.mockImplementation(async (input) => input);
     pathService.translatePath.mockResolvedValue("/data/downloads/file.iso");
     archiveService.isArchive.mockReturnValue(false);
     storage.getImportConfig.mockResolvedValue(baseConfig);
@@ -250,6 +252,37 @@ describe("ImportManager", () => {
         strategy: "pc",
         originalPath: "/src/game",
         proposedPath: "/other/root/game",
+        needsReview: false,
+      })
+    ).rejects.toThrow("Proposed path is outside configured library root");
+  });
+
+  it("blocks confirmImport when a proposed path escapes the library through a symlink", async () => {
+    storage.getGameDownload.mockResolvedValue({ id: "dl-1", gameId: "g1", downloaderId: "d1" });
+    storage.getGame.mockResolvedValue({
+      id: "g1",
+      title: "Game",
+      userId: "u1",
+      status: "wanted",
+      platforms: [6],
+    });
+    storage.getImportConfig.mockResolvedValue({ ...baseConfig, libraryRoot: "/safe/root" });
+    fsMock.realpath.mockImplementation(async (input) =>
+      input === "/safe/root/shortcut/escape" ? "/outside/secret" : input
+    );
+
+    const manager = new ImportManager(
+      storage as never, // NOSONAR
+      pathService as never, // NOSONAR
+      platformService as never, // NOSONAR
+      archiveService as never // NOSONAR
+    );
+
+    await expect(
+      manager.confirmImport("dl-1", {
+        strategy: "pc",
+        originalPath: "/downloads/source",
+        proposedPath: "/safe/root/shortcut/escape",
         needsReview: false,
       })
     ).rejects.toThrow("Proposed path is outside configured library root");

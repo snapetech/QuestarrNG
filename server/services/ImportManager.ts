@@ -1115,17 +1115,17 @@ export class ImportManager {
       }
     }
 
-    const resolvedRoot = path.resolve(targetRoot);
-    const resolvedTarget = path.resolve(proposedPath);
-    const insideRoot =
-      resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + path.sep);
-    if (!insideRoot) {
-      throw new Error("Proposed path is outside configured library root");
-    }
+    // Check canonical containment as well as lexical containment: an existing
+    // symlink below the library root must not redirect writes outside it.
+    proposedPath = await assertWithinRoots(
+      proposedPath,
+      [targetRoot],
+      "Proposed path is outside configured library root"
+    );
 
     if (overridePlan.strategy === "romm") {
       const resolvedConflict = await this.resolveRommConflictPath(
-        resolvedTarget,
+        proposedPath,
         rommConfig.conflictPolicy,
         true
       );

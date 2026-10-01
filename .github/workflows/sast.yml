@@ -10,14 +10,12 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   semgrep:
     name: semgrep
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
 
     steps:
       - name: Harden the runner (Audit all outbound calls)
@@ -28,13 +26,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v6.2.0
 
-      - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: Install Semgrep
-        run: python -m pip install --only-binary=:all: --require-hashes -r .github/requirements/requirements.txt
+      - name: Build the pinned Semgrep scanner image
+        run: docker build --pull --file .github/semgrep/Dockerfile --tag questarr-semgrep:ci .github
 
       # Blocking policy and suppression process documented in
       # docs/VULNERABILITY_MANAGEMENT.md (OSPS-VM-06.02). Scan is run
@@ -44,7 +37,13 @@ jobs:
       # doesn't strip lower-severity findings from the SARIF upload.
       - name: Run Semgrep SAST scan
         run: |
-          semgrep scan \
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --env HOME=/tmp \
+            --volume "$GITHUB_WORKSPACE:/src" \
+            --workdir /src \
+            questarr-semgrep:ci \
+            semgrep scan \
             --config p/security-audit \
             --config p/secrets \
             --config p/owasp-top-ten \

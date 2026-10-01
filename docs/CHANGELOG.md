@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Security
 
 - Downloader and integration requests now pin HTTPS and HTTP connections to the DNS address checked by the SSRF guard. SABnzbd no longer retries requests with certificate validation disabled; self-signed installations can trust their CA through `NODE_EXTRA_CA_CERTS`.
-- File browser, import, SSL certificate, and screenshot paths now use canonical containment checks, including existing symlink parents and missing destination paths.
+- File browser, import, SSL certificate, and screenshot paths now use canonical containment checks, including existing symlink parents and missing destination paths. Import confirmation rejects library destinations redirected outside the configured root by a symlink.
 - Replaced the Prowlarr and Synology string regexes that could take excessive time on crafted input, and added a development-server request limit.
 - Removed npm from the production image and pinned the Python notification runtime with hashes. Updated Apprise and oauthlib to patched releases.
 
