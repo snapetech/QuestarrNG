@@ -5,17 +5,22 @@ on:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      announce_release_tag:
+        description: Announce an already-published release without rebuilding the image
+        required: false
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: fork-image-${{ github.ref }}
-  cancel-in-progress: true
+  group: fork-image-${{ inputs.announce_release_tag || github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.announce_release_tag == '' }}
 
 jobs:
   publish:
-    if: github.repository == 'snapetech/QuestarrNG' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    if: github.repository == 'snapetech/QuestarrNG' && (github.event_name != 'workflow_dispatch' || (github.ref == 'refs/heads/main' && inputs.announce_release_tag == ''))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -145,14 +150,35 @@ jobs:
         with:
           node-version: 22.x
 
-      - name: Extract changelog section
+      - name: Add curated release-note fragments
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          previous_tag="$(scripts/latest-published-release-tag.sh "$TAG")"
+          node scripts/assemble-release-notes.mjs \
+            --previous-tag "$previous_tag" \
+            --head "$GITHUB_SHA" \
+            --version "$VERSION" \
+            --changelog docs/CHANGELOG.md \
+            --output docs/CHANGELOG.md
+          node scripts/extract-changelog.mjs "$VERSION" > changelog-section.md
+          if ! grep -Eq '^[[:space:]]*-[[:space:]]+' changelog-section.md; then
+            echo 'Generated release notes contain no changelog entries.' >&2
+            exit 1
+          fi
+
+      - name: Add image pull instructions
+        shell: bash
         env:
           TAG: ${{ github.ref_name }}
           IMAGE: ${{ needs.publish.outputs.image }}
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
-          node scripts/extract-changelog.mjs "$VERSION" > changelog-section.md
           {
             echo ""
             echo "**Container image**: \`${IMAGE}:${VERSION}\`"
@@ -168,3 +194,150 @@ jobs:
           name: QuestarrNG ${{ github.ref_name }}
           body_path: changelog-section.md
           draft: false
+
+  update-changelog:
+    name: Commit generated changelog
+    needs: [release]
+    if: startsWith(github.ref, 'refs/tags/v') && needs.release.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.x
+          package-manager-cache: false
+
+      - name: Update the release section on main
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          previous_tag="$(scripts/latest-published-release-tag.sh "$TAG")"
+          release_sha="$(git rev-parse "${TAG}^{commit}")"
+          git fetch origin main:refs/remotes/origin/main
+          git checkout -B changelog-update origin/main
+          node scripts/assemble-release-notes.mjs \
+            --previous-tag "$previous_tag" \
+            --head "$release_sha" \
+            --version "$VERSION" \
+            --changelog docs/CHANGELOG.md \
+            --output docs/CHANGELOG.md
+          git add docs/CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo 'The checked-in changelog already contains these release notes.'
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit \
+            -m "docs(changelog): include curated notes for ${TAG}" \
+            -m 'release-note: none'
+          git push origin HEAD:refs/heads/main
+
+  announce-release:
+    name: Announce release to Discord
+    needs: [release]
+    if: ${{ always() && ((startsWith(github.ref, 'refs/tags/v') && needs.release.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.announce_release_tag != '')) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+      TAG: ${{ inputs.announce_release_tag || github.ref_name }}
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 26.x
+          package-manager-cache: false
+
+      - name: Send release announcement
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo 'Release announcement tag must use vMAJOR.MINOR.PATCH.' >&2
+            exit 1
+          fi
+          test -n "$DISCORD_WEBHOOK" || {
+            echo 'DISCORD_RELEASE_WEBHOOK is required to announce a release.' >&2
+            exit 1
+          }
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json body,isDraft,isPrerelease,tagName,url > release.json
+          jq -e --arg tag "$TAG" \
+            '.tagName == $tag and .isDraft == false and .isPrerelease == false and (.body | type == "string" and length > 0)' \
+            release.json > /dev/null
+          version="${TAG#v}"
+          printf '%s' "$(jq -r '.body' release.json)" \
+            | node scripts/discord-release-notes.mjs --split > chunks.json
+          chunk_count="$(jq 'length' chunks.json)"
+          (( chunk_count > 0 )) || {
+            echo 'The published release notes are empty.' >&2
+            exit 1
+          }
+
+          webhook_url="$DISCORD_WEBHOOK"
+          if [[ "$webhook_url" == *'?'* ]]; then
+            webhook_url+='&wait=true'
+          else
+            webhook_url+='?wait=true'
+          fi
+
+          for ((index = 0; index < chunk_count; index += 1)); do
+            description="$(jq -r --argjson index "$index" '.[$index]' chunks.json)"
+            number=$((index + 1))
+            title="QuestarrNG ${TAG} release notes (${number}/${chunk_count})"
+            jq -n \
+              --arg username 'QuestarrNG Releases' \
+              --arg title "$title" \
+              --arg url "$(jq -r '.url' release.json)" \
+              --arg description "$description" \
+              --arg image "ghcr.io/snapetech/questarrng:${version}" \
+              --arg run_url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              --argjson first "$index" \
+              '{
+                username: $username,
+                embeds: [{
+                  title: $title,
+                  url: $url,
+                  description: $description,
+                  color: 5814783,
+                  fields: (if $first == 0 then [
+                    { name: "Image", value: $image, inline: false },
+                    { name: "Workflow", value: $run_url, inline: false }
+                  ] else [] end)
+                }]
+              }' > payload.json
+
+            response="$(curl --fail --silent --show-error \
+              -H 'Content-Type: application/json' \
+              -X POST \
+              --data @payload.json \
+              "$webhook_url")"
+            jq -e --arg description "$description" \
+              '.id != null and .embeds[0].description == $description' \
+              <<< "$response" > /dev/null
+            if (( number < chunk_count )); then
+              sleep 1
+            fi
+          done

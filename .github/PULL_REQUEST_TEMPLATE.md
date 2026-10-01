@@ -15,6 +15,16 @@ For any UI change (`client/src/**`), include a screenshot or short recording of 
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] Documentation update
 
+## Release notes
+
+Add one validated fragment under `release-notes/` for every user-facing
+behavior, security, operational, or documentation change. For internal-only
+changes, include `release-note: none` in this description.
+
+- [ ] I added a release-note fragment under `release-notes/`.
+- [ ] This change is internal-only and does not need a user-facing release note.
+- [ ] I previewed the release text with `npm run release-notes:preview`.
+
 ## Checklist:
 
 - [ ] My code follows the style guidelines of this project

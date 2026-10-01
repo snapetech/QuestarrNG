@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+User-facing pull requests add validated fragments under [`release-notes/`](../release-notes/).
+The release workflow adds those fragments to the versioned release notes and
+Discord announcement while this file remains the chronological changelog.
+
 ## [1.7.2] - 2026-10-01
 
 ### Security

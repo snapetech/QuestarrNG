@@ -7,6 +7,9 @@ that can become stale.
 
 The fork's release workflows publish images to GitHub Container Registry with
 the repository-scoped `GITHUB_TOKEN`. Docker Hub publishing has been removed.
+Tag releases include validated `release-notes/` fragments in the GitHub release
+and Discord announcement. Configure the Actions secret
+`DISCORD_RELEASE_WEBHOOK` with the release-announcement channel webhook.
 Repository administrators manage Actions permissions and release access in
 GitHub settings, following the [Collaborator Access & Escalation Policy](SECURITY.md#collaborator-access--escalation-policy).
 

@@ -8,6 +8,7 @@ This file is the single entry point for GitHub-facing documentation in this repo
 - API reference: [`docs/API.md`](./API.md), for the REST/Socket.io interface reference
 - Architecture: [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md), for a system architecture and actor overview
 - Changelog: [`docs/CHANGELOG.md`](./CHANGELOG.md)
+- Release-note fragment guide: [`release-notes/README.md`](../release-notes/README.md)
 - Migration notes: [`docs/MIGRATION.md`](./MIGRATION.md), for migration from PostgreSQL to SQLite in v1.1
 - Reverse proxy / subdirectory deployment: [`docs/REVERSE_PROXY.md`](./REVERSE_PROXY.md), for serving Questarr from a path like `/Questarr` behind nginx/Traefik/Caddy
 - Proxmox VE deployment: [`docs/PROXMOX.md`](./PROXMOX.md), for deploying Questarr into a Proxmox LXC container without Docker

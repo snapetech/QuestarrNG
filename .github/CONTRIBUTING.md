@@ -124,6 +124,19 @@ See [docs/DEPENDENCIES.md](../docs/DEPENDENCIES.md) for how Questarr selects, ob
 - Ensure all checks pass before requesting review
 - Be responsive to feedback and questions
 
+Every user-facing behavior, security, operational, or documentation change
+needs one validated fragment under [`release-notes/`](../release-notes/README.md).
+For internal-only changes, include `release-note: none` in the PR description.
+Preview the release text with:
+
+```sh
+npm run release-notes:preview -- --base origin/main --head HEAD
+```
+
+CI validates the fragment and summarizes its release text. The tag workflow
+adds these fragments to the GitHub release notes and Discord announcement. Keep
+the versioned history in [`docs/CHANGELOG.md`](../docs/CHANGELOG.md).
+
 ## Project Structure
 
 - `/client` - React frontend application
