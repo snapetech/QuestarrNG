@@ -22,6 +22,7 @@ export default defineConfig({
         functions: 77,
         lines: 82,
       },
+      exclude: ["**/vendor/node-forge/**", "scripts/release-notes.mjs"],
     },
     exclude: [
       "**/node_modules/**",
