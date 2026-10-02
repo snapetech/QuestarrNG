@@ -1045,9 +1045,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (certPath) {
           try {
             // The certificate path is canonicalized and confined to these trusted roots.
-            // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
             resolvedCertPath = await assertWithinRoots(
-              path.resolve(FILE_BROWSER_ROOT, certPath),
+              certPath,
               allowedSslRoots,
               "Access to cert path is not allowed"
             );
@@ -1058,9 +1057,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (keyPath) {
           try {
             // The key path uses the same canonical root check as the certificate path.
-            // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
             resolvedKeyPath = await assertWithinRoots(
-              path.resolve(FILE_BROWSER_ROOT, keyPath),
+              keyPath,
               allowedSslRoots,
               "Access to key path is not allowed"
             );
