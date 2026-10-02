@@ -1,6 +1,8 @@
 import { spawnSync } from 'node:child_process';
+import console from 'node:console';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const PACKAGE_PATH = 'packaging/yunohost';

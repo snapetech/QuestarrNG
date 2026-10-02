@@ -2353,8 +2353,8 @@ export default function SettingsPage() {
                   <CardTitle className="text-lg">Telemetry</CardTitle>
                 </div>
                 <CardDescription>
-                  Help improve QuestarrNG by automatically sharing diagnostic data when something goes
-                  wrong
+                  Help improve QuestarrNG by automatically sharing diagnostic data when something
+                  goes wrong
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">

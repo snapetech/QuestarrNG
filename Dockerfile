@@ -10,6 +10,7 @@ WORKDIR /app
 RUN apk add --no-cache g++ make python3
 
 COPY package*.json ./
+COPY vendor/node-forge ./vendor/node-forge
 RUN npm ci --ignore-scripts
 
 # Build client and server
@@ -68,6 +69,7 @@ RUN curl -fsSL --proto '=https' --tlsv1.2 -o /tmp/unrar.tar.gz \
 # Reuse node_modules from base and prune dev dependencies (avoids a second npm ci)
 COPY --from=base /app/node_modules ./node_modules
 COPY package*.json ./
+COPY vendor/node-forge ./vendor/node-forge
 
 RUN npm prune --omit=dev
 
@@ -111,4 +113,4 @@ LABEL org.opencontainers.image.description="QuestarrNG game discovery and acquis
 LABEL org.opencontainers.image.authors="Doezer and Snapetech contributors"
 LABEL org.opencontainers.image.source="https://github.com/snapetech/QuestarrNG"
 LABEL org.opencontainers.image.licenses="GPL-3.0-only"
-LABEL org.opencontainers.image.version="1.7.2"
+LABEL org.opencontainers.image.version="1.7.3"

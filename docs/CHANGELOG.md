@@ -6,6 +6,13 @@ User-facing pull requests add validated fragments under [`release-notes/`](../re
 The release workflow adds those fragments to the versioned release notes and
 Discord announcement while this file remains the chronological changelog.
 
+## [1.7.3] - 2026-10-02
+
+### Security
+
+- Patched node-forge RSA PKCS#1 v1.5 signature validation against malformed nested DigestInfo data (CVE-2026-85393).
+- Hardened YunoHost reverse proxy headers against untrusted Host values and h2c upgrade requests.
+
 ## [1.7.2] - 2026-10-01
 
 ### Security

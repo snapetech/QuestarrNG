@@ -1,0 +1,28 @@
+{
+  "name": "node-forge",
+  "version": "1.4.1-questarr.1",
+  "description": "JavaScript implementations of network transports, cryptography, ciphers, PKI, message digests, and various utilities.",
+  "author": {
+    "name": "Digital Bazaar, Inc.",
+    "email": "support@digitalbazaar.com",
+    "url": "http://digitalbazaar.com/"
+  },
+  "contributors": [
+    "Dave Longley <dlongley@digitalbazaar.com>",
+    "David I. Lehn <dlehn@digitalbazaar.com>",
+    "Stefan Siegl <stesie@brokenpipe.de>",
+    "Christoph Dorn <christoph@christophdorn.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/digitalbazaar/forge"
+  },
+  "license": "(BSD-3-Clause OR GPL-2.0)",
+  "main": "lib/index.js",
+  "files": [
+    "lib/*.js"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  }
+}
