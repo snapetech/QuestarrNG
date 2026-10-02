@@ -298,10 +298,12 @@ export function injectCuratedNotes(changelog, curatedNotes, version) {
   let headingIndex = -1;
   let headingLength = 0;
   let offset = 0;
+  const versionHeading = version ? `## [${version}]` : undefined;
   for (const line of changelog.matchAll(/^.*$/gmu)) {
     const text = line[0];
     const isMatch = version
-      ? text.startsWith(`## [${version}]`) && /^[ \t]*$/.test(text.slice(`## [${version}]`.length))
+      ? text.startsWith(versionHeading) &&
+        (text.length === versionHeading.length || /^[ \t]/.test(text[versionHeading.length]))
       : text.startsWith("## ");
     if (isMatch) {
       headingIndex = offset;
