@@ -55,3 +55,27 @@ describe("node-forge RSA DigestInfo parsing", () => {
     expect(keys.publicKey.verify(verificationDigest.digest().getBytes(), signature)).toBe(true);
   });
 });
+
+describe("node-forge PEM parsing", () => {
+  it("round-trips a certificate PEM", () => {
+    const keys = forge.pki.rsa.generateKeyPair({ bits: 1024, e: 65537 });
+    const certificate = forge.pki.createCertificate();
+    certificate.publicKey = keys.publicKey;
+    certificate.serialNumber = "01";
+    certificate.validity.notBefore = new Date("2026-01-01T00:00:00Z");
+    certificate.validity.notAfter = new Date("2027-01-01T00:00:00Z");
+    certificate.setSubject([{ name: "commonName", value: "questarr.test" }]);
+    certificate.setIssuer([{ name: "commonName", value: "questarr.test" }]);
+    certificate.sign(keys.privateKey, forge.md.sha256.create());
+
+    const pem = forge.pki.certificateToPem(certificate);
+    expect(forge.pki.certificateFromPem(pem).serialNumber).toBe("01");
+    expect(forge.pem.decode(pem)).toHaveLength(1);
+  });
+
+  it("rejects PEM input above the parser size limit", () => {
+    expect(() => forge.pem.decode("x".repeat(4 * 1024 * 1024 + 1))).toThrow(
+      "Invalid PEM formatted message."
+    );
+  });
+});

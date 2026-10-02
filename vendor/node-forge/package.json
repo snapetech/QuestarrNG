@@ -1,7 +1,7 @@
 {
   "name": "node-forge",
-  "version": "1.4.1-questarr.1",
-  "description": "JavaScript implementations of network transports, cryptography, ciphers, PKI, message digests, and various utilities.",
+  "version": "1.4.1-questarr.2",
+  "description": "Questarr's patched server-side node-forge PKI and cryptography modules",
   "author": {
     "name": "Digital Bazaar, Inc.",
     "email": "support@digitalbazaar.com",

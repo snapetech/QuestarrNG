@@ -94,21 +94,82 @@ pem.encode = function(msg, options) {
  */
 pem.decode = function(str) {
   var rval = [];
+  var maxPemLength = 4 * 1024 * 1024;
+  if(typeof str !== 'string' || str.length > maxPemLength) {
+    throw new Error('Invalid PEM formatted message.');
+  }
 
-  // split string into PEM messages (be lenient w/EOF on BEGIN line)
-  var rMessage = /\s*-----BEGIN ([A-Z0-9- ]+)-----\r?\n?([\x21-\x7e\s]+?(?:\r?\n\r?\n))?([:A-Za-z0-9+\/=\s]+?)-----END \1-----/g;
-  var rHeader = /([\x21-\x7e]+):\s*([\x21-\x7e\s^:]+)/;
-  var rCRLF = /\r?\n/;
-  var match;
-  while(true) {
-    match = rMessage.exec(str);
-    if(!match) {
+  // Scan boundaries with indexOf instead of a backtracking expression. PEM
+  // input may be supplied by callers and must not make parsing superlinear.
+  var cursor = 0;
+  var beginMarker = '-----BEGIN ';
+  while(cursor < str.length) {
+    var beginIndex = str.indexOf(beginMarker, cursor);
+    if(beginIndex === -1) {
       break;
+    }
+
+    var typeStart = beginIndex + beginMarker.length;
+    var typeEnd = str.indexOf('-----', typeStart);
+    if(typeEnd === -1) {
+      break;
+    }
+    var type = str.slice(typeStart, typeEnd);
+    var validType = type.length > 0;
+    for(var ti = 0; validType && ti < type.length; ++ti) {
+      var typeChar = type.charCodeAt(ti);
+      validType = (typeChar >= 65 && typeChar <= 90) ||
+        (typeChar >= 48 && typeChar <= 57) || typeChar === 45 || typeChar === 32;
+    }
+    if(!validType) {
+      cursor = typeStart;
+      continue;
+    }
+
+    var bodyStart = typeEnd + 5;
+    if(str.slice(bodyStart, bodyStart + 2) === '\r\n') {
+      bodyStart += 2;
+    } else if(str[bodyStart] === '\n') {
+      ++bodyStart;
+    }
+    var endMarker = '-----END ' + type + '-----';
+    var endIndex = str.indexOf(endMarker, bodyStart);
+    if(endIndex === -1) {
+      // No later block can be parsed without this block's matching boundary;
+      // stop here so a string full of unmatched BEGIN markers stays linear.
+      break;
+    }
+
+    var content = str.slice(bodyStart, endIndex);
+    var crlfSeparator = content.indexOf('\r\n\r\n');
+    var lfSeparator = content.indexOf('\n\n');
+    var separatorIndex = crlfSeparator;
+    var separatorLength = 4;
+    if(separatorIndex === -1 ||
+      (lfSeparator !== -1 && lfSeparator < separatorIndex)) {
+      separatorIndex = lfSeparator;
+      separatorLength = 2;
+    }
+    var headerText = separatorIndex === -1 ? null :
+      content.slice(0, separatorIndex + separatorLength);
+    var body = separatorIndex === -1 ? content :
+      content.slice(separatorIndex + separatorLength);
+    var validBody = body.length > 0;
+    for(var bi = 0; validBody && bi < body.length; ++bi) {
+      var bodyChar = body.charCodeAt(bi);
+      validBody = (bodyChar >= 65 && bodyChar <= 90) ||
+        (bodyChar >= 97 && bodyChar <= 122) ||
+        (bodyChar >= 48 && bodyChar <= 57) || bodyChar === 43 ||
+        bodyChar === 47 || bodyChar === 61 || bodyChar === 58 ||
+        body[bi].trim() === '';
+    }
+    if(!validBody) {
+      cursor = endIndex + endMarker.length;
+      continue;
     }
 
     // accept "NEW CERTIFICATE REQUEST" as "CERTIFICATE REQUEST"
     // https://datatracker.ietf.org/doc/html/rfc7468#section-7
-    var type = match[1];
     if(type === 'NEW CERTIFICATE REQUEST') {
       type = 'CERTIFICATE REQUEST';
     }
@@ -119,26 +180,27 @@ pem.decode = function(str) {
       contentDomain: null,
       dekInfo: null,
       headers: [],
-      body: forge.util.decode64(match[3])
+      body: forge.util.decode64(body)
     };
     rval.push(msg);
 
     // no headers
-    if(!match[2]) {
+    if(headerText === null) {
+      cursor = endIndex + endMarker.length;
       continue;
     }
 
     // parse headers
-    var lines = match[2].split(rCRLF);
+    var lines = headerText.split('\n');
     var li = 0;
-    while(match && li < lines.length) {
+    while(li < lines.length) {
       // get line, trim any rhs whitespace
-      var line = lines[li].replace(/\s+$/, '');
+      var line = lines[li].trimEnd();
 
       // RFC2822 unfold any following folded lines
       for(var nl = li + 1; nl < lines.length; ++nl) {
         var next = lines[nl];
-        if(!/\s/.test(next[0])) {
+        if(next.length === 0 || next[0].trim() !== '') {
           break;
         }
         line += next;
@@ -146,10 +208,22 @@ pem.decode = function(str) {
       }
 
       // parse header
-      match = line.match(rHeader);
-      if(match) {
-        var header = {name: match[1], values: []};
-        var values = match[2].split(',');
+      var colon = line.lastIndexOf(':');
+      var headerName = colon === -1 ? '' : line.slice(0, colon);
+      var headerValue = colon === -1 ? '' : line.slice(colon + 1);
+      var validHeader = headerName.length > 0 && headerValue.length > 0;
+      for(var hi = 0; validHeader && hi < headerName.length; ++hi) {
+        var headerChar = headerName.charCodeAt(hi);
+        validHeader = headerChar >= 33 && headerChar <= 126;
+      }
+      for(var hvi = 0; validHeader && hvi < headerValue.length; ++hvi) {
+        var headerValueChar = headerValue.charCodeAt(hvi);
+        validHeader = (headerValueChar >= 33 && headerValueChar <= 126) ||
+          headerValue[hvi].trim() === '';
+      }
+      if(validHeader) {
+        var header = {name: headerName, values: []};
+        var values = headerValue.trimStart().split(',');
         for(var vi = 0; vi < values.length; ++vi) {
           header.values.push(ltrim(values[vi]));
         }
@@ -177,6 +251,8 @@ pem.decode = function(str) {
         } else {
           msg.headers.push(header);
         }
+      } else {
+        break;
       }
 
       ++li;
@@ -186,6 +262,7 @@ pem.decode = function(str) {
       throw new Error('Invalid PEM formatted message. The "DEK-Info" ' +
         'header must be present if "Proc-Type" is "ENCRYPTED".');
     }
+    cursor = endIndex + endMarker.length;
   }
 
   if(rval.length === 0) {

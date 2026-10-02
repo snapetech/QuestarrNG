@@ -12,7 +12,12 @@ to require NULL parameters for MD2 and MD5.
 The fork retains the Node.js `lib` modules used by Questarr. Browser bundles and
 Flash assets are omitted so shipped files cannot retain the vulnerable parser.
 
-The fork version `1.4.1-questarr.1` identifies this local, patched copy; it is
-not an upstream release. Preserve the upstream license and attribution in
-`LICENSE` and `README.md`. Reconcile this patch with an upstream release that
-contains the fix, then remove the vendored copy.
+The fork version `1.4.1-questarr.2` identifies this local, patched copy; it is
+not an upstream release. It also replaces PEM parser backtracking with a bounded
+linear scan and omits the unused HTTP/XHR modules, whose unrelated CodeQL
+findings do not affect Questarr's certificate and key operations. This is an
+app-private Node.js subset, not a drop-in replacement for every node-forge API.
+
+Preserve the upstream license and attribution in `LICENSE` and `README.md`.
+Reconcile these changes with an upstream release that contains the fixes, then
+remove the vendored copy.
