@@ -295,18 +295,29 @@ export function injectCuratedNotes(changelog, curatedNotes, version) {
   if (version && !/^\d+\.\d+\.\d+$/.test(version)) {
     throw new Error(`Invalid changelog version: ${version}.`);
   }
-  const versionPattern = version
-    ? new RegExp(`^## \\[${version.replaceAll(".", "\\.")}\\](?:[ \\t]|$)`, "mu")
-    : /^## .+$/mu;
-  const heading = versionPattern.exec(changelog);
-  if (!heading || heading.index === undefined) {
+  let headingIndex = -1;
+  let headingLength = 0;
+  let offset = 0;
+  for (const line of changelog.matchAll(/^.*$/gmu)) {
+    const text = line[0];
+    const isMatch = version
+      ? text.startsWith(`## [${version}]`) && /^[ \t]*$/.test(text.slice(`## [${version}]`.length))
+      : text.startsWith("## ");
+    if (isMatch) {
+      headingIndex = offset;
+      headingLength = text.length;
+      break;
+    }
+    offset += text.length + 1;
+  }
+  if (headingIndex < 0) {
     if (version) {
       throw new Error(`Changelog is missing the section for version ${version}.`);
     }
     return `${curatedNotes}\n\n${changelog.trim()}\n`;
   }
 
-  const insertionPoint = heading.index + heading[0].length;
+  const insertionPoint = headingIndex + headingLength;
   const nextRelease = /^## \[\d+\.\d+\.\d+\]/mu.exec(changelog.slice(insertionPoint));
   const sectionEnd = nextRelease ? insertionPoint + nextRelease.index : changelog.length;
   const section = changelog.slice(insertionPoint, sectionEnd);
