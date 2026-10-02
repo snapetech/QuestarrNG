@@ -8,6 +8,17 @@ Discord announcement while this file remains the chronological changelog.
 
 ## [1.7.3] - 2026-10-02
 
+### User-facing changes
+
+#### Changed
+
+- **Release Pipeline:** Release-note fragments now appear in versioned releases, and Discord announcements use the shared channel webhook configured as the `DISCORD_RELEASE_WEBHOOK` Actions secret.
+
+#### Security
+
+- **Proxy:** YunoHost proxy requests now use a fixed upstream host and forward WebSocket upgrades only, blocking attacker-controlled host and h2c upgrade headers.
+- **Dependencies:** Questarr now bundles a locally patched node-forge release that rejects malformed RSA PKCS#1 v1.5 DigestInfo signatures (CVE-2026-85393).
+
 ## [1.7.2] - 2026-10-01
 
 ### Security
