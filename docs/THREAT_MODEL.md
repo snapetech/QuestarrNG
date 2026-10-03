@@ -1,8 +1,8 @@
 # Questarr — Threat Model & Attack Surface Analysis
 
 **Version:** 1.0
-**Date:** 2026-07-01
-**Last reviewed:** 2026-07-01
+**Date:** 2026-10-03
+**Last reviewed:** 2026-10-03
 **Author:** Doezer
 **Audience:** Maintainers, contributors, security reviewers
 
@@ -15,9 +15,10 @@ OSPS-SA-03.02](https://baseline.openssf.org/): it identifies critical code paths
 boundaries, and external interactions, and records how each threat is mitigated or
 knowingly accepted.
 
-**In scope:** the Express API and its route handlers, the React client, the SQLite/Drizzle
-data layer, Socket.io realtime channel, and every external service Questarr talks to
-(indexers, download clients, IGDB, Steam, HowLongToBeat, NexusMods, xREL, PCGamingWiki).
+**In scope:** the Express API and its route handlers, the React client, the SQLite/Postgres
+Drizzle data layer, Socket.io realtime channel, SeerrNG provider API, downloaded archive
+contents, and every external service Questarr talks to (indexers, download clients, IGDB,
+Steam, HowLongToBeat, NexusMods, xREL, PCGamingWiki).
 
 **Out of scope:** OS/host hardening, reverse proxy/TLS termination, and Docker deployment
 configuration — those are covered by [`.github/SECURITY.md`](../.github/SECURITY.md)'s
@@ -38,13 +39,16 @@ a stale date is the signal that a review is overdue.
 flowchart LR
     Browser["Browser (React SPA)"]
     API["Express API"]
-    Gate{{"auth gate\napp.use('/api', authenticateToken)\nroutes.ts:845"}}
+    Gate{{"default-deny auth gate\nJWT or scoped integration key"}}
     Handlers["Route handlers"]
-    DB[("SQLite\n(Drizzle ORM)")]
+    DB[("SQLite / Postgres\n(Drizzle ORM)")]
     Socket["Socket.io\n(unauthenticated broadcast)"]
     SSRF{{"safeFetch / isSafeUrl\nssrf.ts"}}
+    Seerr["SeerrNG server\nscoped, expiring key"]
+    Archives["Downloaded archives\nuntrusted release data"]
 
     Browser -- "JWT bearer" --> API
+    Seerr -- "provider API key / JWT" --> API
     API --> Gate --> Handlers
     Handlers --> DB
     Handlers -.-> Socket
@@ -55,14 +59,15 @@ flowchart LR
     SSRF --> RSS["RSS feeds\nuser-configured"]
     SSRF --> IGDB["IGDB / Twitch OAuth\nhardcoded host"]
     SSRF --> Steam["Steam / HLTB / NexusMods /\nxREL / PCGamingWiki\nhardcoded hosts"]
+    Handlers --> Archives
 ```
 
-Four named trust boundaries:
+Six named trust boundaries:
 
 1. **Browser ↔ Server** — JWT bearer auth (`server/auth.ts`). Once authenticated, a user has
    full access to their own resources; there is no admin/non-admin split (see Section 8,
    "flat trust model" — an accepted design tradeoff, not a gap).
-2. **Server ↔ SQLite** — fully trusted; all access is parameterized via Drizzle ORM.
+2. **Server ↔ SQLite/Postgres** — fully trusted; all access is parameterized via Drizzle ORM.
 3. **Server ↔ user-configured external hosts** (indexers, download clients, RSS feeds) —
    **the highest-risk boundary**. A user (or a compromised/malicious indexer response) can
    point the server at an arbitrary host, including internal LAN services. This is the
@@ -70,6 +75,14 @@ Four named trust boundaries:
 4. **Server ↔ hardcoded external APIs** (IGDB, Steam, HLTB, NexusMods, xREL, PCGamingWiki) —
    lower risk since hosts aren't user-supplied, but responses are still untrusted data, and
    `safeFetch`/`isSafeUrl` is applied as defense in depth regardless.
+5. **SeerrNG ↔ provider API** — the caller is a separate trusted self-hosted service, but
+   request IDs, titles, and variants are untrusted input. A dedicated API key can be limited
+   to the versioned SeerrNG routes and expires by default; every operation is scoped to the
+   QuestarrNG account that owns the key.
+6. **Downloaded archive ↔ filesystem** — release archives are untrusted even when fetched
+   through an administrator-configured indexer. Before extraction, Questarr checks listed
+   paths, links, declared expanded size, and total entry count; extraction also has a 30-minute
+   process timeout and bounded listing output.
 
 ---
 
@@ -138,6 +151,19 @@ fetch re-validates via `isSafeUrl()`/`safeFetch()` at _use_ time too, not just a
 this matters because DNS can change between when a URL is saved and when it's next fetched
 (classic TOCTOU/rebinding window).
 
+### 4.4 Downloaded archive → library filesystem
+
+Indexer/download client output → metadata listing and bounded preflight validation → archive
+integrity check → 7-Zip or unrar extraction into the import destination.
+
+Mitigations in `server/services/ArchiveService.ts` reject absolute and parent-traversal
+paths, symbolic/hard links, paths deeper than 64 components, more than 50,000 archive entries,
+and declared expansion beyond 250 GiB by default. Operators can lower or raise the byte/entry
+limits with `ARCHIVE_MAX_EXPANDED_BYTES` and `ARCHIVE_MAX_ENTRIES`. Archive tool output is
+capped at 10 MiB and each tool invocation times out after 30 minutes. These metadata
+preflight limits reduce path escape and decompression-bomb risk, but do not impose an OS
+filesystem quota if an archive lies about its declared sizes.
+
 ---
 
 ## 5. External Integration Trust Table
@@ -153,6 +179,7 @@ this matters because DNS can change between when a URL is saved and when it's ne
 | NexusMods                                                           | hardcoded                      | API key (`system_config`)                         | Yes (`server/nexusmods.ts`)                                                                |                                                 |
 | xREL                                                                | hardcoded allowlist            | none                                              | Yes (`server/xrel.ts`)                                                                     | only `api.xrel.to`/`xrel-api.nfos.to` permitted |
 | PCGamingWiki                                                        | hardcoded                      | none                                              | Yes (`server/pcgamingwiki-router.ts`)                                                      |                                                 |
+| SeerrNG                                                             | configured peer                | scoped, expiring integration API key or JWT       | Not applicable                                                                             | provider version 1; caller-owned account scope  |
 
 ---
 
@@ -166,9 +193,14 @@ linked file as the source of truth.
   `sanitizeDownloadId`, `sanitizeIgdbId`, `sanitizeGameData`, `sanitizeIndexerData`,
   `sanitizeDownloaderData`, `sanitizeIndexerSearchQuery`)
 - **Rate limiting:** `server/middleware.ts` (`igdbRateLimiter`, `authRateLimiter`,
-  `sensitiveEndpointLimiter`, `generalApiLimiter`, `scanRateLimiter`); `server/index.ts:34` (global mount)
+  `sensitiveEndpointLimiter`, `generalApiLimiter`, `scanRateLimiter`,
+  `integrationRateLimiter`); `server/index.ts:34` (global mount)
 - **Authentication/session:** `server/auth.ts` (JWT issuance/verification); global gate at
   `server/routes.ts:845`
+- **SeerrNG provider authorization:** `server/auth.ts` (key scope and expiry),
+  `server/routes/integration.ts` (request/asset ownership and path containment)
+- **Archive extraction:** `server/services/ArchiveService.ts` (path/link/count/size preflight,
+  process timeout and bounded child-process output)
 - **SQL injection:** not applicable by construction — Drizzle ORM parameterizes all
   application queries; the only raw SQL (`sql.raw`/`sql` template literals in
   `server/migrate.ts`) is hardcoded migration DDL with no user input.
