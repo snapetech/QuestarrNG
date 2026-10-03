@@ -1269,6 +1269,9 @@ export type DownloaderDebugLoggingResponse = z.infer<typeof downloaderDebugLoggi
 // login flow (the Playnite extension, scripts, other self-hosted tools). Only a
 // SHA-256 hash of the key is stored, so a database leak never yields a usable
 // credential; the raw key is shown to the user once, at creation.
+export const API_KEY_SCOPES = ["integration:all", "integration:seerrng"] as const;
+export type ApiKeyScope = (typeof API_KEY_SCOPES)[number];
+
 export const apiKeys = sqliteTable(
   "api_keys",
   {
@@ -1281,10 +1284,14 @@ export const apiKeys = sqliteTable(
     // Leading characters of the raw key, kept so the UI can tell two keys apart
     // without being able to reconstruct either of them.
     prefix: text("prefix").notNull(),
+    // Existing keys keep their previous integration-wide access. New SeerrNG
+    // keys can be limited to the versioned provider contract.
+    scope: text("scope", { enum: API_KEY_SCOPES }).notNull().default("integration:all"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).default(
       sql`(strftime('%s', 'now') * 1000)`
     ),
     lastUsedAt: integer("last_used_at", { mode: "timestamp_ms" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }),
   },
   (t) => [
     uniqueIndex("api_keys_key_hash_idx").on(t.keyHash),
@@ -1302,6 +1309,8 @@ export const insertApiKeySchema = createInsertSchema(apiKeys, {
 
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = (typeof insertApiKeySchema)["_output"];
+export type NewApiKeyInput = Pick<ApiKey, "userId" | "name" | "keyHash" | "prefix"> &
+  Partial<Pick<ApiKey, "scope" | "expiresAt">>;
 
 // An API key as returned to the client: never includes the hash.
 export type ApiKeyPublic = Omit<ApiKey, "keyHash">;
@@ -1315,8 +1324,10 @@ export const apiKeyPublicResponseSchema = z.object({
   userId: z.string(),
   name: z.string(),
   prefix: z.string(),
+  scope: z.enum(API_KEY_SCOPES),
   createdAt: z.string().nullable(),
   lastUsedAt: z.string().nullable(),
+  expiresAt: z.string().nullable(),
 });
 export type ApiKeyPublicResponse = z.infer<typeof apiKeyPublicResponseSchema>;
 

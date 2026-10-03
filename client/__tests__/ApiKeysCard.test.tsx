@@ -33,8 +33,10 @@ const sampleKey: ApiKeyPublicResponse = {
   userId: "user-1",
   name: "Living room PC",
   prefix: "qsr_abc12345",
+  scope: "integration:all",
   createdAt: "2026-01-01T00:00:00.000Z",
   lastUsedAt: null,
+  expiresAt: null,
 };
 
 function mockList(keys: ApiKeyPublicResponse[]) {
@@ -64,7 +66,9 @@ describe("ApiKeysCard", () => {
     renderCard();
 
     expect(
-      await screen.findByText("No API keys yet. Create one to connect the Playnite extension.")
+      await screen.findByText(
+        "No API keys yet. Create one to connect SeerrNG or another integration client."
+      )
     ).toBeInTheDocument();
   });
 
@@ -76,7 +80,9 @@ describe("ApiKeysCard", () => {
       await screen.findByText("Could not load API keys. Refresh the page to try again.")
     ).toBeInTheDocument();
     expect(
-      screen.queryByText("No API keys yet. Create one to connect the Playnite extension.")
+      screen.queryByText(
+        "No API keys yet. Create one to connect SeerrNG or another integration client."
+      )
     ).not.toBeInTheDocument();
   });
 
@@ -90,6 +96,8 @@ describe("ApiKeysCard", () => {
     expect(await screen.findByText("Living room PC")).toBeInTheDocument();
     expect(screen.getAllByText(/qsr_abc12345…/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Last used Never/).length).toBe(2);
+    expect(screen.getAllByText(/All integrations/).length).toBe(2);
+    expect(screen.getAllByText(/Expires Never/).length).toBe(2);
 
     expect(screen.getByText("Bad date")).toBeInTheDocument();
     expect(screen.getAllByText(/Created Unknown/).length).toBeGreaterThan(0);
@@ -98,7 +106,9 @@ describe("ApiKeysCard", () => {
   it("disables the create button until a non-blank name is entered", async () => {
     mockList([]);
     renderCard();
-    await screen.findByText("No API keys yet. Create one to connect the Playnite extension.");
+    await screen.findByText(
+      "No API keys yet. Create one to connect SeerrNG or another integration client."
+    );
 
     const createButton = screen.getByRole("button", { name: "Create key" });
     expect(createButton).toBeDisabled();
@@ -113,25 +123,43 @@ describe("ApiKeysCard", () => {
   it("creates a key, shows the one-time secret panel, and clears the name field", async () => {
     mockList([]);
     renderCard();
-    await screen.findByText("No API keys yet. Create one to connect the Playnite extension.");
+    await screen.findByText(
+      "No API keys yet. Create one to connect SeerrNG or another integration client."
+    );
 
     apiRequest.mockImplementation(async (method: string) => {
       if (method === "GET") return { json: async () => [] };
       return {
-        json: async () => ({ ...sampleKey, key: "qsr_rawsecretvalue" }),
+        json: async () => ({
+          ...sampleKey,
+          scope: "integration:seerrng",
+          expiresAt: "2026-04-01T00:00:00.000Z",
+          key: "qsr_rawsecretvalue",
+        }),
       };
     });
 
+    expect(screen.getByRole("combobox", { name: "API key access" })).toHaveTextContent(
+      "SeerrNG provider only"
+    );
+    expect(screen.getByRole("combobox", { name: "API key expiration" })).toHaveTextContent(
+      "90 days"
+    );
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "My PC" } });
     fireEvent.click(screen.getByRole("button", { name: "Create key" }));
 
     await waitFor(() => {
-      expect(apiRequest).toHaveBeenCalledWith("POST", "/api/api-keys", { name: "My PC" });
+      expect(apiRequest).toHaveBeenCalledWith("POST", "/api/api-keys", {
+        name: "My PC",
+        scope: "integration:seerrng",
+        expiresInDays: 90,
+      });
     });
 
     expect(
       await screen.findByText("Copy your new key now — it will not be shown again.")
     ).toBeInTheDocument();
+    expect(screen.getByText(/SeerrNG provider only · Expires/)).toBeInTheDocument();
     expect(screen.getByLabelText("New API key")).toHaveValue("qsr_rawsecretvalue");
     expect(screen.getByLabelText("Name")).toHaveValue("");
   });
@@ -139,7 +167,9 @@ describe("ApiKeysCard", () => {
   it("shows an error toast when key creation fails", async () => {
     mockList([]);
     renderCard();
-    await screen.findByText("No API keys yet. Create one to connect the Playnite extension.");
+    await screen.findByText(
+      "No API keys yet. Create one to connect SeerrNG or another integration client."
+    );
 
     apiRequest.mockImplementation(async (method: string) => {
       if (method === "GET") return { json: async () => [] };
@@ -161,7 +191,9 @@ describe("ApiKeysCard", () => {
   it("copies the new key to the clipboard and lets the user dismiss the panel", async () => {
     mockList([]);
     renderCard();
-    await screen.findByText("No API keys yet. Create one to connect the Playnite extension.");
+    await screen.findByText(
+      "No API keys yet. Create one to connect SeerrNG or another integration client."
+    );
 
     apiRequest.mockImplementation(async (method: string) => {
       if (method === "GET") return { json: async () => [] };
@@ -187,7 +219,9 @@ describe("ApiKeysCard", () => {
   it("shows a toast when the clipboard copy fails", async () => {
     mockList([]);
     renderCard();
-    await screen.findByText("No API keys yet. Create one to connect the Playnite extension.");
+    await screen.findByText(
+      "No API keys yet. Create one to connect SeerrNG or another integration client."
+    );
 
     apiRequest.mockImplementation(async (method: string) => {
       if (method === "GET") return { json: async () => [] };

@@ -29,6 +29,13 @@
       "when": 1790626543535,
       "tag": "0003_cultured_vindicator",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791060505174,
+      "tag": "0004_illegal_hydra",
+      "breakpoints": true
     }
   ]
 }

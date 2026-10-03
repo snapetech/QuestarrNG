@@ -52,6 +52,7 @@ import {
   type InsertGameFile,
   type ApiKey,
   type ApiKeyPublic,
+  type NewApiKeyInput,
   GAME_LINK_REQUIRED_STATUS,
   type RootFolder,
   type InsertRootFolder,
@@ -474,10 +475,7 @@ export interface IStorage {
   // Integration API key methods
   getApiKeys(userId: string): Promise<ApiKeyPublic[]>;
   /** Throws "API key limit reached" (as a plain Error) if the user already has maxKeys. */
-  addApiKey(
-    key: { userId: string; name: string; keyHash: string; prefix: string },
-    maxKeys: number
-  ): Promise<ApiKeyPublic>;
+  addApiKey(key: NewApiKeyInput, maxKeys: number): Promise<ApiKeyPublic>;
   getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined>;
   touchApiKey(id: string): Promise<void>;
   removeApiKey(id: string, userId: string): Promise<boolean>;
@@ -2095,10 +2093,7 @@ export class MemStorage implements IStorage {
       .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
   }
 
-  async addApiKey(
-    key: { userId: string; name: string; keyHash: string; prefix: string },
-    maxKeys: number
-  ): Promise<ApiKeyPublic> {
+  async addApiKey(key: NewApiKeyInput, maxKeys: number): Promise<ApiKeyPublic> {
     // MemStorage has no concurrent callers (single-threaded test usage), so a
     // plain count check is sufficient here; DatabaseStorage's transaction is
     // what actually closes the race for the real, multi-request server.
@@ -2110,7 +2105,14 @@ export class MemStorage implements IStorage {
     }
 
     const id = randomUUID();
-    const record: ApiKey = { ...key, id, createdAt: new Date(), lastUsedAt: null };
+    const record: ApiKey = {
+      ...key,
+      scope: key.scope ?? "integration:all",
+      expiresAt: key.expiresAt ?? null,
+      id,
+      createdAt: new Date(),
+      lastUsedAt: null,
+    };
     this.apiKeys.set(id, record);
     const { keyHash: _keyHash, ...rest } = record;
     return rest;
@@ -3809,18 +3811,17 @@ export class DatabaseStorage implements IStorage {
         userId: apiKeys.userId,
         name: apiKeys.name,
         prefix: apiKeys.prefix,
+        scope: apiKeys.scope,
         createdAt: apiKeys.createdAt,
         lastUsedAt: apiKeys.lastUsedAt,
+        expiresAt: apiKeys.expiresAt,
       })
       .from(apiKeys)
       .where(eq(apiKeys.userId, userId))
       .orderBy(desc(apiKeys.createdAt));
   }
 
-  async addApiKey(
-    key: { userId: string; name: string; keyHash: string; prefix: string },
-    maxKeys: number
-  ): Promise<ApiKeyPublic> {
+  async addApiKey(key: NewApiKeyInput, maxKeys: number): Promise<ApiKeyPublic> {
     return transactionalOps.addApiKey(key, maxKeys);
   }
 

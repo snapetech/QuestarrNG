@@ -16,6 +16,7 @@ import type {
   Indexer,
   InsertPlatformMapping,
   InsertUser,
+  NewApiKeyInput,
   User,
 } from "../../shared/schema.js";
 import type { SyncIndexersResult } from "./transactional-ops.js";
@@ -167,10 +168,7 @@ export async function syncIndexers(
   return results;
 }
 
-export async function addApiKey(
-  key: { userId: string; name: string; keyHash: string; prefix: string },
-  maxKeys: number
-): Promise<ApiKeyPublic> {
+export async function addApiKey(key: NewApiKeyInput, maxKeys: number): Promise<ApiKeyPublic> {
   // Counting and inserting inside one transaction is not enough on its own:
   // Postgres' default READ COMMITTED isolation lets two concurrent calls for
   // the same user both read the same under-limit count before either insert
@@ -198,8 +196,10 @@ export async function addApiKey(
         userId: apiKeys.userId,
         name: apiKeys.name,
         prefix: apiKeys.prefix,
+        scope: apiKeys.scope,
         createdAt: apiKeys.createdAt,
         lastUsedAt: apiKeys.lastUsedAt,
+        expiresAt: apiKeys.expiresAt,
       });
     return created!;
   });

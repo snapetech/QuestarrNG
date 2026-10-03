@@ -352,6 +352,11 @@ what hands it to the existing auto-search pipeline (`checkAutoSearch` in
 These versioned endpoints serve SeerrNG's PC-game catalog and request lifecycle.
 They use the same API-key/JWT authentication and caller-owned game scope as the
 integration routes above. Responses are marked `Cache-Control: no-store`.
+After authentication, this route family is limited to 300 requests per minute
+per key or JWT user, in addition to the global per-IP limit.
+The machine-readable OpenAPI contract lives at
+[`docs/contracts/seerrng-v1.openapi.yaml`](contracts/seerrng-v1.openapi.yaml)
+and is parsed by the provider contract test suite.
 
 | Method | Path                                                                        | Request                                          | Response and behavior                                                                                                                                                                                                                                                                                                              |
 | ------ | --------------------------------------------------------------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -396,13 +401,16 @@ Questarr configuration.
 
 Keys are stored as a SHA-256 hash plus a short display prefix; the raw key is
 returned exactly once, in the 201 response that creates it, and is not
-recoverable afterwards. A user may hold at most 25 keys.
+recoverable afterwards. New keys expire after 90 days by default (up to one
+year) and can use `integration:seerrng` or `integration:all` scope. Existing
+keys were migrated with `integration:all` and no expiration to preserve their
+current behavior. A user may hold at most 25 keys.
 
-| Method | Path                | Auth Required                    | Request Body                     | Response                                                                                                          |
-| ------ | ------------------- | -------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| GET    | `/api/api-keys`     | JWT                              | —                                | `Array<{ id, userId, name, prefix, createdAt, lastUsedAt }>` — never includes the hash                            |
-| POST   | `/api/api-keys`     | JWT + `sensitiveEndpointLimiter` | `{ name: string }` (1–100 chars) | 201 `{ id, userId, name, prefix, createdAt, lastUsedAt, key }` — `key` is shown only here; 409 once 25 keys exist |
-| DELETE | `/api/api-keys/:id` | JWT + `sensitiveEndpointLimiter` | —                                | 204; 404 if the key does not exist or belongs to another user                                                     |
+| Method | Path                | Auth Required                    | Request Body                                                                                                                        | Response                                                                                                 |
+| ------ | ------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/api-keys`     | JWT                              | —                                                                                                                                   | `Array<{ id, userId, name, prefix, scope, createdAt, lastUsedAt, expiresAt }>` — never includes the hash |
+| POST   | `/api/api-keys`     | JWT + `sensitiveEndpointLimiter` | `{ name, scope?, expiresInDays? }` (1–100 chars; scope: `integration:all` or `integration:seerrng`; expiry: 1–365 days, default 90) | 201 key object plus `key` — shown only here; 409 once 25 keys exist                                      |
+| DELETE | `/api/api-keys/:id` | JWT + `sensitiveEndpointLimiter` | —                                                                                                                                   | 204; 404 if the key does not exist or belongs to another user                                            |
 
 ## Error Format
 

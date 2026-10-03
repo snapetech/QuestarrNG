@@ -6,6 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -40,6 +47,9 @@ export function ApiKeysCard() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyScope, setNewKeyScope] =
+    useState<ApiKeyPublicResponse["scope"]>("integration:seerrng");
+  const [expiresInDays, setExpiresInDays] = useState(90);
   const [createdKey, setCreatedKey] = useState<ApiKeyCreatedResponse | null>(null);
   const [copied, setCopied] = useState(false);
   const [pendingRevoke, setPendingRevoke] = useState<ApiKeyPublicResponse | null>(null);
@@ -57,8 +67,12 @@ export function ApiKeysCard() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (name: string) => {
-      const res = await apiRequest("POST", "/api/api-keys", { name });
+    mutationFn: async (input: {
+      name: string;
+      scope: ApiKeyPublicResponse["scope"];
+      expiresInDays: number;
+    }) => {
+      const res = await apiRequest("POST", "/api/api-keys", input);
       return apiKeyCreatedResponseSchema.parse(await res.json());
     },
     onSuccess: (created) => {
@@ -118,30 +132,72 @@ export function ApiKeysCard() {
           <CardTitle className="text-lg">API Keys</CardTitle>
         </div>
         <CardDescription>
-          Let external clients such as the Playnite extension sync your library and request games.
-          Keys work only against the integration API and can be revoked at any time.
+          Connect SeerrNG or another integration client with a dedicated key. New keys expire
+          automatically and can be restricted to the SeerrNG provider routes.
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-6">
         <form
-          className="flex flex-col gap-2 sm:flex-row sm:items-end"
+          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.5fr)_minmax(12rem,1fr)_minmax(9rem,.7fr)_auto] xl:items-end"
           onSubmit={(e) => {
             e.preventDefault();
-            if (trimmedName) createMutation.mutate(trimmedName);
+            if (trimmedName) {
+              createMutation.mutate({
+                name: trimmedName,
+                scope: newKeyScope,
+                expiresInDays,
+              });
+            }
           }}
         >
-          <div className="flex-1 space-y-2">
+          <div className="space-y-2 sm:col-span-2 xl:col-span-1">
             <Label htmlFor="api-key-name">Name</Label>
             <Input
               id="api-key-name"
-              placeholder="Playnite on the living room PC"
+              placeholder="SeerrNG on my home server"
               value={newKeyName}
               maxLength={100}
               onChange={(e) => setNewKeyName(e.target.value)}
             />
           </div>
-          <Button type="submit" disabled={!trimmedName || createMutation.isPending}>
+          <div className="space-y-2">
+            <Label htmlFor="api-key-scope">Access</Label>
+            <Select
+              value={newKeyScope}
+              onValueChange={(value) => setNewKeyScope(value as ApiKeyPublicResponse["scope"])}
+            >
+              <SelectTrigger id="api-key-scope" aria-label="API key access">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="integration:seerrng">SeerrNG provider only</SelectItem>
+                <SelectItem value="integration:all">All integration routes</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="api-key-expiry">Expires after</Label>
+            <Select
+              value={String(expiresInDays)}
+              onValueChange={(value) => setExpiresInDays(Number(value))}
+            >
+              <SelectTrigger id="api-key-expiry" aria-label="API key expiration">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 days</SelectItem>
+                <SelectItem value="90">90 days</SelectItem>
+                <SelectItem value="180">180 days</SelectItem>
+                <SelectItem value="365">1 year</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            type="submit"
+            className="sm:col-span-2 xl:col-span-1"
+            disabled={!trimmedName || createMutation.isPending}
+          >
             <Plus className="mr-2 h-4 w-4" />
             {createMutation.isPending ? "Creating..." : "Create key"}
           </Button>
@@ -151,6 +207,13 @@ export function ApiKeysCard() {
           <div className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-4">
             <p className="text-sm font-medium">
               Copy your new key now — it will not be shown again.
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {createdKey.scope === "integration:seerrng"
+                ? "SeerrNG provider only"
+                : "All integration routes"}
+              {" · Expires "}
+              {formatDate(createdKey.expiresAt)}
             </p>
             <div className="flex gap-2">
               <Input
@@ -187,7 +250,7 @@ export function ApiKeysCard() {
             </p>
           ) : keys.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No API keys yet. Create one to connect the Playnite extension.
+              No API keys yet. Create one to connect SeerrNG or another integration client.
             </p>
           ) : (
             <ul className="divide-y rounded-md border">
@@ -198,6 +261,10 @@ export function ApiKeysCard() {
                     <p className="truncate text-xs text-muted-foreground">
                       <span className="font-mono">{key.prefix}…</span> · Created{" "}
                       {formatDate(key.createdAt)} · Last used {formatDate(key.lastUsedAt)}
+                      {" · "}
+                      {key.scope === "integration:seerrng" ? "SeerrNG only" : "All integrations"}
+                      {" · Expires "}
+                      {formatDate(key.expiresAt)}
                     </p>
                   </div>
                   <Button

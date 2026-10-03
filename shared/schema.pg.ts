@@ -507,8 +507,14 @@ export const apiKeys = pgTable(
     // Leading characters of the raw key, kept so the UI can tell two keys apart
     // without being able to reconstruct either of them.
     prefix: text("prefix").notNull(),
+    // Existing keys keep their previous integration-wide access. New SeerrNG
+    // keys can be limited to the versioned provider contract.
+    scope: text("scope", { enum: ["integration:all", "integration:seerrng"] })
+      .notNull()
+      .default("integration:all"),
     createdAt: timestampMs("created_at").default(sql`(EXTRACT(EPOCH FROM now()) * 1000)::bigint`),
     lastUsedAt: timestampMs("last_used_at"),
+    expiresAt: timestampMs("expires_at"),
   },
   (t) => [
     uniqueIndex("api_keys_key_hash_idx").on(t.keyHash),

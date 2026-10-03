@@ -227,6 +227,18 @@ export async function authenticateApiKeyOrToken(req: Request, res: Response, nex
       return res.status(401).json({ error: "Invalid API key" });
     }
 
+    if (record.expiresAt && record.expiresAt.getTime() <= Date.now()) {
+      return res.status(401).json({ error: "API key expired" });
+    }
+
+    const isSeerrProviderRoute = /^\/integration\/seerrng\/v1(?:\/|$)/.test(req.path);
+    const hasRouteScope =
+      record.scope === "integration:all" ||
+      (record.scope === "integration:seerrng" && isSeerrProviderRoute);
+    if (!hasRouteScope) {
+      return res.status(403).json({ error: "API key does not grant access to this endpoint" });
+    }
+
     const user = await storage.getUser(record.userId);
     if (!user) {
       return res.status(401).json({ error: "Invalid API key" });
@@ -234,6 +246,7 @@ export async function authenticateApiKeyOrToken(req: Request, res: Response, nex
 
     req.user = user;
     req.apiKeyId = record.id;
+    req.apiKeyScope = record.scope;
 
     // Best-effort usage stamp: it powers the "last used" column in Settings and
     // must never fail the request it is describing.

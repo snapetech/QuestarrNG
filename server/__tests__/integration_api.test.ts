@@ -70,7 +70,15 @@ describe("integration API", () => {
     (storage.getUserSettings as Mock).mockResolvedValue({});
     (storage.getApiKeyByHash as Mock).mockImplementation(async (hash: string) =>
       hash === keyHash
-        ? { id: "key-1", userId: USER.id, name: "Playnite", keyHash, prefix: "qsr_test-ra" }
+        ? {
+            id: "key-1",
+            userId: USER.id,
+            name: "Playnite",
+            keyHash,
+            prefix: "qsr_test-ra",
+            scope: "integration:all",
+            expiresAt: null,
+          }
         : undefined
     );
 
@@ -85,6 +93,49 @@ describe("integration API", () => {
 
   const withKey = (req: request.Test) => req.set("X-Api-Key", RAW_KEY);
   const tokenFor = (id: string) => jwt.sign({ id, username: "testuser" }, JWT_SECRET);
+
+  it("limits a SeerrNG key to the versioned provider routes", async () => {
+    (storage.getApiKeyByHash as Mock).mockImplementation(async (hash: string) =>
+      hash === keyHash
+        ? {
+            id: "key-seerr",
+            userId: USER.id,
+            name: "SeerrNG",
+            keyHash,
+            prefix: "qsr_test-ra",
+            scope: "integration:seerrng",
+            expiresAt: null,
+          }
+        : undefined
+    );
+
+    const provider = await withKey(request(app).get("/api/integration/seerrng/v1/ping"));
+    expect(provider.status).toBe(200);
+
+    const legacy = await withKey(request(app).get("/api/integration/ping"));
+    expect(legacy.status).toBe(403);
+  });
+
+  it("rejects an expired integration key before loading its owner", async () => {
+    (storage.getApiKeyByHash as Mock).mockImplementation(async (hash: string) =>
+      hash === keyHash
+        ? {
+            id: "key-expired",
+            userId: USER.id,
+            name: "Expired SeerrNG key",
+            keyHash,
+            prefix: "qsr_test-ra",
+            scope: "integration:seerrng",
+            expiresAt: new Date(Date.now() - 1000),
+          }
+        : undefined
+    );
+
+    const res = await withKey(request(app).get("/api/integration/seerrng/v1/ping"));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("API key expired");
+    expect(storage.getUser).not.toHaveBeenCalled();
+  });
 
   describe("SeerrNG catalog paging", () => {
     it("binds search cursors to their original query", async () => {
@@ -649,17 +700,23 @@ describe("integration API", () => {
     it("returns the raw key exactly once, on creation", async () => {
       (storage.getApiKeys as Mock).mockResolvedValue([]);
       (storage.addApiKey as Mock).mockImplementation(
-        async (key: { name: string; prefix: string }) => ({
+        async (key: { name: string; prefix: string; scope: string; expiresAt: Date }) => ({
           id: "key-2",
           userId: USER.id,
           name: key.name,
           prefix: key.prefix,
+          scope: key.scope,
           createdAt: new Date().toISOString(),
           lastUsedAt: null,
+          expiresAt: key.expiresAt,
         })
       );
 
-      const res = await authed(request(app).post("/api/api-keys")).send({ name: "Playnite" });
+      const res = await authed(request(app).post("/api/api-keys")).send({
+        name: "SeerrNG",
+        scope: "integration:seerrng",
+        expiresInDays: 90,
+      });
 
       expect(res.status).toBe(201);
       expect(res.body.key).toMatch(/^qsr_/);
@@ -670,18 +727,29 @@ describe("integration API", () => {
       expect(stored.keyHash).not.toContain(res.body.key);
       const { hashApiKey } = await import("../auth.js");
       expect(stored.keyHash).toBe(hashApiKey(res.body.key));
+      expect(stored.scope).toBe("integration:seerrng");
+      expect(stored.expiresAt).toBeInstanceOf(Date);
     });
 
     it("never lets a shared cache store key data or a freshly-minted raw key", async () => {
       (storage.getApiKeys as Mock).mockResolvedValue([]);
       (storage.addApiKey as Mock).mockImplementation(
-        async (key: { userId: string; name: string; keyHash: string; prefix: string }) => ({
+        async (key: {
+          userId: string;
+          name: string;
+          keyHash: string;
+          prefix: string;
+          scope: string;
+          expiresAt: Date;
+        }) => ({
           id: "key-1",
           userId: key.userId,
           name: key.name,
           prefix: key.prefix,
+          scope: key.scope,
           createdAt: new Date().toISOString(),
           lastUsedAt: null,
+          expiresAt: key.expiresAt,
         })
       );
 
@@ -706,8 +774,10 @@ describe("integration API", () => {
           userId: USER.id,
           name: "Playnite",
           prefix: "qsr_abc",
+          scope: "integration:all",
           createdAt: null,
           lastUsedAt: null,
+          expiresAt: null,
         },
       ]);
 

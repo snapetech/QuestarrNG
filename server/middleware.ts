@@ -68,6 +68,22 @@ export const scanRateLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// A secondary limit after authentication keeps one integration credential from
+// spreading requests across many source IPs. The earlier general API limiter
+// still provides a per-IP ceiling for both valid and invalid credentials.
+export const integrationRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  keyGenerator: (req: Request) => {
+    if (req.apiKeyId) return `api-key:${req.apiKeyId}`;
+    if (req.user?.id) return `user:${req.user.id}`;
+    return ipKeyGenerator(req.ip ?? "unknown");
+  },
+  message: "Too many integration requests, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // General API rate limiter (lenient, just to prevent abuse)
 export const generalApiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute

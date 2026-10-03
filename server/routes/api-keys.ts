@@ -5,6 +5,7 @@ import { storage } from "../storage.js";
 import { generateApiKey } from "../auth.js";
 import { routesLogger as logger } from "../logger.js";
 import { sensitiveEndpointLimiter, validateRequest } from "../middleware.js";
+import { API_KEY_SCOPES } from "../../shared/schema.js";
 
 // Same shape as sanitizeGameId/sanitizeDownloadId in middleware.ts: api_keys.id
 // is a randomUUID(), so a non-UUID path segment can never match a row and is
@@ -38,6 +39,8 @@ const MAX_KEYS_PER_USER = 25;
 
 const createKeySchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100, "Name is too long"),
+  scope: z.enum(API_KEY_SCOPES).default("integration:all"),
+  expiresInDays: z.number().int().min(1).max(365).default(90),
 });
 
 apiKeysRouter.get("/", async (req: Request, res: Response) => {
@@ -58,13 +61,21 @@ apiKeysRouter.post("/", sensitiveEndpointLimiter, async (req: Request, res: Resp
 
     const userId = req.user!.id;
     const { rawKey, keyHash, prefix } = generateApiKey();
+    const expiresAt = new Date(Date.now() + parsed.data.expiresInDays * 24 * 60 * 60 * 1000);
 
     let created;
     try {
       // Count-then-insert happens atomically inside storage.addApiKey, so two
       // concurrent requests from the same user can't both slip past the cap.
       created = await storage.addApiKey(
-        { userId, name: parsed.data.name, keyHash, prefix },
+        {
+          userId,
+          name: parsed.data.name,
+          keyHash,
+          prefix,
+          scope: parsed.data.scope,
+          expiresAt,
+        },
         MAX_KEYS_PER_USER
       );
     } catch (error) {

@@ -22,6 +22,7 @@ import type {
   Indexer,
   InsertPlatformMapping,
   InsertUser,
+  NewApiKeyInput,
   User,
 } from "../../shared/schema.js";
 import type { SyncIndexersResult } from "./transactional-ops.js";
@@ -153,10 +154,7 @@ export async function syncIndexers(
   return results;
 }
 
-export async function addApiKey(
-  key: { userId: string; name: string; keyHash: string; prefix: string },
-  maxKeys: number
-): Promise<ApiKeyPublic> {
+export async function addApiKey(key: NewApiKeyInput, maxKeys: number): Promise<ApiKeyPublic> {
   // Counting and inserting inside one transaction closes the race two
   // concurrent requests would otherwise have around the cap: without it,
   // both could read the same under-limit count before either insert lands.
@@ -181,8 +179,10 @@ export async function addApiKey(
         userId: apiKeys.userId,
         name: apiKeys.name,
         prefix: apiKeys.prefix,
+        scope: apiKeys.scope,
         createdAt: apiKeys.createdAt,
         lastUsedAt: apiKeys.lastUsedAt,
+        expiresAt: apiKeys.expiresAt,
       })
       .all();
     return created!;
