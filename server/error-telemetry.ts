@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import { storage } from "./storage.js";
-import { readLastLogLines } from "./log-file.js";
+import { getLogFilePath, readLastLogLines } from "./log-file.js";
 import { notifyUser } from "./socket.js";
 import { appriseClient } from "./apprise.js";
 import { resolvePrefs } from "./notification-prefs.js";
@@ -148,7 +148,7 @@ export async function sendPendingReport(
 
 async function buildScrubbedLogBundle(): Promise<{ logs: string; lineCount: number }> {
   try {
-    const logPath = path.resolve(process.cwd(), "server.log");
+    const logPath = getLogFilePath();
     const lines = await readLastLogLines(logPath, LOG_CONTEXT_LINES);
     return { logs: scrubLogLines(lines), lineCount: lines.length };
   } catch (err) {

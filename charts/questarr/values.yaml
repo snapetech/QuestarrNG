@@ -23,6 +23,9 @@ strategy:
 questarr:
   # HTTP port the server listens on (PORT).
   port: 5000
+  # Run the app directly as PUID/PGID without the root ownership entrypoint.
+  # The data volume must already be writable by this UID/GID.
+  rootless: false
   # LinuxServer.io-style ownership handling applied by the container entrypoint.
   puid: 1000
   pgid: 1000

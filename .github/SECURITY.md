@@ -36,6 +36,13 @@ Ensure you set the following environment variables in your production environmen
 
 Questarr uses SQLite, not PostgreSQL — the provided `docker-compose.yml` does not run a separate database container. Persist the `./data` volume (which holds `sqlite.db`) and never commit real credentials into `docker-compose.yml`; use a `.env` file or a git-ignored `docker-compose.*local.yml` override instead.
 
+For a non-root container process, use the [`docker-compose.hardened.yml`](../docker-compose.hardened.yml)
+overlay or set `questarr.rootless: true` in the Helm chart. Both modes bypass the
+ownership-changing part of the image entrypoint, so prepare the persisted data volume for
+the configured UID/GID first. They also use a read-only container root, drop Linux
+capabilities, and disable privilege escalation. Rootless mode writes application logs to
+`/app/data/server.log` and keeps the configured `UMASK`.
+
 ### 3. Network Security
 
 - Run the application behind a reverse proxy (like Nginx or Traefik) with SSL/TLS enabled (HTTPS).

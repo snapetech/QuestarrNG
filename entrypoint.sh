@@ -20,6 +20,29 @@ echo "────────────────────────�
 
 umask "$UMASK"
 
+# Rootless deployments set the container UID/GID in their runtime security
+# context. Keep the same data-path checks and umask, but skip account changes
+# and chown operations that require root.
+if [ "$(id -u)" -ne 0 ]; then
+  if [ -z "$SQLITE_DB_PATH" ]; then
+    export SQLITE_DB_PATH="/app/data/sqlite.db"
+  fi
+
+  if [ ! -d /app/data ] || [ ! -w /app/data ]; then
+    echo "ERROR: the current user cannot write to /app/data."
+    echo "  Prepare the mounted data volume with the configured UID/GID before starting rootless."
+    exit 1
+  fi
+
+  if [ -f "$SQLITE_DB_PATH" ] && [ ! -w "$SQLITE_DB_PATH" ]; then
+    echo "ERROR: the current user cannot write to existing database file ${SQLITE_DB_PATH}."
+    echo "  Fix the database file ownership or permissions on the host."
+    exit 1
+  fi
+
+  exec "$@"
+fi
+
 # Adjust the questarr group GID if it differs from PGID
 CURRENT_GID=$(id -g questarr)
 if [ "$CURRENT_GID" != "$PGID" ]; then

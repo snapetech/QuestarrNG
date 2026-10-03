@@ -1,6 +1,12 @@
 import { open, stat } from "node:fs/promises";
+import path from "node:path";
 
 const DEFAULT_CHUNK_SIZE = 64 * 1024;
+
+export function getLogFilePath(): string {
+  const configuredPath = process.env.QUESTARR_LOG_FILE?.trim();
+  return path.resolve(process.cwd(), configuredPath || "server.log");
+}
 
 export async function readLastLogLines(logPath: string, limit: number): Promise<string[]> {
   if (limit < 1) {

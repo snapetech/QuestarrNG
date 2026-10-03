@@ -42,24 +42,25 @@ above `1`, and uses the `Recreate` strategy so two pods never hold the volume at
 
 ### Image and release
 
-| Key                | Default                   | Description                                     |
-| ------------------ | ------------------------- | ----------------------------------------------- |
+| Key                | Default                        | Description                                     |
+| ------------------ | ------------------------------ | ----------------------------------------------- |
 | `image.repository` | `ghcr.io/snapetech/questarrng` | Image repository                                |
-| `image.tag`        | `""`                      | Image tag; defaults to the chart's `appVersion` |
-| `image.pullPolicy` | `IfNotPresent`            | Image pull policy                               |
-| `imagePullSecrets` | `[]`                      | Pull secrets for private registries             |
-| `replicaCount`     | `1`                       | Must stay `1` (see above)                       |
-| `strategy`         | `{type: Recreate}`        | Deployment update strategy                      |
-| `nameOverride`     | `""`                      | Overrides the chart name                        |
-| `fullnameOverride` | `""`                      | Overrides the generated resource names          |
+| `image.tag`        | `""`                           | Image tag; defaults to the chart's `appVersion` |
+| `image.pullPolicy` | `IfNotPresent`                 | Image pull policy                               |
+| `imagePullSecrets` | `[]`                           | Pull secrets for private registries             |
+| `replicaCount`     | `1`                            | Must stay `1` (see above)                       |
+| `strategy`         | `{type: Recreate}`             | Deployment update strategy                      |
+| `nameOverride`     | `""`                           | Overrides the chart name                        |
+| `fullnameOverride` | `""`                           | Overrides the generated resource names          |
 
 ### Application
 
 | Key                       | Default               | Description                                                        |
 | ------------------------- | --------------------- | ------------------------------------------------------------------ |
 | `questarr.port`           | `5000`                | HTTP port the server listens on (`PORT`)                           |
-| `questarr.puid`           | `1000`                | UID the app runs as, applied by the container entrypoint           |
-| `questarr.pgid`           | `1000`                | GID the app runs as                                                |
+| `questarr.rootless`       | `false`               | Run directly as `PUID:PGID` with a read-only root filesystem       |
+| `questarr.puid`           | `1000`                | App UID; used directly in rootless mode or applied by entrypoint   |
+| `questarr.pgid`           | `1000`                | App GID; used directly in rootless mode or applied by entrypoint   |
 | `questarr.umask`          | `"022"`               | umask for files the app creates                                    |
 | `questarr.basePath`       | `""`                  | Serve from a subdirectory (`QUESTARR_BASE_PATH`), e.g. `/questarr` |
 | `questarr.timezone`       | `""`                  | Container timezone (`TZ`)                                          |
@@ -191,34 +192,34 @@ memory and 2Gi ephemeral-storage limits) so the pod is schedulable under a
 OOM-killed, or set `resources: {}` to run without any.
 
 `extraEnv` is rendered before the chart-managed variables, so entries there cannot
-override `SQLITE_DB_PATH`, `PORT`, `PUID`/`PGID` or the base path — use the dedicated
-values for those.
+override `SQLITE_DB_PATH`, `PORT`, `PUID`/`PGID`, the base path, or the rootless `HOME`
+and `QUESTARR_LOG_FILE` settings — use the dedicated values for those.
 
 Liveness and startup probes hit `/api/health`, which stays reachable unprefixed even
 when `questarr.basePath` is set; readiness hits `/api/ready` under the base path, which
 also checks database connectivity.
 
-The container starts as root on purpose: its entrypoint applies `PUID`/`PGID` to
-`/app/data` and then drops privileges with `su-exec` before the app runs. The default
-`securityContext` keeps only the capabilities that needs — `CHOWN`, `SETGID` and
-`SETUID`, on top of `drop: ALL` and `allowPrivilegeEscalation: false`. `DAC_OVERRIDE`
-is deliberately not granted, so a volume whose modes deny root will fail the
-entrypoint's writability check with a clear error rather than being forced open. If your cluster forbids root
-containers, pre-create the volume with the right ownership and run fully unprivileged:
+By default, the image entrypoint starts as root to apply `PUID`/`PGID` ownership to
+`/app/data`, then drops privileges with `su-exec` before the app runs. When rootless
+mode starts under a non-root UID, the same entrypoint applies `UMASK`, verifies that the
+data volume and existing database are writable, and skips ownership changes. The default
+`securityContext` drops all capabilities except `CHOWN`, `SETGID`, and `SETUID`, and
+disables privilege escalation. To run the application container fully unprivileged,
+set `questarr.rootless: true`:
 
 ```yaml
-securityContext:
-  runAsUser: 1000
-  runAsGroup: 1000
-  runAsNonRoot: true
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-      - ALL
+questarr:
+  rootless: true
+  puid: 1000
+  pgid: 1000
 ```
 
-The entrypoint's `groupmod`/`usermod`/`chown` steps then fail unless the volume is
-already owned by `1000:1000`, so verify the pod starts before relying on it.
+Rootless mode runs as `PUID:PGID`,
+drops every Linux capability, sets `allowPrivilegeEscalation: false`, makes the root
+filesystem read-only, and mounts a 64 MiB memory-backed `/tmp`. The data volume must
+already be writable by that UID/GID; file logs are written to `/app/data/server.log`.
+The default `fsGroup: 1000` handles the default
+`PGID`; if you choose another group, set `podSecurityContext.fsGroup` to match.
 
 ## Upgrading
 

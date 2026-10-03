@@ -99,6 +99,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          sbom: true
+          provenance: mode=max
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -109,7 +111,8 @@ jobs:
         run: |
           set -euo pipefail
           docker volume create questarrng-smoke-data
-          trap 'docker stop questarrng-smoke >/dev/null 2>&1 || true; docker volume rm questarrng-smoke-data >/dev/null 2>&1 || true' EXIT
+          docker volume create questarrng-rootless-smoke-data
+          trap 'docker stop questarrng-smoke questarrng-rootless-smoke >/dev/null 2>&1 || true; docker volume rm questarrng-smoke-data questarrng-rootless-smoke-data >/dev/null 2>&1 || true' EXIT
           docker run -d --name questarrng-smoke \
             -p 127.0.0.1:15000:5000 \
             -v questarrng-smoke-data:/app/data \
@@ -126,6 +129,34 @@ jobs:
           done
           curl -fsS http://127.0.0.1:15000/api/health >/dev/null
           test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:15000/api/integration/seerrng/v1/ping)" = 401
+          docker run --rm --user 0:0 \
+            -v questarrng-rootless-smoke-data:/app/data \
+            --entrypoint sh \
+            "$IMAGE" \
+            -c 'chown -R 1000:1000 /app/data && touch /app/data/.rootless-smoke'
+          docker run -d --name questarrng-rootless-smoke \
+            --user 1000:1000 \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            -e HOME=/tmp \
+            -e QUESTARR_LOG_FILE=/app/data/server.log \
+            -p 127.0.0.1:15001:5000 \
+            -v questarrng-rootless-smoke-data:/app/data \
+            "$IMAGE"
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:15001/api/health >/dev/null; then
+              break
+            fi
+            if ! docker inspect questarrng-rootless-smoke --format '{{.State.Running}}' | grep -qx true; then
+              docker logs questarrng-rootless-smoke
+              exit 1
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:15001/api/health >/dev/null
+          test "$(docker exec questarrng-rootless-smoke id -u)" = "1000"
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')

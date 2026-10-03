@@ -5,7 +5,7 @@
 This fork adds the SeerrNG catalog and acquisition contract. Use
 `ghcr.io/snapetech/questarrng:latest` or the Compose file in this repository;
 the upstream Questarr image does not contain the SeerrNG integration routes.
-The fork image is published for `linux/amd64` from `main`.
+The fork image is published for `linux/amd64` and `linux/arm64` from `main`.
 
 ![Questarr Logo](images/Questarr_Logo-nobg.png)
 
@@ -122,6 +122,12 @@ docker run -d -p 5000:5000 -v ./data:/app/data --name questarrng ghcr.io/snapete
 
 3. **Access the application:**
    Open your browser to `http://localhost:5000`
+
+For a non-root runtime with a read-only container filesystem, drop all Linux
+capabilities, and block privilege escalation, use the
+[`docker-compose.hardened.yml`](docker-compose.hardened.yml) overlay. It runs
+the app as the configured `PUID:PGID` directly, so prepare the bind-mounted
+`./data` directory with that ownership before starting it.
 
 4. **Optional — use Postgres instead of SQLite:**
 

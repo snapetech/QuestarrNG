@@ -55,6 +55,7 @@ import {
   sensitiveEndpointLimiter,
   authRateLimiter,
   scanRateLimiter,
+  integrationRateLimiter,
   validateRequest,
   sanitizeSearchQuery,
   sanitizeGameId,
@@ -111,7 +112,7 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import fsExtra from "fs-extra";
-import { readLastLogLines } from "./log-file.js";
+import { getLogFilePath, readLastLogLines } from "./log-file.js";
 
 // Root directory for the file system browser; restrict browsing to this tree
 const FILE_BROWSER_ROOT = fs.realpathSync(process.cwd());
@@ -718,6 +719,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // CSRF protection for cookie-authenticated requests. Must run after the
   // auth boundary above so req.authSource is already populated.
   app.use("/api", csrfProtection);
+  // The global limiter protects by source IP before credentials are checked;
+  // this authenticated ceiling also applies to a key across many source IPs.
+  app.use("/api/integration", integrationRateLimiter);
 
   // Use Steam Routes
   app.use(steamRoutes);
@@ -733,7 +737,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 1000;
       const limit = Number.isNaN(rawLimit) || rawLimit < 1 ? 1000 : Math.min(rawLimit, 5000);
 
-      const logPath = path.resolve(process.cwd(), "server.log");
+      const logPath = getLogFilePath();
 
       let stat: fs.Stats;
       try {

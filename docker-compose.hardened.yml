@@ -1,0 +1,16 @@
+# Optional runtime overlay for deployments that can pre-own the data volume.
+# Run with: docker compose -f docker-compose.yml -f docker-compose.hardened.yml up -d
+services:
+  app:
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      - HOME=/tmp
+      - QUESTARR_LOG_FILE=/app/data/server.log
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    init: true

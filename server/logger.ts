@@ -3,6 +3,7 @@ import { Writable } from "node:stream";
 import { consumeLogChunk, flushLogRemainder } from "./log-stream.js";
 import { logEmitter } from "./log-events.js";
 import { redactSecrets } from "./security.js";
+import { getLogFilePath } from "./log-file.js";
 
 class LogBroadcaster extends Writable {
   private remainder = "";
@@ -51,7 +52,7 @@ const destination = isTest
           targets: [
             {
               target: "pino/file",
-              options: { destination: "./server.log", mkdir: true },
+              options: { destination: getLogFilePath(), mkdir: true },
             },
             isProduction
               ? {

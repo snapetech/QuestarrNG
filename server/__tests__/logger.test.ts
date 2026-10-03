@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 describe("Logger Module", () => {
   const originalEnv = process.env.NODE_ENV;
   const originalLogLevel = process.env.LOG_LEVEL;
+  const originalLogFile = process.env.QUESTARR_LOG_FILE;
 
   beforeEach(() => {
     vi.resetModules();
@@ -14,6 +15,11 @@ describe("Logger Module", () => {
       process.env.LOG_LEVEL = originalLogLevel;
     } else {
       delete process.env.LOG_LEVEL;
+    }
+    if (originalLogFile !== undefined) {
+      process.env.QUESTARR_LOG_FILE = originalLogFile;
+    } else {
+      delete process.env.QUESTARR_LOG_FILE;
     }
   });
 
@@ -131,6 +137,27 @@ describe("Logger Module", () => {
           expect.objectContaining({
             target: "pino/file",
             options: expect.objectContaining({ destination: 1 }),
+          }),
+        ]),
+      })
+    );
+  });
+
+  it("writes the file target to QUESTARR_LOG_FILE when configured", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.QUESTARR_LOG_FILE = "/tmp/questarr-logs/server.log";
+
+    const pinoModule = await import("pino");
+    const transportSpy = vi.spyOn(pinoModule.default, "transport");
+
+    await import("../logger.js");
+
+    expect(transportSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targets: expect.arrayContaining([
+          expect.objectContaining({
+            target: "pino/file",
+            options: expect.objectContaining({ destination: "/tmp/questarr-logs/server.log" }),
           }),
         ]),
       })

@@ -32,7 +32,10 @@ import { xrelClient } from "../xrel.js";
 import { readLastLogLines } from "../log-file.js";
 import type { Downloader, Indexer, Game } from "../../shared/schema.js";
 
-vi.mock("../log-file.js", () => ({ readLastLogLines: vi.fn().mockResolvedValue([]) }));
+vi.mock("../log-file.js", () => ({
+  getLogFilePath: vi.fn(() => "/tmp/server.log"),
+  readLastLogLines: vi.fn().mockResolvedValue([]),
+}));
 vi.mock("../storage.js", () => ({ storage: createStorageMock() }));
 vi.mock("../igdb.js", () => ({ igdbClient: createIgdbMock() }));
 vi.mock("../auth.js", () => createAuthMock());

@@ -2,15 +2,33 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readLastLogLines } from "../log-file.js";
+import { getLogFilePath, readLastLogLines } from "../log-file.js";
 
 describe("readLastLogLines", () => {
   const tempDirectories: string[] = [];
+  const originalLogFile = process.env.QUESTARR_LOG_FILE;
 
   afterEach(async () => {
+    if (originalLogFile === undefined) {
+      delete process.env.QUESTARR_LOG_FILE;
+    } else {
+      process.env.QUESTARR_LOG_FILE = originalLogFile;
+    }
     await Promise.all(
       tempDirectories.splice(0).map((directory) => rm(directory, { recursive: true }))
     );
+  });
+
+  it("defaults the log path to server.log under the working directory", () => {
+    delete process.env.QUESTARR_LOG_FILE;
+
+    expect(getLogFilePath()).toBe(path.resolve(process.cwd(), "server.log"));
+  });
+
+  it("resolves a configured log path relative to the working directory", () => {
+    process.env.QUESTARR_LOG_FILE = "data/server.log";
+
+    expect(getLogFilePath()).toBe(path.resolve(process.cwd(), "data/server.log"));
   });
 
   it("returns the full trailing lines when the latest line is longer than the old byte estimate", async () => {

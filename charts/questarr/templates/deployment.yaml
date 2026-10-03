@@ -55,9 +55,21 @@ spec:
         - name: questarr
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.questarr.rootless }}
+          securityContext:
+            runAsUser: {{ .Values.questarr.puid }}
+            runAsGroup: {{ .Values.questarr.pgid }}
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          {{- else }}
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- end }}
           ports:
             - name: http
@@ -79,6 +91,12 @@ spec:
               value: {{ .Values.questarr.puid | quote }}
             - name: PGID
               value: {{ .Values.questarr.pgid | quote }}
+            {{- if .Values.questarr.rootless }}
+            - name: HOME
+              value: /tmp
+            - name: QUESTARR_LOG_FILE
+              value: /app/data/server.log
+            {{- end }}
             - name: UMASK
               value: {{ .Values.questarr.umask | quote }}
             {{- with $basePath }}
@@ -148,6 +166,10 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
+            {{- if .Values.questarr.rootless }}
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
             {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -159,6 +181,12 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- if .Values.questarr.rootless }}
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 64Mi
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
