@@ -2,11 +2,15 @@
 
 QuestarrNG is a maintained fork of [Questarr](https://github.com/Doezer/Questarr)
 for PC game acquisition requested through
-[SeerrNG](https://github.com/snapetech/seerrng). The SeerrNG contract adds
-durable external request correlation, selected PC variant tracking, status
-readback, and authenticated delivery of imported files. QuestarrNG remains a
-separate application; catalog, approval, request ownership, and requester
-notifications belong to SeerrNG.
+[SeerrNG](https://github.com/snapetech/seerrng). SeerrNG owns its catalog
+browsing and request workflow, approval, quotas, request ownership, and
+requester notifications. QuestarrNG supplies IGDB catalog data and handles PC
+acquisition. The provider contract adds durable external request correlation,
+selected PC variant tracking, status readback, and authenticated delivery of
+imported files while the two apps remain separate services.
+
+For the SeerrNG-side setup, target selection, approval flow, and requester
+download behavior, see [SeerrNG's software requests guide](https://github.com/snapetech/seerrng/blob/main/docs/using-seerr/software-acquisition.md).
 
 The integration extends rather than replaces the legacy
 [`/api/integration`](API.md#integration-api-external-clients) contract. Existing
@@ -18,7 +22,15 @@ Use a QuestarrNG integration API key or JWT from SeerrNG's server. Send the
 key in `X-Api-Key` or as `Authorization: Bearer`. Never send QuestarrNG
 credentials to the browser. All responses are `Cache-Control: no-store` and
 all request, status, and asset operations are scoped to the authenticated
-QuestarrNG user.
+QuestarrNG user. Integration requests are limited to 300 per minute per key
+(or per authenticated user for JWT callers), in addition to the app-wide
+per-IP rate limit.
+
+Create a dedicated key with **SeerrNG provider only** access. New keys expire
+automatically (90 days by default, configurable up to one year); a SeerrNG-only
+key is denied access to legacy integration routes. Existing keys keep their
+current all-integration access until revoked. The canonical machine-readable
+contract is [`contracts/seerrng-v1.openapi.yaml`](contracts/seerrng-v1.openapi.yaml).
 
 ## Handshake
 
@@ -26,14 +38,39 @@ QuestarrNG user.
 
 ```json
 {
-  "service": "questarr",
+  "service": "QuestarrNG",
+  "version": "<installed-version>",
   "apiVersion": 1,
-  "requestContractVersion": 1
+  "requestContractVersion": 1,
+  "capabilities": {
+    "catalog": true,
+    "pcAcquisition": true,
+    "emulationAcquisition": false,
+    "requestActions": { "retry": true, "cancel": true },
+    "assetStreaming": true
+  }
 }
 ```
 
 SeerrNG should reject an unknown request contract version before dispatching
 requests.
+
+## Compatibility and release discipline
+
+The `/v1` route prefix and `apiVersion` identify the provider API surface;
+`requestContractVersion` tracks the persisted request lifecycle semantics.
+SeerrNG should gate optional behavior on the advertised capabilities. Additive
+fields and optional routes stay in v1; changing a required field, status
+meaning, idempotency rule, or retry/cancel behavior requires an intentional
+contract-version change and an updated OpenAPI document. Keep the legacy
+`/api/integration` routes available for existing clients.
+
+Changes that need a SeerrNG consumer update should be coordinated across both
+repositories and include a consumer-side compatibility check. The provider
+contract tests in this repository verify QuestarrNG's routes and handshake;
+they do not replace testing the matching SeerrNG consumer build. The two apps
+remain separate services: SeerrNG owns approval, quotas, and requester access,
+while QuestarrNG owns PC acquisition and registered asset streaming.
 
 ## Catalog
 

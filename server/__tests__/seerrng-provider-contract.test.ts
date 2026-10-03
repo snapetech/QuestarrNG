@@ -4,6 +4,7 @@ import request from "supertest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { load as loadYaml } from "js-yaml";
 
 const mocks = vi.hoisted(() => ({
   storage: {
@@ -235,12 +236,106 @@ describe("SeerrNG software-provider contract", () => {
     const ping = await request(app).get("/api/integration/seerrng/v1/ping");
     expect(ping.status).toBe(200);
     expect(ping.headers["cache-control"]).toBe("no-store");
-    expect(ping.body).toMatchObject({
+    expect(ping.body).toEqual({
       service: "QuestarrNG",
+      version: expect.any(String),
       apiVersion: 1,
       requestContractVersion: 1,
-      capabilities: { emulationAcquisition: false, assetStreaming: true },
+      capabilities: {
+        catalog: true,
+        pcAcquisition: true,
+        emulationAcquisition: false,
+        requestActions: { retry: true, cancel: true },
+        assetStreaming: true,
+      },
     });
+
+    const openApiText = await fs.readFile(
+      path.resolve(process.cwd(), "docs/contracts/seerrng-v1.openapi.yaml"),
+      "utf8"
+    );
+    const contract = loadYaml(openApiText) as {
+      openapi: string;
+      info: { version: string };
+      paths: Record<string, Record<string, unknown>>;
+      components: {
+        schemas: {
+          Handshake: {
+            properties: {
+              service: { const: string };
+              requestContractVersion: { const: number };
+            };
+          };
+        };
+      };
+    };
+    expect(contract.openapi).toBe("3.1.0");
+    expect(contract.info.version).toBe(String(ping.body.requestContractVersion));
+    expect(ping.body.service).toBe(contract.components.schemas.Handshake.properties.service.const);
+    expect(ping.body.requestContractVersion).toBe(
+      contract.components.schemas.Handshake.properties.requestContractVersion.const
+    );
+    for (const [route, definition] of Object.entries(contract.paths)) {
+      const pathParameters =
+        (definition.parameters as Array<{ in: string; name: string }> | undefined)
+          ?.filter((parameter) => parameter.in === "path")
+          .map((parameter) => parameter.name) ?? [];
+      const operationParameters = Object.values(definition)
+        .filter(
+          (operation): operation is { parameters: Array<{ in: string; name: string }> } =>
+            typeof operation === "object" && operation !== null && "parameters" in operation
+        )
+        .flatMap((operation) => operation.parameters)
+        .filter((parameter) => parameter.in === "path")
+        .map((parameter) => parameter.name);
+      const declared = new Set([...pathParameters, ...operationParameters]);
+      for (const [, name] of route.matchAll(/\{([^}]+)\}/g)) {
+        expect(declared.has(name)).toBe(true);
+      }
+    }
+
+    const httpMethods = new Set([
+      "get",
+      "put",
+      "post",
+      "delete",
+      "options",
+      "head",
+      "patch",
+      "trace",
+    ]);
+    const runtimeRoutes = (
+      integrationRouter as unknown as {
+        stack: Array<{
+          route?: {
+            path: string;
+            methods: Record<string, boolean>;
+          };
+        }>;
+      }
+    ).stack.flatMap(({ route }) => {
+      if (!route || !route.path.startsWith("/seerrng/v1/")) return [];
+      return [
+        {
+          path: route.path.replace(/^\/seerrng\/v1/, "").replace(/:([A-Za-z0-9_]+)/g, "{$1}"),
+          methods: Object.keys(route.methods).filter((method) => route.methods[method]),
+        },
+      ];
+    });
+    const documentedRoutes = Object.entries(contract.paths).flatMap(([route, definition]) => [
+      {
+        path: route,
+        methods: Object.keys(definition).filter((method) => httpMethods.has(method)),
+      },
+    ]);
+    const sortRoutes = (routes: typeof runtimeRoutes) =>
+      routes
+        .map(({ path: route, methods }) => ({
+          path: route,
+          methods: [...methods].sort(),
+        }))
+        .sort((left, right) => left.path.localeCompare(right.path));
+    expect(sortRoutes(runtimeRoutes)).toEqual(sortRoutes(documentedRoutes));
 
     mocks.igdb.searchGames.mockResolvedValueOnce([
       {
