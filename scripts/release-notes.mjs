@@ -334,6 +334,11 @@ export function injectCuratedNotes(changelog, curatedNotes, version) {
   const existingNotesEnd = followingHeading
     ? existingContentStart + followingHeading.index
     : section.length;
+  const existingCuratedNotes = section.slice(existingNotesHeading.index, existingNotesEnd).trim();
+  if (existingCuratedNotes === curatedNotes.trim()) {
+    return changelog;
+  }
+
   const updatedSection =
     `${section.slice(0, existingNotesHeading.index)}${curatedNotes}\n\n` +
     section.slice(existingNotesEnd).replace(/^\n*/u, "\n");

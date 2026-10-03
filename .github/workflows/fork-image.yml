@@ -227,12 +227,13 @@ jobs:
           draft: false
 
   update-changelog:
-    name: Commit generated changelog
+    name: Open changelog update pull request
     needs: [release]
     if: startsWith(github.ref, 'refs/tags/v') && needs.release.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ github.ref_name }}
@@ -248,15 +249,16 @@ jobs:
           node-version: 26.x
           package-manager-cache: false
 
-      - name: Update the release section on main
+      - name: Open a changelog update pull request
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${TAG#v}"
+          branch="release/changelog-${TAG}"
           previous_tag="$(scripts/latest-published-release-tag.sh "$TAG")"
           release_sha="$(git rev-parse "${TAG}^{commit}")"
           git fetch origin main:refs/remotes/origin/main
-          git checkout -B changelog-update origin/main
+          git checkout -B "$branch" origin/main
           node scripts/assemble-release-notes.mjs \
             --previous-tag "$previous_tag" \
             --head "$release_sha" \
@@ -274,7 +276,18 @@ jobs:
           git commit \
             -m "docs(changelog): include curated notes for ${TAG}" \
             -m 'release-note: none'
-          git push origin HEAD:refs/heads/main
+          git push --force origin "HEAD:refs/heads/${branch}"
+
+          pr_url="$(gh pr list --base main --head "$branch" --state open --json url --jq '.[0].url // empty')"
+          if [[ -z "$pr_url" ]]; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "docs(changelog): include curated notes for ${TAG}" \
+              --body "Automated changelog update for the published ${TAG} release. The release notes are already published; merge this pull request to sync docs/CHANGELOG.md."
+          else
+            echo "Updated existing changelog pull request: ${pr_url}"
+          fi
 
   announce-release:
     name: Announce release to Discord

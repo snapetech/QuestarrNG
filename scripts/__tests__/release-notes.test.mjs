@@ -12,6 +12,14 @@ describe("injectCuratedNotes", () => {
     expect(result.indexOf("### User-facing changes")).toBeLessThan(result.indexOf("### Security"));
   });
 
+  it("keeps an already assembled release section unchanged on rerun", () => {
+    const changelog = "## [1.8.0] - 2026-10-03\n\n## [1.7.3] - 2026-10-02\n";
+    const notes = "### User-facing changes\n\n#### Changed\n\n- Note.";
+    const firstPass = injectCuratedNotes(changelog, notes, "1.8.0");
+
+    expect(injectCuratedNotes(firstPass, notes, "1.8.0")).toBe(firstPass);
+  });
+
   it("rejects a changelog version outside the numeric semver format", () => {
     expect(() => injectCuratedNotes("## [1.7.3]", "Notes.", "1.7.3-questarr")).toThrow(
       "Invalid changelog version: 1.7.3-questarr."
