@@ -8,6 +8,21 @@ Discord announcement while this file remains the chronological changelog.
 
 ## [1.8.0] - 2026-10-03
 
+### User-facing changes
+
+#### Changed
+
+- **Integrations:** The SeerrNG provider API now has a versioned OpenAPI contract with a conformance test for its handshake and required route parameters.
+
+#### Security
+
+- **Imports:** Archive imports now reject traversal paths and links, and enforce configurable total-entry and declared-expansion limits before archive data is decompressed or written into a game library.
+  - **Action required:** Set ARCHIVE_MAX_EXPANDED_BYTES or ARCHIVE_MAX_ENTRIES if your archives need different limits.
+- **Containers:** Compose and Helm deployments can run QuestarrNG as a non-root user with a read-only root filesystem and no Linux capabilities. The image entrypoint preserves `UMASK` and checks the writable data volume without changing ownership; rootless file logs are stored there at `/app/data/server.log`. Published images now include SBOM and provenance attestations.
+  - **Action required:** Prepare the data volume with the configured UID and GID before enabling rootless mode.
+- **Integrations:** Integration API keys can now be limited to SeerrNG routes and expire after a configurable 30–365 days; existing keys retain their current access, and Settings shows each key's scope and expiry.
+  - **Action required:** Create a replacement key if a client should use the new scope or expiration settings.
+
 ## [1.7.3] - 2026-10-02
 
 ### User-facing changes
