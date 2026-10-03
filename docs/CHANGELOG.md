@@ -6,6 +6,8 @@ User-facing pull requests add validated fragments under [`release-notes/`](../re
 The release workflow adds those fragments to the versioned release notes and
 Discord announcement while this file remains the chronological changelog.
 
+## [1.8.0] - 2026-10-03
+
 ## [1.7.3] - 2026-10-02
 
 ### User-facing changes
