@@ -10,6 +10,7 @@ import path from "node:path";
 import semver from "semver";
 
 const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
 const overrides = pkg.overrides || {};
 
 // Overrides that are necessary for feature support (not just bug patches) and
@@ -17,6 +18,21 @@ const overrides = pkg.overrides || {};
 // Once the upstream package officially supports the feature, these can be removed.
 const necessaryFeatureOverrides = new Set([
   "eslint-plugin-react -> eslint", // ESLint v10 support (eslint-plugin-react@7 doesn't officially support it yet)
+]);
+
+// This upstream security fix has not been published to npm yet, so it is pinned
+// by immutable Git commit instead of a semver range. Keep its source and lockfile
+// resolution exact until an official fixed release is available.
+const pinnedSecurityOverrides = new Map([
+  [
+    "http-cache-semantics",
+    {
+      spec: "https://github.com/Sergey360/http-cache-semantics/archive/11fb104275349bbd84bf21eafd40b18220c29c46.tar.gz",
+      resolved:
+        "https://github.com/Sergey360/http-cache-semantics/archive/11fb104275349bbd84bf21eafd40b18220c29c46.tar.gz",
+      version: "4.2.0",
+    },
+  ],
 ]);
 
 function readManifest(dirPath) {
@@ -92,11 +108,39 @@ let anyRemovable = false;
 
 for (const { pkgName, safeRange, parent } of entries) {
   const label = parent ? `${parent} -> ${pkgName}` : pkgName;
+
+  const pinnedSecurityOverride = pinnedSecurityOverrides.get(label);
+  if (pinnedSecurityOverride) {
+    const lockEntry = lock.packages?.[`node_modules/${pkgName}`];
+    const consumers = parent ? findScopedConsumer(parent, pkgName) : findGlobalConsumers(pkgName);
+    const installedManifest = readManifest(path.join("node_modules", ...pkgName.split("/")));
+    const pinIsValid =
+      safeRange === pinnedSecurityOverride.spec &&
+      lockEntry?.resolved === pinnedSecurityOverride.resolved &&
+      lockEntry?.version === pinnedSecurityOverride.version &&
+      installedManifest?.version === pinnedSecurityOverride.version;
+
+    if (!pinIsValid || consumers.length === 0) {
+      console.error(
+        `[invalid] ${label}: expected the documented immutable upstream fix and an active consumer in the lockfile and node_modules.`
+      );
+      anyRemovable = true;
+      continue;
+    }
+
+    console.log(`[pinned security fix] ${label} (${pinnedSecurityOverride.resolved})`);
+    for (const consumer of consumers)
+      console.log(`  - ${consumer.consumer} requests ${consumer.range}`);
+    continue;
+  }
+
   const safeMin = semver.minVersion(safeRange);
 
   // Skip removability check for necessary feature overrides
   if (necessaryFeatureOverrides.has(label)) {
-    console.log(`[necessary] ${label} (forced ${safeRange}): feature override documented in docs/DEPENDENCIES.md`);
+    console.log(
+      `[necessary] ${label} (forced ${safeRange}): feature override documented in docs/DEPENDENCIES.md`
+    );
     continue;
   }
 
