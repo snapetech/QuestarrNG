@@ -8,7 +8,12 @@ import { DownloaderManager } from "./downloaders.js";
 import { resolveDownloadRelativePath, buildRemoteImportPath } from "./downloaders/utils.js";
 import { torznabClient } from "./torznab.js";
 import { newznabClient } from "./newznab.js";
-import { searchAllIndexers, filterBlacklistedReleases, type SearchItem } from "./search.js";
+import {
+  searchAllIndexers,
+  filterBlacklistedReleases,
+  filterByReleaseNameBlacklist,
+  type SearchItem,
+} from "./search.js";
 import { typesafeClient, type ReleaseType } from "./typesafe.js";
 import { xrelClient, DEFAULT_XREL_BASE } from "./xrel.js";
 import { steamService } from "./steam.js";
@@ -17,6 +22,8 @@ import { importManager } from "./services/index.js";
 import {
   downloadRulesSchema,
   DEFAULT_NOTIFICATION_PREFERENCES,
+  ACQUIRED_GAME_STATUSES,
+  isUserCuratedGameStatus,
   type Game,
   type InsertNotification,
   type NotificationEvent,
@@ -77,7 +84,9 @@ const AUTO_SEARCH_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 const STEAM_SYNC_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour (per-user interval gates actual sync)
 const XREL_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours (xREL search rate limit: 2/5s)
 const CLIENT_VERSION_LOG_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
-const OWNED_STATUSES = new Set(["owned", "completed", "downloading"]);
+// Every status where the user already has the game, so update/pack searches
+// keep running while it's being played or shelved too.
+const OWNED_STATUSES = new Set<string>([...ACQUIRED_GAME_STATUSES, "downloading"]);
 
 const GAME_UPDATE_TITLE_TO_EVENT: Record<string, NotificationEvent> = {
   "Game Released": "gameReleased",
@@ -178,6 +187,10 @@ function getAutoSearchRules(downloadRules: string | null): AutoSearchRules {
   return { minSeeders, sortBy, visibleCategoriesSet };
 }
 
+function releaseHealth(item: SearchItem): number {
+  return item.downloadType === "usenet" ? (item.grabs ?? 0) : (item.seeders ?? 0);
+}
+
 // Exported for unit testing of the sort/filter/category logic in isolation.
 export function categorizeSearchItems(
   items: SearchItem[],
@@ -185,13 +198,13 @@ export function categorizeSearchItems(
   indexerPriorityMap?: Map<string, number>
 ): AutoSearchCategorizedItems {
   const sortedItems = items
-    .filter((item) => {
-      const seeders = item.seeders ?? 0;
-      return seeders >= rules.minSeeders;
-    })
+    // Usenet releases have no seeders, so the seeder floor only applies to
+    // torrents (same rule as the manual download dialog); their health signal
+    // for sorting is the grab count instead.
+    .filter((item) => item.downloadType === "usenet" || (item.seeders ?? 0) >= rules.minSeeders)
     .sort((a, b) => {
       if (rules.sortBy === "seeders") {
-        return (b.seeders ?? 0) - (a.seeders ?? 0);
+        return releaseHealth(b) - releaseHealth(a);
       }
       if (rules.sortBy === "date") {
         return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
@@ -318,56 +331,89 @@ function applyRequestedVariantFilter(
   });
 }
 
+const AUTO_SEARCH_PAGE_SIZE = 10;
+// How many result pages auto-search walks when the global release-name blacklist hides a
+// whole page, before concluding that no eligible release exists.
+const AUTO_SEARCH_MAX_PAGES = 5;
+
+/** Logs indexer errors from an auto-search, flagging when every error is network-related. */
+function logAutoSearchErrors(gameTitle: string, errors: string[]): void {
+  if (errors.length === 0) return;
+  const networkKeywords = [
+    "fetch failed",
+    "Unsafe URL detected",
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "ETIMEDOUT",
+    "network timeout",
+  ];
+
+  const areAllErrorsNetworkRelated = errors.every((err) =>
+    networkKeywords.some((keyword) => err.includes(keyword))
+  );
+
+  if (areAllErrorsNetworkRelated) {
+    igdbLogger.warn(
+      { gameTitle, errorCount: errors.length },
+      "Search failed due to network connectivity issues (DNS/Fetch/Safety check). Please check your internet connection."
+    );
+  } else {
+    igdbLogger.warn({ gameTitle, errors }, "Errors during search");
+  }
+}
+
+/**
+ * Searches all indexers for a game and returns its eligible releases, categorized by type.
+ * Releases are title-matched, then filtered by the user's global release-name blacklist and
+ * the game's own blacklist. When the global blacklist hides a whole page, later pages are
+ * fetched (up to AUTO_SEARCH_MAX_PAGES). Returns null when no eligible release is found.
+ */
 async function searchAndCategorizeItemsForGame(
   game: Pick<Game, "id" | "title">,
   downloadRules: string | null,
-  indexerPriorityMap?: Map<string, number>
+  indexerPriorityMap?: Map<string, number>,
+  blacklistTerms: string[] = []
 ): Promise<AutoSearchCategorizedItems | null> {
-  const { items, errors } = await searchAllIndexers({
-    query: game.title,
-    limit: 10,
-  });
+  let matchedItems: SearchItem[] = [];
+  let globallyFiltered: SearchItem[] = [];
 
-  if (errors.length > 0) {
-    const networkKeywords = [
-      "fetch failed",
-      "Unsafe URL detected",
-      "ENOTFOUND",
-      "EAI_AGAIN",
-      "ETIMEDOUT",
-      "network timeout",
-    ];
+  for (let page = 0; page < AUTO_SEARCH_MAX_PAGES; page++) {
+    const { items, errors } = await searchAllIndexers({
+      query: game.title,
+      limit: AUTO_SEARCH_PAGE_SIZE,
+      offset: page * AUTO_SEARCH_PAGE_SIZE,
+    });
 
-    const areAllErrorsNetworkRelated = errors.every((err) =>
-      networkKeywords.some((keyword) => err.includes(keyword))
-    );
+    logAutoSearchErrors(game.title, errors);
 
-    if (areAllErrorsNetworkRelated) {
-      igdbLogger.warn(
-        { gameTitle: game.title, errorCount: errors.length },
-        "Search failed due to network connectivity issues (DNS/Fetch/Safety check). Please check your internet connection."
-      );
-    } else {
-      igdbLogger.warn({ gameTitle: game.title, errors }, "Errors during search");
+    if (items.length === 0) {
+      if (page === 0) return null;
+      break;
     }
+
+    matchedItems = items.filter((item) => releaseMatchesGame(item.title, game.title));
+    // A first page with no title match means the search is not about this game. Later pages
+    // are only fetched because the blacklist hid a whole page, so an unrelated page there
+    // should not stop the search.
+    if (matchedItems.length === 0 && page === 0) {
+      igdbLogger.debug(
+        { gameTitle: game.title, originalCount: items.length },
+        "No items passed strict title matching"
+      );
+      return null;
+    }
+
+    // Filter out releases matching the user's global release-name blacklist before anything
+    // else touches them (including the AI auto-download check further down the pipeline).
+    globallyFiltered = filterByReleaseNameBlacklist(matchedItems, blacklistTerms);
+
+    // Only page further when the blacklist hid this whole page and more results may exist.
+    if (globallyFiltered.length > 0 || items.length < AUTO_SEARCH_PAGE_SIZE) break;
   }
 
-  if (items.length === 0) {
-    return null;
-  }
-
-  const matchedItems = items.filter((item) => releaseMatchesGame(item.title, game.title));
-  if (matchedItems.length === 0) {
-    igdbLogger.debug(
-      { gameTitle: game.title, originalCount: items.length },
-      "No items passed strict title matching"
-    );
-    return null;
-  }
-
-  // Filter out blacklisted releases
+  // Filter out per-game blacklisted releases
   const blacklisted = await storage.getReleaseBlacklistSet(game.id);
-  const nonBlacklisted = filterBlacklistedReleases(matchedItems, blacklisted);
+  const nonBlacklisted = filterBlacklistedReleases(globallyFiltered, blacklisted);
 
   if (nonBlacklisted.length === 0) {
     igdbLogger.debug(
@@ -805,8 +851,16 @@ export async function checkDownloadStatus() {
               );
               if (!hasActiveSibling) {
                 const failedGame = await storage.getGame(download.gameId);
-                if (failedGame && failedGame.status !== "wanted") {
-                  await storage.updateGameStatus(download.gameId, { status: "wanted" });
+                if (
+                  failedGame &&
+                  failedGame.status !== "wanted" &&
+                  !isUserCuratedGameStatus(failedGame.status)
+                ) {
+                  await storage.updateGameStatus(
+                    download.gameId,
+                    { status: "wanted" },
+                    { preserveCurated: true }
+                  );
                   igdbLogger.debug(
                     { gameId: download.gameId, oldStatus: failedGame.status, newStatus: "wanted" },
                     "Reset game status after async tag resolution failure"
@@ -962,8 +1016,15 @@ export async function checkDownloadStatus() {
               // Update DB - mark as completed
               await storage.updateGameDownloadStatus(download.id, "completed");
 
-              // Update Game status to 'owned' (which means we have the files)
-              await storage.updateGameStatus(download.gameId, { status: "owned" });
+              // Update Game status to 'owned' (which means we have the files), unless
+              // the user already moved it past that (e.g. an update for a game they're playing).
+              if (!isUserCuratedGameStatus(game?.status)) {
+                await storage.updateGameStatus(
+                  download.gameId,
+                  { status: "owned" },
+                  { preserveCurated: true }
+                );
+              }
 
               igdbLogger.info(
                 { gameId: download.gameId, downloadId: download.id },
@@ -1079,8 +1140,17 @@ export async function checkDownloadStatus() {
             }
 
             const game = await storage.getGame(download.gameId);
-            if (!skipGameStatusUpdate && game && game.status !== newGameStatus) {
-              await storage.updateGameStatus(download.gameId, { status: newGameStatus });
+            if (
+              !skipGameStatusUpdate &&
+              game &&
+              game.status !== newGameStatus &&
+              !isUserCuratedGameStatus(game.status)
+            ) {
+              await storage.updateGameStatus(
+                download.gameId,
+                { status: newGameStatus },
+                { preserveCurated: true }
+              );
               igdbLogger.debug(
                 { gameId: download.gameId, oldStatus: game.status, newStatus: newGameStatus },
                 "Updated game status"
@@ -1171,7 +1241,11 @@ export async function checkDownloadStatus() {
           const hasActiveSibling = siblings.some(
             (s) => s.id !== download.id && activeStatuses.has(s.status)
           );
-          const willResetGame = !hasActiveSibling && !!game && game.status !== "wanted";
+          const willResetGame =
+            !hasActiveSibling &&
+            !!game &&
+            game.status !== "wanted" &&
+            !isUserCuratedGameStatus(game.status);
 
           const missedErrorMessage = willResetGame
             ? "Download disappeared from the downloader before completing. It may have " +
@@ -1185,7 +1259,11 @@ export async function checkDownloadStatus() {
           notifyUser("downloadUpdate", download.gameId);
 
           if (willResetGame) {
-            await storage.updateGameStatus(download.gameId, { status: "wanted" });
+            await storage.updateGameStatus(
+              download.gameId,
+              { status: "wanted" },
+              { preserveCurated: true }
+            );
           }
 
           if (missedPrefs.downloadFailed.inApp || missedPrefs.downloadFailed.apprise) {
@@ -1220,6 +1298,10 @@ export async function checkDownloadStatus() {
   }
 }
 
+/**
+ * Runs the scheduled auto-search with release filters and optional request/game
+ * scope for SeerrNG retries.
+ */
 export async function checkAutoSearch(
   options: { userId?: string; gameId?: string; force?: boolean } = {}
 ) {
@@ -1288,6 +1370,7 @@ export async function checkAutoSearch(
 
         const preferredGroups = parseJsonStringArray(settings.preferredReleaseGroups);
         const preferredPlatform = settings.preferredPlatform ?? null;
+        const blacklistTerms = parseJsonStringArray(settings.releaseNameBlacklist);
 
         for (const game of wantedGames) {
           try {
@@ -1303,7 +1386,8 @@ export async function checkAutoSearch(
             const searchResult = await searchAndCategorizeItemsForGame(
               game,
               settings.downloadRules,
-              indexerPriorityMap
+              indexerPriorityMap,
+              blacklistTerms
             );
             if (!searchResult) {
               // No results at all (zero results or all blacklisted) — clear the badge
@@ -1449,7 +1533,12 @@ export async function checkAutoSearch(
                               status: "downloading",
                               downloadType: item.downloadType,
                             });
-                            await storage.updateGameStatus(game.id, { status: "downloading" });
+                            await storage.updateGameStatus(
+                              game.id,
+                              { status: "downloading" },
+                              { preserveCurated: true }
+                            );
+                            await storage.updateGameSearchResultsAvailable(game.id, false);
 
                             const groupSuffix = item.group ? ` [${item.group}]` : "";
                             if (prefs.autoDownload.inApp) {
@@ -1525,7 +1614,8 @@ export async function checkAutoSearch(
             const searchResult = await searchAndCategorizeItemsForGame(
               game,
               settings.downloadRules,
-              indexerPriorityMap
+              indexerPriorityMap,
+              blacklistTerms
             );
             if (!searchResult) {
               await storage.updateGameSearchResultsAvailable(game.id, false);

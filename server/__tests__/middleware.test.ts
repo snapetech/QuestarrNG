@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import type { Request, Response, NextFunction } from "express";
 import {
   validateRequest,
@@ -12,6 +12,7 @@ import {
   sanitizeDownloaderUpdateData,
   sanitizeDownloaderDownloadData,
   sanitizeIndexerSearchQuery,
+  rateLimitsDisabled,
 } from "../middleware";
 
 // Mock request and response objects
@@ -472,6 +473,39 @@ describe("Middleware - Input Sanitization", () => {
   });
 
   describe("sanitizeDownloaderDownloadData", () => {
+    it("collapses a multi-line scraped indexer title instead of rejecting it", async () => {
+      const padding = "\n" + " ".repeat(40);
+      const scrapedTitle = [
+        "Gunman Contracts - Stand Alone",
+        "ANB_Seth",
+        "Рейтинг",
+        "0.0",
+        "2026",
+        "v Build 25234835",
+        "8.67 ГБ",
+        "Открыть игру [2026]",
+      ].join(padding.repeat(4));
+      expect(scrapedTitle.length).toBeGreaterThan(500);
+
+      const req = createMockRequest({
+        body: { url: "magnet:?xt=urn:btih:abc", title: scrapedTitle },
+      });
+      const res = createMockResponse();
+      const next = createMockNext();
+
+      for (const validator of sanitizeDownloaderDownloadData) {
+        await validator(req as Request, res as Response, next);
+      }
+
+      validateRequest(req as Request, res as Response, next);
+
+      expect(res.status).not.toHaveBeenCalled();
+      expect(next).toHaveBeenCalled();
+      expect(req.body.title).toBe(
+        "Gunman Contracts - Stand Alone ANB_Seth Рейтинг 0.0 2026 v Build 25234835 8.67 ГБ Открыть игру [2026]"
+      );
+    });
+
     it("should allow valid download data", async () => {
       const validDownloadData = {
         url: "https://example.com/file.zip",
@@ -735,5 +769,29 @@ describe("Middleware - Input Sanitization", () => {
       expect(req.query?.limit).toBe(50);
       expect(req.query?.offset).toBe(10);
     });
+  });
+});
+
+describe("rateLimitsDisabled", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is off unless DISABLE_RATE_LIMITS is set", () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("DISABLE_RATE_LIMITS", "");
+    expect(rateLimitsDisabled()).toBe(false);
+  });
+
+  it.each(["development", "test"])("turns the limits off when NODE_ENV is %s", (nodeEnv) => {
+    vi.stubEnv("NODE_ENV", nodeEnv);
+    vi.stubEnv("DISABLE_RATE_LIMITS", "true");
+    expect(rateLimitsDisabled()).toBe(true);
+  });
+
+  it.each(["production", ""])("never turns the limits off when NODE_ENV is %j", (nodeEnv) => {
+    vi.stubEnv("NODE_ENV", nodeEnv);
+    vi.stubEnv("DISABLE_RATE_LIMITS", "true");
+    expect(rateLimitsDisabled()).toBe(false);
   });
 });

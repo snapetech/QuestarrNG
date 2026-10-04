@@ -108,11 +108,13 @@ describe("game journal routes", () => {
       id: SCREENSHOT_ID,
       ...screenshot,
     }));
-    mocks.storage.updateGameScreenshotCaption.mockImplementation(async (id, _userId, caption) => ({
-      id,
-      filePath: path.join(configDir, "screenshots", GAME_ID, "saved.png"),
-      caption,
-    }));
+    mocks.storage.updateGameScreenshotCaption.mockImplementation(
+      async (id, _gameId, _userId, caption) => ({
+        id,
+        filePath: path.join(configDir, "screenshots", GAME_ID, "saved.png"),
+        caption,
+      })
+    );
 
     app = express();
     app.use(express.json());
@@ -150,7 +152,11 @@ describe("game journal routes", () => {
     expect((await request(app).delete(`/api/games/${GAME_ID}/journal/${ENTRY_ID}`)).status).toBe(
       204
     );
-    expect(mocks.storage.deleteGameJournalEntry).toHaveBeenLastCalledWith(ENTRY_ID, "user-1");
+    expect(mocks.storage.deleteGameJournalEntry).toHaveBeenLastCalledWith(
+      ENTRY_ID,
+      GAME_ID,
+      "user-1"
+    );
   });
 
   it("limits journal and milestone data to the owning user and handles storage errors", async () => {

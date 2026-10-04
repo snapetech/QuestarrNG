@@ -6,6 +6,20 @@ User-facing pull requests add validated fragments under [`release-notes/`](../re
 The release workflow adds those fragments to the versioned release notes and
 Discord announcement while this file remains the chronological changelog.
 
+## [1.9.0] - 2026-10-04
+
+### User-facing changes
+
+#### Added
+
+- **Game Details:** The game details view now includes an expansions tab with available DLC and expansion covers, release years, category labels, and IGDB links.
+- **Library Platforms:** Platform preferences now carry across library filters, discovery, game adding, download searches, and import eligibility. You can also hide shelved or already-owned games from results by default, and track active games on a Playing page with notes, milestones, screenshots, and Steam achievements.
+- **Discovery:** Settings now support a global release-name blacklist that filters matching terms from manual searches, auto-search cycles, and AI-assisted release selection.
+
+#### Security
+
+- **Imports:** Optional VirusTotal hash lookups and local ClamAV scans run before downloads are unpacked or moved into the library. Flagged files are quarantined and create a Security Alert instead of being imported.
+
 ## [1.8.3] - 2026-10-03
 
 ### User-facing changes
@@ -134,7 +148,7 @@ The 1.5.0 release was not published. Its completed changes ship in 1.6.0:
   pinned compose file, links the sources by tag permalink, and spells out how to
   verify the result.
 
-### Fixed
+## [1.4.1 - 1.4.2] - 2026-08
 
 - **Downloader connection checks**: the insecure-LAN acknowledgement is now
   applied consistently to test-connection requests, allowing configured
@@ -150,19 +164,12 @@ The 1.5.0 release was not published. Its completed changes ship in 1.6.0:
 
 ### Security
 
-- **Dependency Vulnerabilities**: Fixed 5 known vulnerabilities in `fast-xml-parser`, `fast-uri`, `ip-address`, and `socket.io-parser`.
-- **Dependency Vulnerabilities**: Fixed 3 additional known vulnerabilities in `qs` and `js-yaml`, restoring a clean `npm audit` after the Vulnerability Scan CI job started failing (#997).
-- **Dependency Vulnerabilities**: Fixed a critical IP-spoofing vulnerability in `proxy-addr`, flagged by Aikido Intel.
+- **1.4.1 Dependency Vulnerabilities**: Fixed 6 known vulnerabilities in `brace-expansion` (3), `fast-xml-parser`, `js-yaml`, and `body-parser`, plus a devDependency-only fix in `fast-uri` and a second, devDependency-only resolution path for the `brace-expansion` advisories.
+- **1.4.2 Dependency Vulnerabilities**: Fixed 4 known vulnerabilities in `ip-address` (3) and `socket.io-parser`.
 
 ### Vulnerabilities Addressed
 
-- **proxy-addr** (npm `overrides` pin) 2.0.7 → 2.0.8 — fixes **CVE-2026-90711** ([AIKIDO-2026-101201](https://security.aikido.dev/cve/AIKIDO-2026-101201), CRITICAL) — an undersized IPv4-mapped IPv6 trust-subnet prefix (e.g. `::ffff:10.0.0.0/8` instead of `::ffff:10.0.0.0/104`) was accepted without error but trusted every IPv4 address on the internet, letting unauthenticated clients spoof `X-Forwarded-For` and bypass IP-based access controls, rate limiting, and audit logging, vulnerable range `>=1.1.0 <=2.0.7`. Reaches production via `express`, which pins `proxy-addr: ~2.0.7` (a range that otherwise excludes the fix).
-- **fast-xml-parser** 5.10.0 → 5.10.1 — fixes GHSA-8r6m-32jq-jx6q (no CVE assigned, HIGH) — a parsing issue in the 5.9.3–5.10.0 range fixed in 5.10.1.
-- **fast-uri** (npm `overrides` pin, dev-only via `secretlint` → `ajv`) 3.1.3 → 3.1.4 → 3.1.5 — the 3.1.4 → 3.1.5 bump fixes GHSA-7p8r-x3mc-p8w7 (HIGH) — host confusion via backslash authority introducer, vulnerable range `3.0.0 - 3.1.4`.
-- **ip-address** (transitive via `express-rate-limit` and `socks`) 10.2.0 → 10.4.0 — fixes GHSA-mwp4-54f8-5fhr (HIGH, SSRF/trust-boundary bypass via octal-decoded leading-zero octets), plus two moderate SSRF-adjacent advisories (GHSA-4xrf-jv44-h6hh, GHSA-22jq-vg5j-6vgg) already covered by the same bump. No `overrides` pin needed — `express-rate-limit`'s `^10.2.0` and `socks`'s `^10.1.1` ranges already permit 10.4.0.
-- **socket.io-parser** (npm `overrides` pin) 4.2.6 → 4.2.7 — fixes GHSA-2m8v-j782-fhvr (HIGH, CVSS 7.5) — zero-attachment memory exhaustion, vulnerable range `4.0.0 - <4.2.7`. Reaches production via `socket.io`/`socket.io-client` (real-time download-progress and notification updates).
-- **qs** (npm `overrides` pin) 6.15.2 → 6.16.0 — fixes GHSA-4mjr-xmp4-gh2g (MODERATE) — DoS via attacker-controlled `isBuffer`, vulnerable range `>=2.2.5 <6.16.0` — and GHSA-x5fp-wj9c-mxmx (MODERATE) — array-limit bypass via bracket-key comma parsing, vulnerable range `>=6.14.2 <=6.15.3`. Reaches production via `express`/`body-parser`, both of which pin `qs: ~6.15.1` (a range that otherwise excludes the fix); the same override also closes the gap in `openid`, `steam-web`, and `superagent` (#997).
-- **js-yaml** (npm `overrides` pin, dev-only, scoped to `@eslint/eslintrc`) 4.3.0 → 4.3.2 — fixes GHSA-5p4m-2wfm-xmqj (HIGH) — quadratic CPU consumption in `!!omap` resolution. Scoped rather than global so the already-unaffected top-level `js-yaml@5.3.0` is left untouched (#997).
+#### 1.4.1
 
 ### Changed
 
@@ -190,7 +197,16 @@ Hotfix release addressing dependency vulnerabilities flagged by `npm audit`.
 - **brace-expansion** 5.0.7 → 5.0.8 — fixes **CVE-2026-14257** (GHSA-mh99-v99m-4gvg, HIGH) — DoS via unbounded expansion length causing an out-of-memory process crash.
 - **js-yaml** 5.2.1 → 5.2.2 — fixes GHSA-pm4m-ph32-ghv5 (no CVE assigned, HIGH) — exponential parsing time in flow collections leading to denial of service.
 - **body-parser** 1.20.5 → 1.20.6 — fixes **CVE-2026-12590** (GHSA-v422-hmwv-36x6, LOW) — an invalid `limit` value silently disabled size enforcement, allowing arbitrarily large request payloads.
-- **minimatch** override pinned to `^10.2.5` — closes a second resolution path for **CVE-2026-14257** (GHSA-mh99-v99m-4gvg, HIGH): `eslint-plugin-react`'s bundled `minimatch@3.1.5` still pulled the vulnerable `brace-expansion@1.1.16`. devDependency-only (not shipped in the production image), but flagged by `npm audit` without `--omit=dev`, so pinned for a fully clean audit.
+- **fast-uri** (npm `overrides` pin, dev-only at the time) 3.1.3 → 3.1.4 — fixes **CVE-2026-16221** (GHSA-v2hh-gcrm-f6hx, HIGH) — host confusion via a literal backslash authority delimiter.
+- **minimatch** override pinned to `^10.2.5` — closes a second resolution path for the `brace-expansion` advisories: `eslint-plugin-react`'s bundled `minimatch@3.1.5` still pulled the vulnerable `brace-expansion@1.1.x`. devDependency-only (not shipped in the production image), but flagged by `npm audit` without `--omit=dev`, so pinned for a fully clean audit.
+
+#### 1.4.2
+
+- **ip-address** (transitive, via `express-rate-limit`) 10.2.0 → 10.5.0 — fixes 3 CVEs; no `overrides` pin needed, `express-rate-limit`'s `^8.5.2` range already permitted 10.5.0:
+  - **CVE-2026-69192** (GHSA-mwp4-54f8-5fhr, HIGH) — `Address4` decoded leading-zero octets as decimal while resolvers decode them as octal, allowing SSRF and trust-boundary bypass
+  - **CVE-2026-54272** (GHSA-22jq-vg5j-6vgg, MODERATE) — misclassification of IPv4-mapped/NAT64 IPv6 addresses
+  - **CVE-2026-69198** (GHSA-4xrf-jv44-h6hh, MODERATE) — a CIDR suffix on the parsed address suppressed special-use classification
+- **socket.io-parser** (npm `overrides` pin) 4.2.6 → 4.2.7 — fixes **CVE-2026-69185** (GHSA-2m8v-j782-fhvr, HIGH, CVSS 7.5) — zero-attachment memory exhaustion, vulnerable range `4.0.0 - <4.2.7`. Reaches production via `socket.io`/`socket.io-client` (real-time download-progress and notification updates).
 
 ## [1.4.0] - 2026-07-16
 

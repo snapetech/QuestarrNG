@@ -54,6 +54,9 @@ import {
   type ApiKeyPublic,
   type NewApiKeyInput,
   GAME_LINK_REQUIRED_STATUS,
+  QUARANTINED_STATUS,
+  USER_CURATED_GAME_STATUSES,
+  isUserCuratedGameStatus,
   type RootFolder,
   type InsertRootFolder,
   type UpdateRootFolder,
@@ -229,7 +232,18 @@ export interface IStorage {
   getUserGamesByStatus(userId: string, status: string, includeHidden?: boolean): Promise<Game[]>;
   searchUserGames(userId: string, query: string, includeHidden?: boolean): Promise<Game[]>;
   addGame(game: InsertGame): Promise<Game>;
-  updateGameStatus(id: string, statusUpdate: UpdateGameStatus): Promise<Game | undefined>;
+  /**
+   * Set a game's status. With `preserveCurated`, the write only applies while the
+   * game's *current* status is not one the user set by hand (playing, shelved,
+   * completed), checked in the same statement so a status the user picks while
+   * a download or import is running can't be overwritten by the pipeline.
+   * Returns undefined when nothing was updated.
+   */
+  updateGameStatus(
+    id: string,
+    statusUpdate: UpdateGameStatus,
+    options?: { preserveCurated?: boolean }
+  ): Promise<Game | undefined>;
   updateGameHidden(id: string, hidden: boolean): Promise<Game | undefined>;
   updateGameUserRating(
     id: string,
@@ -260,17 +274,18 @@ export interface IStorage {
   // Game journal methods (local-only notes while playing)
   getGameJournalEntries(gameId: string, userId: string): Promise<GameJournalEntry[]>;
   addGameJournalEntry(entry: InsertGameJournalEntry): Promise<GameJournalEntry>;
-  deleteGameJournalEntry(id: string, userId: string): Promise<boolean>;
+  deleteGameJournalEntry(id: string, gameId: string, userId: string): Promise<boolean>;
 
   // Game milestone methods (manual "successes" checklist)
   getGameMilestones(gameId: string, userId: string): Promise<GameMilestone[]>;
   addGameMilestone(milestone: InsertGameMilestone): Promise<GameMilestone>;
   updateGameMilestone(
     id: string,
+    gameId: string,
     userId: string,
     completed: boolean
   ): Promise<GameMilestone | undefined>;
-  deleteGameMilestone(id: string, userId: string): Promise<boolean>;
+  deleteGameMilestone(id: string, gameId: string, userId: string): Promise<boolean>;
 
   // Game screenshot methods
   getGameScreenshots(gameId: string, userId: string): Promise<GameScreenshot[]>;
@@ -282,6 +297,7 @@ export interface IStorage {
   }): Promise<GameScreenshot>;
   updateGameScreenshotCaption(
     id: string,
+    gameId: string,
     userId: string,
     caption: string | null
   ): Promise<GameScreenshot | undefined>;
@@ -313,6 +329,8 @@ export interface IStorage {
   // Unlike getPendingImportReviews, this can't be scoped by userId — there's no game
   // row left to join against to determine ownership.
   getUnlinkedImportReviews(): Promise<GameDownload[]>;
+  // Downloads quarantined by the pre-import security scan (status "quarantined").
+  getQuarantinedDownloads(userId: string): Promise<GameDownload[]>;
   getGameDownload(id: string, userId?: string): Promise<GameDownload | undefined>;
   getDownloadsByGameId(
     gameId: string
@@ -690,6 +708,7 @@ export class MemStorage implements IStorage {
       steamAppId: insertGame.steamAppId || null,
       source: insertGame.source ?? null,
       igdbWebsites: insertGame.igdbWebsites || null,
+      expansions: insertGame.expansions || null,
       aggregatedRating: insertGame.aggregatedRating ?? null,
       timeToBeatHastily: insertGame.timeToBeatHastily ?? null,
       timeToBeatNormally: insertGame.timeToBeatNormally ?? null,
@@ -710,9 +729,14 @@ export class MemStorage implements IStorage {
     return game;
   }
 
-  async updateGameStatus(id: string, statusUpdate: UpdateGameStatus): Promise<Game | undefined> {
+  async updateGameStatus(
+    id: string,
+    statusUpdate: UpdateGameStatus,
+    options?: { preserveCurated?: boolean }
+  ): Promise<Game | undefined> {
     const game = this.games.get(id);
     if (!game) return undefined;
+    if (options?.preserveCurated && isUserCuratedGameStatus(game.status)) return undefined;
 
     const leavingWanted = game.status === "wanted" && statusUpdate.status !== "wanted";
 
@@ -777,9 +801,9 @@ export class MemStorage implements IStorage {
     return journalEntry;
   }
 
-  async deleteGameJournalEntry(id: string, userId: string): Promise<boolean> {
+  async deleteGameJournalEntry(id: string, gameId: string, userId: string): Promise<boolean> {
     const entry = this.gameJournalEntries.get(id);
-    if (!entry || entry.userId !== userId) return false;
+    if (entry?.gameId !== gameId || entry.userId !== userId) return false;
     return this.gameJournalEntries.delete(id);
   }
 
@@ -804,20 +828,21 @@ export class MemStorage implements IStorage {
 
   async updateGameMilestone(
     id: string,
+    gameId: string,
     userId: string,
     completed: boolean
   ): Promise<GameMilestone | undefined> {
     const milestone = this.gameMilestones.get(id);
-    if (!milestone || milestone.userId !== userId) return undefined;
+    if (milestone?.gameId !== gameId || milestone.userId !== userId) return undefined;
 
     const updated: GameMilestone = { ...milestone, completedAt: completed ? new Date() : null };
     this.gameMilestones.set(id, updated);
     return updated;
   }
 
-  async deleteGameMilestone(id: string, userId: string): Promise<boolean> {
+  async deleteGameMilestone(id: string, gameId: string, userId: string): Promise<boolean> {
     const milestone = this.gameMilestones.get(id);
-    if (!milestone || milestone.userId !== userId) return false;
+    if (!milestone || milestone.gameId !== gameId || milestone.userId !== userId) return false;
     return this.gameMilestones.delete(id);
   }
 
@@ -847,11 +872,12 @@ export class MemStorage implements IStorage {
 
   async updateGameScreenshotCaption(
     id: string,
+    gameId: string,
     userId: string,
     caption: string | null
   ): Promise<GameScreenshot | undefined> {
     const screenshot = this.gameScreenshots.get(id);
-    if (!screenshot || screenshot.userId !== userId) return undefined;
+    if (screenshot?.gameId !== gameId || screenshot.userId !== userId) return undefined;
 
     const updated: GameScreenshot = { ...screenshot, caption };
     this.gameScreenshots.set(id, updated);
@@ -860,7 +886,7 @@ export class MemStorage implements IStorage {
 
   async deleteGameScreenshot(id: string, userId: string): Promise<GameScreenshot | undefined> {
     const screenshot = this.gameScreenshots.get(id);
-    if (!screenshot || screenshot.userId !== userId) return undefined;
+    if (screenshot?.userId !== userId) return undefined;
     this.gameScreenshots.delete(id);
     return screenshot;
   }
@@ -1210,6 +1236,14 @@ export class MemStorage implements IStorage {
     return Array.from(this.gameDownloads.values()).filter(
       (d) => d.status === GAME_LINK_REQUIRED_STATUS
     );
+  }
+
+  async getQuarantinedDownloads(userId: string): Promise<GameDownload[]> {
+    return Array.from(this.gameDownloads.values()).filter((d) => {
+      if (d.status !== QUARANTINED_STATUS) return false;
+      const game = this.games.get(d.gameId);
+      return game?.userId === userId;
+    });
   }
 
   async relinkGameDownload(id: string, gameId: string): Promise<GameDownload | undefined> {
@@ -1625,9 +1659,12 @@ export class MemStorage implements IStorage {
 
       preferredReleaseGroups: insertSettings.preferredReleaseGroups ?? null,
       filterByPreferredGroups: insertSettings.filterByPreferredGroups ?? false,
+      releaseNameBlacklist: insertSettings.releaseNameBlacklist ?? null,
       preferredPlatform: insertSettings.preferredPlatform ?? null,
       hideAdultContent: insertSettings.hideAdultContent ?? true,
       hideAgeRestrictedContent: insertSettings.hideAgeRestrictedContent ?? true,
+      hideShelvedByDefault: insertSettings.hideShelvedByDefault ?? true,
+      hideOwnedInHasResults: insertSettings.hideOwnedInHasResults ?? true,
       telemetryEnabled: insertSettings.telemetryEnabled ?? false,
       updatedAt: new Date(),
     };
@@ -2423,6 +2460,7 @@ export class DatabaseStorage implements IStorage {
       steamAppId: insertGame.steamAppId ?? null,
       source: insertGame.source ?? null,
       igdbWebsites: insertGame.igdbWebsites ?? null,
+      expansions: insertGame.expansions ?? null,
       aggregatedRating: insertGame.aggregatedRating ?? null,
       timeToBeatHastily: insertGame.timeToBeatHastily ?? null,
       timeToBeatNormally: insertGame.timeToBeatNormally ?? null,
@@ -2441,7 +2479,11 @@ export class DatabaseStorage implements IStorage {
     return firstOrThrow(rows);
   }
 
-  async updateGameStatus(id: string, statusUpdate: UpdateGameStatus): Promise<Game | undefined> {
+  async updateGameStatus(
+    id: string,
+    statusUpdate: UpdateGameStatus,
+    options?: { preserveCurated?: boolean }
+  ): Promise<Game | undefined> {
     const existingGame = await this.getGame(id);
     const leavingWanted = existingGame?.status === "wanted" && statusUpdate.status !== "wanted";
 
@@ -2458,7 +2500,11 @@ export class DatabaseStorage implements IStorage {
             }
           : {}),
       })
-      .where(eq(games.id, id))
+      .where(
+        options?.preserveCurated
+          ? and(eq(games.id, id), not(inArray(games.status, [...USER_CURATED_GAME_STATUSES])))
+          : eq(games.id, id)
+      )
       .returning();
 
     return updatedGame || undefined;
@@ -2502,10 +2548,16 @@ export class DatabaseStorage implements IStorage {
     return firstOrThrow(rows);
   }
 
-  async deleteGameJournalEntry(id: string, userId: string): Promise<boolean> {
+  async deleteGameJournalEntry(id: string, gameId: string, userId: string): Promise<boolean> {
     const result = await db
       .delete(gameJournalEntries)
-      .where(and(eq(gameJournalEntries.id, id), eq(gameJournalEntries.userId, userId)))
+      .where(
+        and(
+          eq(gameJournalEntries.id, id),
+          eq(gameJournalEntries.gameId, gameId),
+          eq(gameJournalEntries.userId, userId)
+        )
+      )
       .returning();
     return result.length > 0;
   }
@@ -2528,21 +2580,34 @@ export class DatabaseStorage implements IStorage {
 
   async updateGameMilestone(
     id: string,
+    gameId: string,
     userId: string,
     completed: boolean
   ): Promise<GameMilestone | undefined> {
     const [updated] = await db
       .update(gameMilestones)
       .set({ completedAt: completed ? new Date() : null })
-      .where(and(eq(gameMilestones.id, id), eq(gameMilestones.userId, userId)))
+      .where(
+        and(
+          eq(gameMilestones.id, id),
+          eq(gameMilestones.gameId, gameId),
+          eq(gameMilestones.userId, userId)
+        )
+      )
       .returning();
     return updated || undefined;
   }
 
-  async deleteGameMilestone(id: string, userId: string): Promise<boolean> {
+  async deleteGameMilestone(id: string, gameId: string, userId: string): Promise<boolean> {
     const result = await db
       .delete(gameMilestones)
-      .where(and(eq(gameMilestones.id, id), eq(gameMilestones.userId, userId)))
+      .where(
+        and(
+          eq(gameMilestones.id, id),
+          eq(gameMilestones.gameId, gameId),
+          eq(gameMilestones.userId, userId)
+        )
+      )
       .returning();
     return result.length > 0;
   }
@@ -2576,13 +2641,20 @@ export class DatabaseStorage implements IStorage {
 
   async updateGameScreenshotCaption(
     id: string,
+    gameId: string,
     userId: string,
     caption: string | null
   ): Promise<GameScreenshot | undefined> {
     const [updated] = await db
       .update(gameScreenshots)
       .set({ caption })
-      .where(and(eq(gameScreenshots.id, id), eq(gameScreenshots.userId, userId)))
+      .where(
+        and(
+          eq(gameScreenshots.id, id),
+          eq(gameScreenshots.gameId, gameId),
+          eq(gameScreenshots.userId, userId)
+        )
+      )
       .returning();
     return updated || undefined;
   }
@@ -2878,6 +2950,7 @@ export class DatabaseStorage implements IStorage {
             "cancelled",
             "manual_review_required",
             GAME_LINK_REQUIRED_STATUS,
+            QUARANTINED_STATUS,
           ])
         )
       );
@@ -2897,6 +2970,15 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(gameDownloads)
       .where(eq(gameDownloads.status, GAME_LINK_REQUIRED_STATUS));
+  }
+
+  async getQuarantinedDownloads(userId: string): Promise<GameDownload[]> {
+    const rows = await db
+      .select({ gameDownloads })
+      .from(gameDownloads)
+      .innerJoin(games, eq(gameDownloads.gameId, games.id))
+      .where(and(eq(gameDownloads.status, QUARANTINED_STATUS), eq(games.userId, userId)));
+    return rows.map((r) => r.gameDownloads);
   }
 
   async relinkGameDownload(id: string, gameId: string): Promise<GameDownload | undefined> {

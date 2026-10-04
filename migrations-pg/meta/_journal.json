@@ -36,6 +36,13 @@
       "when": 1791060505174,
       "tag": "0004_illegal_hydra",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791129861883,
+      "tag": "0005_lumpy_echo",
+      "breakpoints": true
     }
   ]
 }

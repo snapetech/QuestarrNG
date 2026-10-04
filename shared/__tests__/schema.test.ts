@@ -6,6 +6,7 @@ import {
   insertGameSchema,
   insertIndexerSchema,
   updateGameTargetPlatformSchema,
+  updateUserSettingsSchema,
 } from "@shared/schema";
 
 describe("insertGameSchema", () => {
@@ -77,6 +78,65 @@ describe("updateGameTargetPlatformSchema", () => {
         targetPlatformName: "PlayStation 5",
       }).success
     ).toBe(false);
+  });
+});
+
+describe("updateUserSettingsSchema array fields", () => {
+  const nonArrays: Array<[string, unknown]> = [
+    ["string", "oops"],
+    ["number", 42],
+    ["object", { a: 1 }],
+    ["mixed array", ["ok", 5]],
+  ];
+
+  it.each(nonArrays)("rejects a %s for importPlatformIds", (_label, value) => {
+    const result = updateUserSettingsSchema.safeParse({ importPlatformIds: value });
+    expect(result.success).toBe(false);
+    expect(result.error?.flatten().fieldErrors).toMatchObject({
+      importPlatformIds: ["importPlatformIds must be an array of numbers"],
+    });
+  });
+
+  it("accepts an array of platform ids", () => {
+    const result = updateUserSettingsSchema.safeParse({ importPlatformIds: [130, 6] });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects string ids for the numeric importPlatformIds field", () => {
+    const result = updateUserSettingsSchema.safeParse({ importPlatformIds: ["130"] });
+    expect(result.success).toBe(false);
+  });
+
+  it("still requires a valid transferMode", () => {
+    const result = updateUserSettingsSchema.safeParse({ transferMode: "teleport" });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("updateUserSettingsSchema releaseNameBlacklist", () => {
+  it.each([
+    ["non-JSON text", "HYPERVISOR"],
+    ["a JSON object", '{"a":"b"}'],
+    ["a JSON string", '"HYPERVISOR"'],
+    ["an array with a non-string element", '["HYPERVISOR", 123]'],
+  ])("rejects %s", (_label, value) => {
+    const result = updateUserSettingsSchema.safeParse({ releaseNameBlacklist: value });
+    expect(result.success).toBe(false);
+    expect(result.error?.flatten().fieldErrors).toMatchObject({
+      releaseNameBlacklist: ["releaseNameBlacklist must be a JSON-encoded array of strings"],
+    });
+  });
+
+  it("accepts a JSON-encoded array of strings", () => {
+    const result = updateUserSettingsSchema.safeParse({
+      releaseNameBlacklist: '["HYPERVISOR", "CAM"]',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts null to clear the blacklist", () => {
+    const result = updateUserSettingsSchema.safeParse({ releaseNameBlacklist: null });
+    expect(result.success).toBe(true);
   });
 });
 

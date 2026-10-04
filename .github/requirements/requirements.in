@@ -1,4 +1,0 @@
-# Security overrides for the Semgrep scanner image.
-# Stay on the MCP SDK v1 line until Semgrep's bundled integration supports v2.
-mcp==1.30.0
-pyjwt==2.15.1

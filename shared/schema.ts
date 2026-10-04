@@ -53,9 +53,21 @@ export const userSettings = sqliteTable("user_settings", {
   filterByPreferredGroups: integer("filter_by_preferred_groups", { mode: "boolean" })
     .notNull()
     .default(false),
+  // Global, case-insensitive substring blacklist for release names (e.g. "HYPERVISOR"),
+  // stored as a JSON string array. Unlike releaseBlacklist (per-game, exact title match,
+  // added from a specific search result), this applies across every game and every search
+  // flow -- manual search, auto-search, and AI (Jev) enrichment/auto-download analysis --
+  // so a matching release never reaches the user or the AI in the first place.
+  releaseNameBlacklist: text("release_name_blacklist"),
   preferredPlatform: text("preferred_platform"),
   hideAdultContent: integer("hide_adult_content", { mode: "boolean" }).notNull().default(true),
   hideAgeRestrictedContent: integer("hide_age_restricted_content", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  hideShelvedByDefault: integer("hide_shelved_by_default", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  hideOwnedInHasResults: integer("hide_owned_in_has_results", { mode: "boolean" })
     .notNull()
     .default(true),
   // Import Engine Settings
@@ -169,6 +181,11 @@ export const DEFAULT_ROMM_CONFIG: RomMConfig = {
 // LinkGameModal or the regular ImportReviewModal.
 export const GAME_LINK_REQUIRED_STATUS = "game_link_required";
 
+// gameDownloads.status value set when a pre-import security scan (VirusTotal
+// and/or ClamAV) flags the download. The file is moved to a quarantine
+// directory rather than the library, and the reason is recorded in errorMessage.
+export const QUARANTINED_STATUS = "quarantined";
+
 export const IMPORT_TRANSFER_MODES = ["move", "copy", "hardlink", "symlink"] as const;
 
 export type ImportTransferMode = (typeof IMPORT_TRANSFER_MODES)[number];
@@ -188,6 +205,18 @@ export const importConfigSchema = z.object({
   autoDeleteAfterImport: z.boolean(),
   sortExtras: z.boolean(),
 });
+
+// A DLC/expansion IGDB reports as related to a game, carried through from
+// IGDBClient.formatGameData for display; not a separately tracked entity.
+export type GameExpansion = {
+  id: number;
+  name: string;
+  coverUrl: string;
+  releaseDate: string;
+  category: "main" | "update" | "dlc" | "extra" | "packs";
+  gameType?: number | undefined;
+  igdbUrl?: string | undefined;
+};
 
 export const systemConfig = sqliteTable("system_config", {
   key: text("key").primaryKey(),
@@ -233,6 +262,7 @@ export const games = sqliteTable("games", {
   igdbWebsites: text("igdb_websites", { mode: "json" }).$type<
     Array<{ category: number; url: string }>
   >(),
+  expansions: text("expansions", { mode: "json" }).$type<GameExpansion[]>(),
   aggregatedRating: real("aggregated_rating"),
   timeToBeatHastily: real("time_to_beat_hastily"),
   timeToBeatNormally: real("time_to_beat_normally"),
@@ -576,6 +606,21 @@ export const GAME_STATUSES = [
 ] as const;
 export type GameStatus = (typeof GAME_STATUSES)[number];
 
+/**
+ * Statuses only the user sets: they describe where the user is with a game
+ * they already have, not where its download is. The download/import pipeline
+ * must never overwrite them (e.g. an update download finishing must not turn
+ * a "playing" game back into "owned").
+ */
+export const USER_CURATED_GAME_STATUSES = ["playing", "shelved", "completed"] as const;
+
+export function isUserCuratedGameStatus(status: string | null | undefined): boolean {
+  return (USER_CURATED_GAME_STATUSES as readonly string[]).includes(status ?? "");
+}
+
+/** Statuses meaning the user already has the game (as opposed to wanting it). */
+export const ACQUIRED_GAME_STATUSES = ["owned", ...USER_CURATED_GAME_STATUSES] as const;
+
 export const updateGameStatusSchema = z.object({
   status: z.enum(GAME_STATUSES),
   completedAt: z.date().optional(),
@@ -728,6 +773,60 @@ function validateUserSettingsEnums(
       message: "Invalid transfer mode",
     });
   }
+
+  // JSON array columns round-trip through the client, so a malformed payload
+  // (
+  // "oops", 42, {...}) would be persisted verbatim and later crash consumers
+  // that iterate or spread it. Reject anything that is not an array of the
+  // declared element type.
+  const arrayFields: Array<{ key: string; element: "string" | "number" }> = [
+    { key: "importPlatformIds", element: "number" },
+    { key: "ignoredExtensions", element: "string" },
+  ];
+  for (const { key, element } of arrayFields) {
+    const raw = value[key];
+    if (raw === undefined || raw === null) continue;
+    const typeOk =
+      Array.isArray(raw) &&
+      raw.every((item) =>
+        element === "number"
+          ? typeof item === "number" && Number.isSafeInteger(item) && item > 0
+          : typeof item === "string"
+      );
+    if (!typeOk) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key} must be an array of ${element}s`,
+      });
+    }
+  }
+
+  // Text columns holding a JSON-encoded string array are parsed on every search, so a
+  // non-array or non-string element must be rejected at write time rather than at read.
+  const jsonStringArrayTextFields = ["releaseNameBlacklist"];
+  for (const key of jsonStringArrayTextFields) {
+    const raw = value[key];
+    if (raw === undefined || raw === null) continue;
+    if (!isJsonStringArray(raw)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key} must be a JSON-encoded array of strings`,
+      });
+    }
+  }
+}
+
+/** Returns true when `raw` is a string containing a JSON array whose elements are all strings. */
+function isJsonStringArray(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((item) => typeof item === "string");
+  } catch {
+    return false;
+  }
 }
 
 export const insertReleaseBlacklistSchema = createInsertSchema(releaseBlacklist).omit({
@@ -839,7 +938,8 @@ export type NotificationEvent =
   | "gameUpdates"
   | "xrelRelease"
   | "steamSync"
-  | "errorDetected";
+  | "errorDetected"
+  | "securityAlert";
 
 export type NotificationPreferences = Record<
   NotificationEvent,
@@ -858,6 +958,7 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   xrelRelease: { inApp: true, apprise: true },
   steamSync: { inApp: true, apprise: false },
   errorDetected: { inApp: true, apprise: false },
+  securityAlert: { inApp: true, apprise: true },
 };
 
 export interface DownloadSummary {

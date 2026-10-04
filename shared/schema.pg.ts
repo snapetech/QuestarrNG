@@ -12,6 +12,7 @@ import {
   index,
 } from "drizzle-orm/pg-core";
 import type {
+  GameExpansion,
   GameFileCategory,
   ImportTaskItemResult,
   ImportTaskStatus,
@@ -107,9 +108,12 @@ export const userSettings = pgTable("user_settings", {
   lastSteamSync: timestampMs("last_steam_sync"),
   preferredReleaseGroups: text("preferred_release_groups"),
   filterByPreferredGroups: boolean("filter_by_preferred_groups").notNull().default(false),
+  releaseNameBlacklist: text("release_name_blacklist"),
   preferredPlatform: text("preferred_platform"),
   hideAdultContent: boolean("hide_adult_content").notNull().default(true),
   hideAgeRestrictedContent: boolean("hide_age_restricted_content").notNull().default(true),
+  hideShelvedByDefault: boolean("hide_shelved_by_default").notNull().default(true),
+  hideOwnedInHasResults: boolean("hide_owned_in_has_results").notNull().default(true),
   // Import Engine Settings
   enablePostProcessing: boolean("enable_post_processing").notNull().default(false),
   autoUnpack: boolean("auto_unpack").notNull().default(false),
@@ -164,6 +168,7 @@ export const games = pgTable("games", {
   screenshots: jsonb("screenshots").$type<string[]>(),
   source: text("source").default("manual"), // "manual" | "steam" | "api"
   igdbWebsites: jsonb("igdb_websites").$type<Array<{ category: number; url: string }>>(),
+  expansions: jsonb("expansions").$type<GameExpansion[]>(),
   aggregatedRating: doublePrecision("aggregated_rating"),
   timeToBeatHastily: doublePrecision("time_to_beat_hastily"),
   timeToBeatNormally: doublePrecision("time_to_beat_normally"),

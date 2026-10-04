@@ -53,7 +53,11 @@ const TABLE_ORDER = [
   "gameDownloads",
   "xrelNotifiedReleases",
   "releaseBlacklist",
+  "aiAutoDownloadHolds",
   "importTaskItems",
+  "gameJournalEntries",
+  "gameMilestones",
+  "gameScreenshots",
   // References games and gameDownloads, so it goes last.
   "gameFiles",
 ] as const;

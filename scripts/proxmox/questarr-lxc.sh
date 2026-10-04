@@ -182,13 +182,22 @@ fi
 msg "Refreshing the template catalogue"
 pveam update >/dev/null 2>&1 || warn "'pveam update' failed — using the cached catalogue."
 
-# Newest available Debian standard template, preferring the highest release.
+# Newest available Debian standard template for this host's architecture,
+# preferring the highest release. The catalogue lists templates for every
+# architecture Proxmox supports (amd64, arm64, ...); picking the newest by
+# name alone (e.g. via `sort -V | tail -n1`) can silently pick a template
+# for the wrong architecture — "arm64" sorts after "amd64" — which creates
+# and starts a container that can never exec its init ("Exec format error").
+HOST_ARCH="$(dpkg --print-architecture)"
+# grep exits 1 on no match; under pipefail that would fire the ERR trap
+# before the explicit die below, so only real grep errors (>1) propagate.
 TEMPLATE="$(pveam available --section system |
   awk '{print $2}' |
-  grep -E '^debian-1[0-9]+-standard' |
+  { grep -E '^debian-1[0-9]+-standard' || [[ $? -eq 1 ]]; } |
+  { grep -E "_${HOST_ARCH}\.tar\.(gz|zst|xz)$" || [[ $? -eq 1 ]]; } |
   sort -V |
   tail -n1)"
-[ -n "${TEMPLATE}" ] || die "No Debian LXC template found in the Proxmox catalogue."
+[ -n "${TEMPLATE}" ] || die "No Debian LXC template found in the Proxmox catalogue for architecture '${HOST_ARCH}'."
 
 if ! pveam list "${TEMPLATE_STORAGE}" 2>/dev/null | awk '{print $1}' | grep -q "/${TEMPLATE}$"; then
   msg "Downloading ${TEMPLATE} to ${TEMPLATE_STORAGE}"
@@ -231,7 +240,31 @@ CREATED_CTID="${CTID}"
 ok "Container ${CTID} created"
 
 msg "Starting container ${CTID}"
-pct start "${CTID}" >/dev/null
+START_LOG="$(mktemp)"
+if ! pct start "${CTID}" >"${START_LOG}" 2>&1; then
+  # Some community/unofficial ARM64 Proxmox builds (e.g. Proxmox-Arm64,
+  # Pimox) ship an AppArmor stack that fails to generate the extra profile
+  # `nesting=1` requires, and the container never spawns
+  # ("sync_wait: ... An error occurred in another process"). Questarr
+  # itself doesn't need nesting (it isn't running Docker-in-LXC), so retry
+  # once with it turned off before giving up.
+  warn "Container ${CTID} failed to start:"
+  sed 's/^/    /' "${START_LOG}" >&2
+  if [[ "${PCT_ARGS[*]}" == *"nesting=1"* ]]; then
+    warn "Retrying without the 'nesting' feature (known to clash with AppArmor on some ARM64/community Proxmox builds)."
+    pct set "${CTID}" --features nesting=0 >/dev/null
+    if pct start "${CTID}" >"${START_LOG}" 2>&1; then
+      ok "Container ${CTID} started with nesting disabled"
+      warn "Nesting was disabled to work around an AppArmor start failure; Questarr does not require it. See https://github.com/Doezer/Questarr/issues/1106 for details."
+    else
+      sed 's/^/    /' "${START_LOG}" >&2
+      die "Container ${CTID} still failed to start after disabling nesting. This looks like a Proxmox/AppArmor issue on this host, not a Questarr problem — see https://github.com/Doezer/Questarr/issues/1106."
+    fi
+  else
+    die "Container ${CTID} failed to start."
+  fi
+fi
+rm -f "${START_LOG}"
 
 # Wait for the container's network to come up before the installer needs it.
 msg "Waiting for network"
@@ -249,18 +282,28 @@ ok "Network is up"
 # Install Questarr inside the container
 # ──────────────────────────────────────────────────────────────
 INSTALLER_URL="https://raw.githubusercontent.com/${QUESTARR_REPO}/${QUESTARR_BRANCH}/scripts/proxmox/questarr-install.sh"
-LOCAL_INSTALLER="$(dirname "$(readlink -f "$0")")/questarr-install.sh"
+# Under `bash -c "$(curl ...)"`, $0 is "bash", not a file. Resolving it
+# anyway can fail inside a command substitution, where the inherited ERR
+# trap prints a bogus "Deployment failed" while the script carries on.
+LOCAL_INSTALLER=""
+if [ -f "$0" ]; then
+  LOCAL_INSTALLER="$(dirname "$(readlink -f "$0")")/questarr-install.sh"
+fi
+
+# pct exec forwards the host's LANG (e.g. en_US.UTF-8), which the Debian
+# template doesn't ship, so every apt/perl call inside warns about locales.
+CT_LOCALE=(LANG=C.UTF-8 LC_ALL=C.UTF-8)
 
 msg "Installing Questarr inside container ${CTID}"
-if [ -f "${LOCAL_INSTALLER}" ]; then
+if [ -n "${LOCAL_INSTALLER}" ] && [ -f "${LOCAL_INSTALLER}" ]; then
   # Running from a checkout: use the sibling installer so both halves match.
   pct push "${CTID}" "${LOCAL_INSTALLER}" /root/questarr-install.sh --perms 0755
 else
-  pct exec "${CTID}" -- bash -c \
+  pct exec "${CTID}" -- env "${CT_LOCALE[@]}" bash -c \
     "apt-get update -qq && apt-get install -y -qq --no-install-recommends curl ca-certificates >/dev/null && curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' '${INSTALLER_URL}' -o /root/questarr-install.sh && chmod 0755 /root/questarr-install.sh"
 fi
 
-pct exec "${CTID}" -- env \
+pct exec "${CTID}" -- env "${CT_LOCALE[@]}" \
   QUESTARR_REPO="${QUESTARR_REPO}" \
   QUESTARR_REF="${QUESTARR_REF}" \
   QUESTARR_PORT="${QUESTARR_PORT}" \

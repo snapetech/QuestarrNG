@@ -19,6 +19,7 @@ import { dialect } from "../db.js";
 const active = dialect === "postgres" ? (pgSchema as unknown as typeof sqliteSchema) : sqliteSchema;
 
 export const {
+  aiAutoDownloadHolds,
   apiKeys,
   downloaders,
   gameDownloads,
@@ -35,7 +36,6 @@ export const {
   pathMappings,
   platformMappings,
   releaseBlacklist,
-  aiAutoDownloadHolds,
   rootFolders,
   rssFeedItems,
   rssFeeds,

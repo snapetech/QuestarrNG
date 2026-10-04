@@ -42,6 +42,7 @@ import { comparePassword } from "../auth.js";
 import { routesLogger } from "../logger.js";
 import { db } from "../db.js";
 import { appriseClient } from "../apprise.js";
+import * as ssrfModule from "../ssrf.js";
 import fsExtra from "fs-extra";
 import { normalizeTitle } from "../../shared/title-utils.js";
 
@@ -70,6 +71,44 @@ vi.mock("../search.js", () => createSearchMock());
 vi.mock("fs-extra", () => ({
   default: { remove: vi.fn(), pathExists: vi.fn(), readdir: vi.fn() },
 }));
+// Only the new /api/settings/security-scan/test ClamAV-ping route touches
+// node:net anywhere in routes.ts, so mocking it file-wide here is safe.
+const netTestState = vi.hoisted(() => ({ nextReply: "PONG\0" as string | null }));
+vi.mock("node:net", () => {
+  class FakeSocket {
+    private listeners = new Map<string, Array<(...args: unknown[]) => void>>();
+    on(event: string, cb: (...args: unknown[]) => void) {
+      const arr = this.listeners.get(event) ?? [];
+      arr.push(cb);
+      this.listeners.set(event, arr);
+      return this;
+    }
+    once(event: string, cb: (...args: unknown[]) => void) {
+      return this.on(event, cb);
+    }
+    emit(event: string, ...args: unknown[]) {
+      for (const cb of this.listeners.get(event) ?? []) cb(...args);
+    }
+    connect(_port: number, _address: string, cb: () => void) {
+      queueMicrotask(cb);
+      return this;
+    }
+    write() {
+      if (netTestState.nextReply !== null) {
+        queueMicrotask(() => {
+          this.emit("data", Buffer.from(netTestState.nextReply as string));
+          this.emit("close");
+        });
+      }
+      return true;
+    }
+    setTimeout() {
+      return this;
+    }
+    destroy() {}
+  }
+  return { default: { Socket: FakeSocket }, Socket: FakeSocket };
+});
 // Real isWithinDeletableRootFolder (pure path logic, no fs access) is used by the
 // game-delete tests above; only probeRootFolder — which does real fs.stat/statfs —
 // needs stubbing so the root-folder create/update route tests below don't depend
@@ -590,6 +629,22 @@ describe("API Routes - Extended Coverage", () => {
     });
   });
 
+  // ─── Unknown API paths ───
+  describe("unknown /api paths", () => {
+    it("returns a JSON 404 instead of falling through to the SPA", async () => {
+      const res = await request(app).get("/api/does-not-exist");
+      expect(res.status).toBe(404);
+      expect(res.headers["content-type"]).toMatch(/json/);
+      expect(res.body).toEqual({ error: "Not found" });
+    });
+
+    it("returns a JSON 404 for unknown methods on known paths", async () => {
+      const res = await request(app).patch("/api/health");
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ error: "Not found" });
+    });
+  });
+
   // ─── Ready check ───
   describe("GET /api/ready", () => {
     it("should return 200 when db and igdb are healthy", async () => {
@@ -1105,6 +1160,30 @@ describe("API Routes - Extended Coverage", () => {
       expect(response.body).toEqual({
         success: true,
         fileDeletion: { deleted: false, reason: "outside-library-root", path: "/etc/passwd" },
+      });
+      expect(fsExtra.remove).not.toHaveBeenCalled();
+    });
+
+    it("should never delete the library root itself when a game's libraryPath points at it", async () => {
+      const gameId = "123e4567-e89b-12d3-a456-426614174000";
+      vi.mocked(storage.getGame).mockResolvedValue({
+        id: gameId,
+        userId: "user-1",
+        libraryPath: "/data/library",
+      } as unknown as Game);
+      vi.mocked(storage.getImportConfig).mockResolvedValue({
+        libraryRoot: "/data/library",
+      } as any);
+      vi.mocked(storage.getAllRootFolders).mockResolvedValue([]);
+      vi.mocked(storage.removeGame).mockResolvedValue(true);
+
+      const response = await request(app).delete(`/api/games/${gameId}?deleteFiles=true`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.fileDeletion).toEqual({
+        deleted: false,
+        reason: "outside-library-root",
+        path: "/data/library",
       });
       expect(fsExtra.remove).not.toHaveBeenCalled();
     });
@@ -2932,6 +3011,77 @@ describe("API Routes - Extended Coverage", () => {
       expect(response.body.items).toHaveLength(1);
       expect(storage.getReleaseBlacklistSet).not.toHaveBeenCalled();
     });
+
+    it("should apply the global release-name blacklist without a gameId", async () => {
+      vi.mocked(storage.getUserSettings).mockResolvedValue({
+        releaseNameBlacklist: '["hypervisor"]',
+      } as any);
+      vi.mocked(searchAllIndexers).mockResolvedValue({
+        items: [
+          {
+            title: "Test Game-HYPERVISOR",
+            link: "http://example.com/1",
+            downloadType: "torrent" as const,
+          },
+          {
+            title: "Test Game-CODEX",
+            link: "http://example.com/2",
+            downloadType: "torrent" as const,
+          },
+        ],
+        total: 2,
+        errors: [],
+      });
+
+      const response = await request(app).get("/api/search?query=Test+Game");
+
+      expect(response.status).toBe(200);
+      expect(response.body.items).toHaveLength(1);
+      expect(response.body.items[0].title).toBe("Test Game-CODEX");
+      expect(response.body.blacklistedCount).toBe(1);
+      expect(storage.getReleaseBlacklistSet).not.toHaveBeenCalled();
+    });
+
+    it("should combine the global and per-game blacklists", async () => {
+      vi.mocked(storage.getUserSettings).mockResolvedValue({
+        releaseNameBlacklist: '["HYPERVISOR"]',
+      } as any);
+      vi.mocked(storage.getGame).mockResolvedValue({
+        id: "game-1",
+        userId: "user-1",
+        title: "Test Game",
+      } as any);
+      vi.mocked(storage.getReleaseBlacklistSet).mockResolvedValue(new Set(["Test Game-SKIDROW"]));
+      vi.mocked(searchAllIndexers).mockResolvedValue({
+        items: [
+          {
+            title: "Test Game-hypervisor",
+            link: "http://example.com/1",
+            downloadType: "torrent" as const,
+          },
+          {
+            title: "Test Game-SKIDROW",
+            link: "http://example.com/2",
+            downloadType: "torrent" as const,
+          },
+          {
+            title: "Test Game-CODEX",
+            link: "http://example.com/3",
+            downloadType: "torrent" as const,
+          },
+        ],
+        total: 3,
+        errors: [],
+      });
+
+      const response = await request(app).get("/api/search?query=Test+Game&gameId=game-1");
+
+      expect(response.status).toBe(200);
+      expect(response.body.items.map((i: { title: string }) => i.title)).toEqual([
+        "Test Game-CODEX",
+      ]);
+      expect(response.body.blacklistedCount).toBe(2);
+    });
   });
 
   // ─── POST /api/downloads/claim-batch ───
@@ -3818,6 +3968,196 @@ describe("API Routes - Extended Coverage", () => {
     });
   });
 
+  // ─── Security scan settings ───
+  describe("Security scan settings", () => {
+    const securityScanState: Record<string, string | undefined> = {};
+
+    beforeEach(() => {
+      for (const key of Object.keys(securityScanState)) delete securityScanState[key];
+      vi.mocked(storage.getSystemConfig).mockImplementation(
+        async (key: string) => securityScanState[key]
+      );
+      vi.mocked(storage.setSystemConfig).mockImplementation(async (key: string, value: string) => {
+        securityScanState[key] = value;
+      });
+      netTestState.nextReply = "PONG\0";
+    });
+
+    afterEach(() => {
+      vi.mocked(storage.getSystemConfig).mockReset();
+      vi.mocked(storage.setSystemConfig).mockReset();
+      vi.restoreAllMocks();
+    });
+
+    it("returns masked defaults when nothing is configured", async () => {
+      const response = await request(app).get("/api/settings/security-scan");
+
+      expect(response.status).toBe(200);
+      expect(response.body.virusTotal).toEqual({
+        enabled: false,
+        apiKey: "",
+        threshold: 2,
+        blockUnknownHashes: false,
+      });
+      expect(response.body.clamav).toEqual({ enabled: false, host: "", port: 3310 });
+    });
+
+    it("masks a saved VirusTotal API key on GET", async () => {
+      securityScanState["security.vt.apiKey"] = "supersecretkey123";
+      const response = await request(app).get("/api/settings/security-scan");
+
+      expect(response.status).toBe(200);
+      expect(response.body.virusTotal.apiKey).toBe("********");
+    });
+
+    it("persists VirusTotal settings", async () => {
+      const response = await request(app)
+        .post("/api/settings/security-scan")
+        .send({
+          virusTotal: {
+            enabled: true,
+            apiKey: "abc123XYZ",
+            threshold: 5,
+            blockUnknownHashes: true,
+          },
+        });
+
+      expect(response.status).toBe(200);
+      expect(storage.setSystemConfig).toHaveBeenCalledWith("security.vt.enabled", "true");
+      expect(storage.setSystemConfig).toHaveBeenCalledWith("security.vt.apiKey", "abc123XYZ");
+      expect(storage.setSystemConfig).toHaveBeenCalledWith("security.vt.threshold", "5");
+      expect(storage.setSystemConfig).toHaveBeenCalledWith(
+        "security.vt.blockUnknownHashes",
+        "true"
+      );
+    });
+
+    it("does not overwrite the API key when the masked placeholder is submitted", async () => {
+      securityScanState["security.vt.apiKey"] = "existing-key";
+      const response = await request(app)
+        .post("/api/settings/security-scan")
+        .send({ virusTotal: { apiKey: "********" } });
+
+      expect(response.status).toBe(200);
+      expect(storage.setSystemConfig).not.toHaveBeenCalledWith(
+        "security.vt.apiKey",
+        expect.anything()
+      );
+      expect(securityScanState["security.vt.apiKey"]).toBe("existing-key");
+    });
+
+    it("rejects a malformed VirusTotal API key", async () => {
+      const response = await request(app)
+        .post("/api/settings/security-scan")
+        .send({ virusTotal: { apiKey: "not valid!!" } });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("rejects a negative threshold", async () => {
+      const response = await request(app)
+        .post("/api/settings/security-scan")
+        .send({ virusTotal: { threshold: -1 } });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("persists ClamAV settings", async () => {
+      const response = await request(app)
+        .post("/api/settings/security-scan")
+        .send({ clamav: { enabled: true, host: "clamav", port: 3310 } });
+
+      expect(response.status).toBe(200);
+      expect(storage.setSystemConfig).toHaveBeenCalledWith("security.clamav.enabled", "true");
+      expect(storage.setSystemConfig).toHaveBeenCalledWith("security.clamav.host", "clamav");
+      expect(storage.setSystemConfig).toHaveBeenCalledWith("security.clamav.port", "3310");
+    });
+
+    it("rejects an out-of-range ClamAV port", async () => {
+      const response = await request(app)
+        .post("/api/settings/security-scan")
+        .send({ clamav: { port: 99999 } });
+
+      expect(response.status).toBe(400);
+    });
+
+    it("tests the VirusTotal API key successfully", async () => {
+      securityScanState["security.vt.apiKey"] = "valid-key";
+      vi.spyOn(ssrfModule, "safeFetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { attributes: { last_analysis_stats: { malicious: 0 } } } }),
+      } as never);
+
+      const response = await request(app)
+        .post("/api/settings/security-scan/test")
+        .send({ provider: "virustotal" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      // Confirms the fix for the API-key-in-URL finding: the key must never
+      // appear in the request path, only in the x-apikey header.
+      expect(ssrfModule.safeFetch).toHaveBeenCalledWith(
+        expect.not.stringContaining("valid-key"),
+        expect.objectContaining({ headers: { "x-apikey": "valid-key" } })
+      );
+    });
+
+    it("reports an invalid VirusTotal API key", async () => {
+      securityScanState["security.vt.apiKey"] = "bad-key";
+      vi.spyOn(ssrfModule, "safeFetch").mockResolvedValue({ ok: false, status: 401 } as never);
+
+      const response = await request(app)
+        .post("/api/settings/security-scan/test")
+        .send({ provider: "virustotal" });
+
+      expect(response.status).toBe(502);
+    });
+
+    it("tests ClamAV connectivity successfully", async () => {
+      securityScanState["security.clamav.host"] = "clamav";
+      netTestState.nextReply = "PONG\0";
+      vi.spyOn(ssrfModule, "resolveSafeAddress").mockResolvedValue({
+        address: "10.0.0.5",
+        family: 4,
+      });
+
+      const response = await request(app)
+        .post("/api/settings/security-scan/test")
+        .send({ provider: "clamav" });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+    });
+
+    it("reports a failed ClamAV ping", async () => {
+      securityScanState["security.clamav.host"] = "clamav";
+      netTestState.nextReply = "";
+      vi.spyOn(ssrfModule, "resolveSafeAddress").mockResolvedValue({
+        address: "10.0.0.5",
+        family: 4,
+      });
+
+      const response = await request(app)
+        .post("/api/settings/security-scan/test")
+        .send({ provider: "clamav" });
+
+      expect(response.status).toBe(502);
+    });
+
+    it.each([
+      ["virustotal", "no VirusTotal API key configured"],
+      ["clamav", "no ClamAV host configured"],
+      ["bogus", "an unknown provider"],
+    ])("rejects a test request with %s (%s)", async (provider) => {
+      const response = await request(app)
+        .post("/api/settings/security-scan/test")
+        .send({ provider });
+
+      expect(response.status).toBe(400);
+    });
+  });
+
   describe("root folder routes", () => {
     it("rejects a non-UUID :id on PATCH, DELETE, and health-check", async () => {
       const patchRes = await request(app)
@@ -3918,6 +4258,18 @@ describe("QUESTARR_BASE_PATH subdirectory mounting", () => {
     const response = await request(httpServer).get("/Questarr/api/health");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ status: "ok" });
+  });
+
+  it("returns a JSON 404 for unknown API paths under the base path", async () => {
+    mockConfig.server.basePath = "/Questarr";
+
+    const prefixedApp = express();
+    prefixedApp.use(express.json());
+    const httpServer = await registerRoutes(prefixedApp);
+
+    const response = await request(httpServer).get("/Questarr/api/does-not-exist");
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: "Not found" });
   });
 
   it("keeps /api/health reachable unprefixed for container healthchecks", async () => {

@@ -1,7 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import { body, param } from "express-validator";
 import { createServer, type Server } from "http";
-import { storage } from "./storage.js";
+import { storage, type IStorage } from "./storage.js";
 import { stripUndefined } from "./object-utils.js";
 import { normalizeDownloadHash, normalizeTrackedKey } from "./download-hash.js";
 import { withGameOperationLock } from "./cron.js";
@@ -83,7 +83,7 @@ import {
 import { config as appConfig } from "./config.js";
 import { configLoader } from "./config-loader.js";
 import { prowlarrClient } from "./prowlarr.js";
-import { isSafeUrl, safeFetch } from "./ssrf.js";
+import { isSafeUrl, safeFetch, resolveSafeAddress, normalizeHostname } from "./ssrf.js";
 import { assertWithinRoots } from "./path-security.js";
 import {
   hashPassword,
@@ -108,6 +108,18 @@ import {
   normalizeAppriseMode,
   readAppriseSettings,
 } from "./apprise.js";
+import {
+  readVirusTotalSettings,
+  readClamAvSettings,
+  checkVirusTotalHash,
+} from "./security-scan.js";
+
+// SHA-256 of the standard EICAR antivirus test file — a publicly known,
+// non-sensitive constant that VirusTotal has scanned so many times it is
+// guaranteed to return a verdict, giving a stable way to confirm an API key
+// authenticates without needing a real sample or hardcoding it in a URL path.
+const EICAR_TEST_FILE_SHA256 = "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0";
+import net from "node:net";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -212,7 +224,12 @@ const upload = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
 });
-import { searchAllIndexers, filterBlacklistedReleases, enrichWithAiAnalysis } from "./search.js";
+import {
+  searchAllIndexers,
+  filterBlacklistedReleases,
+  filterByReleaseNameBlacklist,
+  enrichWithAiAnalysis,
+} from "./search.js";
 import { xrelClient, DEFAULT_XREL_BASE, ALLOWED_XREL_DOMAINS } from "./xrel.js";
 import {
   normalizeTitle,
@@ -220,6 +237,7 @@ import {
   releaseMatchesGame,
   parseReleaseMetadata,
   matchesPlatformFilter,
+  parseJsonStringArray,
 } from "../shared/title-utils.js";
 import { categorizeDownload, type DownloadCategory } from "../shared/download-categorizer.js";
 import { SUPPORT_WORKER_ORIGIN } from "../shared/support-config.js";
@@ -239,7 +257,7 @@ import { importRouter } from "./routes/import.js";
 import { importTasksRouter } from "./routes/import-tasks.js";
 import { systemRouter } from "./routes/system.js";
 import { pcgamingwikiRouter } from "./pcgamingwiki-router.js";
-import { probeRootFolder, isWithinDeletableRootFolder } from "./root-folders.js";
+import { probeRootFolder, isWithinDeletableRootFolder, isStrictlyInside } from "./root-folders.js";
 import {
   scanRootFolderById,
   scanAllEnabledRootFolders,
@@ -274,6 +292,118 @@ const REDACTED_PLACEHOLDER = "********";
 // than a real secret the caller wants to save.
 function isUnchangedSentinel(value: unknown): boolean {
   return value === REDACTED_PLACEHOLDER;
+}
+
+// Applies a partial VirusTotal settings update, returning an error message for
+// the caller to respond with, or null once every provided field was persisted.
+async function applyVirusTotalSettingsUpdate(
+  update:
+    | {
+        enabled?: boolean;
+        apiKey?: string;
+        threshold?: number;
+        blockUnknownHashes?: boolean;
+      }
+    | undefined,
+  storage: IStorage
+): Promise<string | null> {
+  if (!update) return null;
+  const { enabled, apiKey, threshold, blockUnknownHashes } = update;
+
+  if (enabled !== undefined) {
+    await storage.setSystemConfig("security.vt.enabled", String(!!enabled));
+  }
+  if (apiKey !== undefined && !isUnchangedSentinel(apiKey)) {
+    if (typeof apiKey !== "string" || !/^[A-Za-z0-9]{0,128}$/.test(apiKey)) {
+      return "Invalid VirusTotal API key format";
+    }
+    await storage.setSystemConfig("security.vt.apiKey", apiKey.trim());
+  }
+  if (threshold !== undefined) {
+    if (typeof threshold !== "number" || !Number.isInteger(threshold) || threshold < 0) {
+      return "Threshold must be a non-negative integer";
+    }
+    await storage.setSystemConfig("security.vt.threshold", String(threshold));
+  }
+  if (blockUnknownHashes !== undefined) {
+    await storage.setSystemConfig("security.vt.blockUnknownHashes", String(!!blockUnknownHashes));
+  }
+
+  return null;
+}
+
+// Applies a partial ClamAV settings update, returning an error message for the
+// caller to respond with, or null once every provided field was persisted.
+async function applyClamAvSettingsUpdate(
+  update: { enabled?: boolean; host?: string; port?: number } | undefined,
+  storage: IStorage
+): Promise<string | null> {
+  if (!update) return null;
+  const { enabled, host, port } = update;
+
+  if (enabled !== undefined) {
+    await storage.setSystemConfig("security.clamav.enabled", String(!!enabled));
+  }
+  if (host !== undefined) {
+    if (typeof host !== "string" || host.trim().length > 255) {
+      return "Invalid ClamAV host";
+    }
+    await storage.setSystemConfig("security.clamav.host", host.trim());
+  }
+  if (port !== undefined) {
+    if (typeof port !== "number" || !Number.isInteger(port) || port < 1 || port > 65535) {
+      return "Port must be between 1 and 65535";
+    }
+    await storage.setSystemConfig("security.clamav.port", String(port));
+  }
+
+  return null;
+}
+
+// Pings a ClamAV daemon over its INSTREAM protocol and reports whether it
+// responded with PONG before the deadline. Extracted from the settings-test
+// route so that route stays a simple dispatcher over provider name.
+async function testClamAvConnectivity(
+  address: string,
+  port: number
+): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let settled = false;
+    const finish = (outcome: { success: boolean; error?: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(deadline);
+      socket.destroy();
+      resolve(outcome);
+    };
+    // An absolute deadline, not an idle timeout — matches security-scan.ts's
+    // scanFileWithClamAv, so a connection that stays open without ever
+    // closing can't hang this check forever.
+    const deadline = setTimeout(
+      () => finish({ success: false, error: "Connection to ClamAV timed out" }),
+      10_000
+    );
+    socket.once("error", (err) => finish({ success: false, error: err.message }));
+    let data = "";
+    socket.connect(port, address, () => {
+      socket.write("zPING\0");
+    });
+    socket.on("data", (chunk) => {
+      data += chunk.toString("utf8");
+      // Accept PONG as soon as it arrives, rather than waiting for the socket
+      // to close — clamd isn't guaranteed to close the connection after
+      // replying, which would otherwise stall this check until the deadline
+      // even though the ping already succeeded.
+      if (data.includes("PONG")) {
+        finish({ success: true });
+      }
+    });
+    socket.on("close", () => {
+      const reply = data.replaceAll("\0", "").trim();
+      finish({ success: false, error: reply || "No PONG reply from ClamAV" });
+    });
+  });
 }
 
 // Validates that a Discord webhook URL uses HTTPS and points at a genuine
@@ -446,7 +576,11 @@ async function saveIgdbCredentialsIfProvided(
   return null;
 }
 
-// Helper function for aggregated indexer search
+/**
+ * Handles an aggregated indexer search request. Results are filtered by the requesting user's
+ * global release-name blacklist and, when a gameId is given, that game's blacklist, before AI
+ * enrichment. A canonical game-title search also refreshes the game's availability badge.
+ */
 async function handleAggregatedIndexerSearch(req: Request, res: Response) {
   try {
     const { query, category, cat } = req.query;
@@ -472,19 +606,23 @@ async function handleAggregatedIndexerSearch(req: Request, res: Response) {
       offset,
     });
 
-    // Filter out blacklisted releases when a gameId context is provided
+    // Global release-name blacklist (case-insensitive substring match) applies to every
+    // search regardless of gameId, so it's resolved and applied up front.
     const gameId = req.query.gameId as string | undefined;
     let filteredItems = items;
-    let blacklistedCount = 0;
+    let userSettings: Awaited<ReturnType<typeof storage.getUserSettings>> | undefined;
+    if (req.user) {
+      userSettings = await storage.getUserSettings(req.user.id);
+      const blacklistTerms = parseJsonStringArray(userSettings?.releaseNameBlacklist);
+      filteredItems = filterByReleaseNameBlacklist(items, blacklistTerms);
+    }
+
+    // Filter out per-game blacklisted releases when a gameId context is provided
     if (gameId && req.user) {
       const game = await storage.getGame(gameId);
       if (game && game.userId === req.user.id) {
-        const [blacklisted, userSettings] = await Promise.all([
-          storage.getReleaseBlacklistSet(gameId),
-          storage.getUserSettings(req.user.id),
-        ]);
-        filteredItems = filterBlacklistedReleases(items, blacklisted);
-        blacklistedCount = items.length - filteredItems.length;
+        const blacklisted = await storage.getReleaseBlacklistSet(gameId);
+        filteredItems = filterBlacklistedReleases(filteredItems, blacklisted);
 
         // Update the "has results" flag only for canonical game-title searches so that
         // partial/custom user-typed queries in the download dialog don't flip the badge
@@ -505,6 +643,7 @@ async function handleAggregatedIndexerSearch(req: Request, res: Response) {
       }
     }
 
+    const blacklistedCount = items.length - filteredItems.length;
     const enrichedItems = await enrichWithAiAnalysis(filteredItems);
 
     return res.json({
@@ -1040,15 +1179,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid 'enabled' value" });
       if (typeof port !== "number") return res.status(400).json({ error: "Invalid 'port' value" });
 
-      // Security check for file paths
+      if (
+        (certPath !== undefined && typeof certPath !== "string") ||
+        (keyPath !== undefined && typeof keyPath !== "string")
+      ) {
+        return res.status(400).json({ error: "Invalid certificate or key path" });
+      }
+
+      // Canonicalize both paths and confine them to the configured file browser
+      // root or Questarr's private SSL directory.
       let resolvedCertPath: string | undefined;
       let resolvedKeyPath: string | undefined;
       if (certPath || keyPath) {
         const allowedSslRoots = [FILE_BROWSER_ROOT, path.join(configLoader.getConfigDir(), "ssl")];
-
         if (certPath) {
           try {
-            // The certificate path is canonicalized and confined to these trusted roots.
             resolvedCertPath = await assertWithinRoots(
               certPath,
               allowedSslRoots,
@@ -1060,7 +1205,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         if (keyPath) {
           try {
-            // The key path uses the same canonical root check as the certificate path.
             resolvedKeyPath = await assertWithinRoots(
               keyPath,
               allowedSslRoots,
@@ -1075,6 +1219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Validate if enabling SSL
       if (enabled) {
         if (certPath && keyPath) {
+          // Validate the same canonical paths that were checked above and get saved below.
           const { validateCertFiles } = await import("./ssl.js"); // Dynamic import to avoid circular deps if any
           const { valid, error } = await validateCertFiles(
             resolvedCertPath ?? certPath,
@@ -1089,8 +1234,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // But simpler to just require them if they are changing.
           // If they are missing in body, let's look up current config
           const current = configLoader.getSslConfig();
-          const effectiveCert = certPath || current.certPath;
-          const effectiveKey = keyPath || current.keyPath;
+          // current.certPath/keyPath were already root-contained when they were saved,
+          // so only the newly supplied (resolved) values need the same treatment here.
+          const effectiveCert = certPath ? resolvedCertPath : current.certPath;
+          const effectiveKey = keyPath ? resolvedKeyPath : current.keyPath;
 
           if (!effectiveCert || !effectiveKey) {
             return res
@@ -1267,7 +1414,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         // Resolve against the root and normalize. The following checks verify both
         // lexical and canonical containment before the filesystem is accessed.
-        // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal
+        // nosemgrep: javascript.express.security.audit.express-path-join-resolve-traversal.express-path-join-resolve-traversal -- checked lexically and again after realpath() before any filesystem read.
         const resolvedPath = path.resolve(FILE_BROWSER_ROOT, queryPath);
         const relativePath = path.relative(FILE_BROWSER_ROOT, resolvedPath);
         if (
@@ -1746,6 +1893,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
+  const gameExpansionSchema = z.object({
+    id: z.number(),
+    name: z.string(),
+    coverUrl: z.string(),
+    releaseDate: z.string(),
+    category: z.enum(["main", "update", "dlc", "extra", "packs"]),
+    gameType: z.number().optional(),
+    igdbUrl: z.string().optional(),
+  });
+
   // Refresh metadata for all games
   app.post("/api/games/refresh-metadata", igdbRateLimiter, async (req, res) => {
     try {
@@ -1801,6 +1958,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                     .array(z.object({ url: z.string(), category: z.number() }))
                     .catch([])
                     .parse(updatedData.igdbWebsites),
+                  expansions: gameExpansionSchema.array().catch([]).parse(updatedData.expansions),
                   aggregatedRating: (updatedData.aggregatedRating as number | undefined) ?? null,
                 },
               });
@@ -2180,8 +2338,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const config = await storage.getImportConfig(game.userId ?? undefined);
             const resolvedRoot = path.resolve(config.libraryRoot);
             const resolvedTarget = path.resolve(game.libraryPath);
-            const insideRoot =
-              resolvedTarget === resolvedRoot || resolvedTarget.startsWith(resolvedRoot + path.sep);
+            // Strictly inside: a libraryPath that IS the library root (e.g. a
+            // manual import confirmed straight into it) must never let one
+            // game's deletion wipe every other game's files with it.
+            const insideRoot = isStrictlyInside(resolvedRoot, resolvedTarget);
             // Games discovered by the root-folder scanner live outside the
             // configured library root by design. Allow deleting their files
             // too, but only when the user has explicitly opted that specific
@@ -4178,7 +4338,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   downloadType: downloadType || "torrent",
                 });
 
-                await storage.updateGameStatus(gameId, { status: "downloading" });
+                await storage.updateGameStatus(
+                  gameId,
+                  { status: "downloading" },
+                  { preserveCurated: true }
+                );
                 await storage.updateGameSearchResultsAvailable(gameId, false);
               } catch (error) {
                 routesLogger.error({ error, gameId }, "Failed to link download to game");
@@ -4652,6 +4816,103 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       routesLogger.error({ error }, "Apprise test failed");
       res.status(500).json({ error: "Apprise test failed" });
+    }
+  });
+
+  // Security & Scanning settings (Settings > Post-Processing > Security & Scanning)
+  app.get("/api/settings/security-scan", sensitiveEndpointLimiter, async (_req, res) => {
+    try {
+      const [vt, clamav] = await Promise.all([
+        readVirusTotalSettings(storage),
+        readClamAvSettings(storage),
+      ]);
+      res.json({
+        virusTotal: {
+          enabled: vt.enabled,
+          apiKey: vt.apiKey ? REDACTED_PLACEHOLDER : "",
+          threshold: vt.threshold,
+          blockUnknownHashes: vt.blockUnknownHashes,
+        },
+        clamav: {
+          enabled: clamav.enabled,
+          host: clamav.host ?? "",
+          port: clamav.port,
+        },
+      });
+    } catch (error) {
+      routesLogger.error({ error }, "Failed to fetch security scan settings");
+      res.status(500).json({ error: "Failed to fetch security scan settings" });
+    }
+  });
+
+  app.post("/api/settings/security-scan", sensitiveEndpointLimiter, async (req, res) => {
+    try {
+      const body = req.body as {
+        virusTotal?: {
+          enabled?: boolean;
+          apiKey?: string;
+          threshold?: number;
+          blockUnknownHashes?: boolean;
+        };
+        clamav?: { enabled?: boolean; host?: string; port?: number };
+      };
+
+      const vtError = await applyVirusTotalSettingsUpdate(body.virusTotal, storage);
+      if (vtError) {
+        return res.status(400).json({ error: vtError });
+      }
+
+      const clamAvError = await applyClamAvSettingsUpdate(body.clamav, storage);
+      if (clamAvError) {
+        return res.status(400).json({ error: clamAvError });
+      }
+
+      return res.json({ success: true });
+    } catch (error) {
+      routesLogger.error({ error }, "Failed to update security scan settings");
+      return res.status(500).json({ error: "Failed to update security scan settings" });
+    }
+  });
+
+  app.post("/api/settings/security-scan/test", sensitiveEndpointLimiter, async (req, res) => {
+    try {
+      const { provider } = req.body as { provider?: string };
+
+      if (provider === "virustotal") {
+        const vt = await readVirusTotalSettings(storage);
+        if (!vt.apiKey) {
+          return res.status(400).json({ error: "No VirusTotal API key configured" });
+        }
+        // Looks up a fixed, publicly known hash rather than an account-info
+        // endpoint keyed by the API key itself — that would put the secret in
+        // the URL path, where it can end up in proxy or access logs.
+        const verdict = await checkVirusTotalHash(EICAR_TEST_FILE_SHA256, vt.apiKey);
+        if (verdict.status === "error") {
+          return res.status(502).json({ error: verdict.error });
+        }
+        return res.json({ success: true });
+      }
+
+      if (provider === "clamav") {
+        const clamav = await readClamAvSettings(storage);
+        if (!clamav.host) {
+          return res.status(400).json({ error: "No ClamAV host configured" });
+        }
+        try {
+          const { address } = await resolveSafeAddress(normalizeHostname(clamav.host), true);
+          const result = await testClamAvConnectivity(address, clamav.port);
+          if (result.success) return res.json({ success: true });
+          return res.status(502).json({ error: result.error ?? "ClamAV test failed" });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          return res.status(502).json({ error: message });
+        }
+      }
+
+      return res.status(400).json({ error: "Unknown provider" });
+    } catch (error) {
+      routesLogger.error({ error }, "Security scan provider test failed");
+      return res.status(500).json({ error: "Security scan provider test failed" });
     }
   });
 
@@ -5348,6 +5609,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     }
   );
+
+  // Unknown API paths must not fall through to the SPA catch-all, which would
+  // answer them with index.html and a 200 that clients then fail to parse.
+  app.use("/api", (_req: Request, res: Response) => {
+    res.status(404).json({ error: "Not found" });
+  });
 
   // Reverse-proxy subdirectory support: when QUESTARR_BASE_PATH is set
   // (e.g. "/Questarr"), mount the whole app under that prefix so it can be

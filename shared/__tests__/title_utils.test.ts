@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   normalizeTitle,
+  normalizeReleaseTitle,
   cleanReleaseName,
   titleMatches,
   releaseMatchesGame,
@@ -14,6 +15,29 @@ import {
 } from "../title-utils.js";
 
 describe("title-utils", () => {
+  describe("normalizeReleaseTitle", () => {
+    it("collapses newlines and repeated spaces into single spaces", () => {
+      expect(normalizeReleaseTitle("  Game - Stand Alone\n      \n  ANB_Seth\t 8.67 ГБ  ")).toBe(
+        "Game - Stand Alone ANB_Seth 8.67 ГБ"
+      );
+    });
+
+    it("keeps scene release names intact", () => {
+      expect(normalizeReleaseTitle("Game.Name.v1.2-GROUP")).toBe("Game.Name.v1.2-GROUP");
+    });
+
+    it("stringifies numeric titles and maps missing ones to an empty string", () => {
+      expect(normalizeReleaseTitle(2026)).toBe("2026");
+      expect(normalizeReleaseTitle(undefined)).toBe("");
+      expect(normalizeReleaseTitle(null)).toBe("");
+      expect(normalizeReleaseTitle({ foo: "bar" })).toBe("");
+    });
+
+    it("reads the text node of a title element parsed with attributes", () => {
+      expect(normalizeReleaseTitle({ "#text": "Game\n  Name", "@_lang": "ru" })).toBe("Game Name");
+    });
+  });
+
   describe("normalizeTitle", () => {
     it("should normalize titles correctly", () => {
       expect(normalizeTitle("The Witcher 3: Wild Hunt")).toBe("the witcher 3 wild hunt");
@@ -203,6 +227,15 @@ describe("title-utils", () => {
 
     it("handles an empty JSON array", () => {
       expect(parseJsonStringArray("[]")).toEqual([]);
+    });
+
+    it("returns empty array when the JSON array contains non-string entries", () => {
+      expect(parseJsonStringArray('["a", 1]')).toEqual([]);
+      expect(parseJsonStringArray("[null]")).toEqual([]);
+    });
+
+    it("keeps whitespace-only strings in a valid string array", () => {
+      expect(parseJsonStringArray('["a", " "]')).toEqual(["a", " "]);
     });
   });
 

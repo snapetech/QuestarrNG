@@ -22,6 +22,9 @@ import {
   Monitor,
   Radio,
   Sparkles,
+  FlaskConical,
+  Archive,
+  Filter,
 } from "lucide-react";
 import { NexusModsIcon } from "@/components/NexusModsIcon";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,6 +49,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ApiKeysCard } from "@/components/ApiKeysCard";
 import AutoDownloadRulesSettings from "@/components/AutoDownloadRulesSettings";
 import PreferredReleaseGroupsSettings from "@/components/PreferredReleaseGroupsSettings";
+import ReleaseNameBlacklistSettings from "@/components/ReleaseNameBlacklistSettings";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { GHOST_UNLOCK_KEY } from "@/lib/ghost-mode";
 import {
@@ -72,6 +76,7 @@ import {
   type DownloaderDebugLoggingResponse,
 } from "@shared/schema";
 import { parseJsonStringArray, CANONICAL_PLATFORMS } from "@shared/title-utils";
+import PlatformsSettings from "@/components/PlatformsSettings";
 import ImportSettings from "@/components/ImportSettings";
 import { IgdbHelpPopover, IgdbTestConnectionButton } from "@/components/IgdbCredentialsHelper";
 
@@ -96,6 +101,103 @@ const NOTIFICATION_EVENT_ROWS: { key: NotificationEvent; label: string; group: s
   { key: "steamSync", label: "Steam Wishlist Synced", group: "integrations" },
   { key: "errorDetected", label: "Error Detected", group: "system" },
 ];
+
+function SettingsToggleRow({
+  id,
+  label,
+  description,
+  checked,
+  onCheckedChange,
+}: {
+  id: string;
+  label: React.ReactNode;
+  description: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="space-y-0.5">
+        <Label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </Label>
+        <p className="text-xs text-muted-foreground">{description}</p>
+      </div>
+      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} />
+    </div>
+  );
+}
+
+function SettingsSaveButton({
+  onClick,
+  pending,
+  icon: Icon,
+  label,
+}: {
+  onClick: () => void;
+  pending: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}) {
+  return (
+    <div className="flex justify-end pt-4 border-t">
+      <Button onClick={onClick} disabled={pending} className="gap-2">
+        {pending ? (
+          <>
+            <RefreshCw className="h-4 w-4 motion-safe:animate-spin" />
+            Saving...
+          </>
+        ) : (
+          <>
+            <Icon className="h-4 w-4" />
+            {label}
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}
+
+function SettingsFilterCard({
+  icon: Icon,
+  title,
+  description,
+  onSave,
+  savePending,
+  saveIcon,
+  saveLabel,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  onSave: () => void;
+  savePending: boolean;
+  saveIcon: React.ComponentType<{ className?: string }>;
+  saveLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center space-x-3">
+          <Icon className="h-5 w-5 text-muted-foreground" />
+          <CardTitle className="text-lg">{title}</CardTitle>
+        </div>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {children}
+        <SettingsSaveButton
+          onClick={onSave}
+          pending={savePending}
+          icon={saveIcon}
+          label={saveLabel}
+        />
+      </CardContent>
+    </Card>
+  );
+}
 
 /**
  * Configures application preferences, integrations, notifications, account security, and system maintenance settings.
@@ -287,11 +389,14 @@ export default function SettingsPage() {
   const [downloadRules, setDownloadRules] = useState<DownloadRules | null>(null);
   const [preferredReleaseGroups, setPreferredReleaseGroups] = useState<string[]>([]);
   const [filterByPreferredGroups, setFilterByPreferredGroups] = useState(false);
+  const [releaseNameBlacklist, setReleaseNameBlacklist] = useState<string[]>([]);
   const [preferredPlatform, setPreferredPlatform] = useState<string>("");
   const [xrelSceneReleases, setXrelSceneReleases] = useState(true);
   const [xrelP2pReleases, setXrelP2pReleases] = useState(false);
   const [hideAdultContent, setHideAdultContent] = useState(true);
   const [hideAgeRestrictedContent, setHideAgeRestrictedContent] = useState(true);
+  const [hideShelvedByDefault, setHideShelvedByDefault] = useState(true);
+  const [hideOwnedInHasResults, setHideOwnedInHasResults] = useState(true);
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
   const [xrelApiBase, setXrelApiBase] = useState("");
   const [nexusApiKey, setNexusApiKey] = useState("");
@@ -344,6 +449,7 @@ export default function SettingsPage() {
       }
       setPreferredReleaseGroups(parseJsonStringArray(userSettings.preferredReleaseGroups));
       setFilterByPreferredGroups(userSettings.filterByPreferredGroups ?? false);
+      setReleaseNameBlacklist(parseJsonStringArray(userSettings.releaseNameBlacklist));
       setPreferredPlatform(userSettings.preferredPlatform ?? "");
       setXrelSceneReleases(userSettings.xrelSceneReleases ?? true);
       setXrelP2pReleases(userSettings.xrelP2pReleases ?? false);
@@ -351,6 +457,8 @@ export default function SettingsPage() {
       setSteamSyncIntervalHours(userSettings.steamSyncIntervalHours ?? 24);
       setHideAdultContent(userSettings.hideAdultContent ?? true);
       setHideAgeRestrictedContent(userSettings.hideAgeRestrictedContent ?? true);
+      setHideShelvedByDefault(userSettings.hideShelvedByDefault ?? true);
+      setHideOwnedInHasResults(userSettings.hideOwnedInHasResults ?? true);
       setTelemetryEnabled(userSettings.telemetryEnabled ?? false);
       settingsLoadedRef.current = true;
     }
@@ -890,6 +998,16 @@ export default function SettingsPage() {
     });
   };
 
+  const handleSaveLibraryFilters = () => {
+    updateSettingsMutation.mutate({
+      updates: {
+        hideShelvedByDefault,
+        hideOwnedInHasResults,
+      },
+      successMessage: "Your library filtering defaults have been saved.",
+    });
+  };
+
   const handleSaveTelemetry = () => {
     updateSettingsMutation.mutate({
       updates: { telemetryEnabled },
@@ -1057,74 +1175,65 @@ export default function SettingsPage() {
     );
   }
 
-  // Content Filtering governs both display (what shows in the library/UI) and
-  // discovery (what search/discover surface), so the same card is rendered in
-  // both the Appearance and Discovery & Downloads tabs.
   const contentFilteringCard = (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center space-x-3">
-          <EyeOff className="h-5 w-5 text-muted-foreground" />
-          <CardTitle className="text-lg">Content Filtering</CardTitle>
-        </div>
-        <CardDescription>
-          Control which games appear in your library and discovery results
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label htmlFor="hide-adult-content" className="text-sm font-medium">
-              Hide erotic content
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Hide games flagged with an explicit/erotic theme from your library, search, and
-              discovery pages
-            </p>
-          </div>
-          <Switch
-            id="hide-adult-content"
-            checked={hideAdultContent}
-            onCheckedChange={setHideAdultContent}
-          />
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="space-y-0.5">
-            <Label htmlFor="hide-age-restricted-content" className="text-sm font-medium">
-              Hide age-restricted content
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              Hide games rated ESRB Adults Only (AO) or PEGI 18 from your library, search, and
-              discovery pages
-            </p>
-          </div>
-          <Switch
-            id="hide-age-restricted-content"
-            checked={hideAgeRestrictedContent}
-            onCheckedChange={setHideAgeRestrictedContent}
-          />
-        </div>
-        <div className="flex justify-end pt-4 border-t">
-          <Button
-            onClick={handleSaveContentFilter}
-            disabled={updateSettingsMutation.isPending}
-            className="gap-2"
-          >
-            {updateSettingsMutation.isPending ? (
-              <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <EyeOff className="h-4 w-4" />
-                Save Content Filtering
-              </>
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+    <SettingsFilterCard
+      icon={EyeOff}
+      title="Content Filtering"
+      description="Control which games appear in your library and discovery results"
+      onSave={handleSaveContentFilter}
+      savePending={updateSettingsMutation.isPending}
+      saveIcon={EyeOff}
+      saveLabel="Save Content Filtering"
+    >
+      <SettingsToggleRow
+        id="hide-adult-content"
+        label="Hide erotic content"
+        description="Hide games flagged with an explicit/erotic theme from your library, search, and discovery pages"
+        checked={hideAdultContent}
+        onCheckedChange={setHideAdultContent}
+      />
+      <SettingsToggleRow
+        id="hide-age-restricted-content"
+        label="Hide age-restricted content"
+        description="Hide games rated ESRB Adults Only (AO) or PEGI 18 from your library, search, and discovery pages"
+        checked={hideAgeRestrictedContent}
+        onCheckedChange={setHideAgeRestrictedContent}
+      />
+    </SettingsFilterCard>
+  );
+
+  const libraryFilterRows = [
+    {
+      id: "hide-shelved-by-default",
+      label: "Hide shelved games by default",
+      description:
+        "Keep shelved games out of the library view unless you filter by the Shelved status",
+      checked: hideShelvedByDefault,
+      onCheckedChange: setHideShelvedByDefault,
+    },
+    {
+      id: "hide-owned-in-has-results",
+      label: "Hide owned games in “Has Results” filter",
+      description: "When the Has Results filter is active, skip games you already own",
+      checked: hideOwnedInHasResults,
+      onCheckedChange: setHideOwnedInHasResults,
+    },
+  ];
+
+  const libraryFilteringCard = (
+    <SettingsFilterCard
+      icon={Filter}
+      title="Library Filtering"
+      description="Choose which games are hidden by default in your library"
+      onSave={handleSaveLibraryFilters}
+      savePending={updateSettingsMutation.isPending}
+      saveIcon={Archive}
+      saveLabel="Save Library Filtering"
+    >
+      {libraryFilterRows.map((row) => (
+        <SettingsToggleRow key={row.id} {...row} />
+      ))}
+    </SettingsFilterCard>
   );
 
   return (
@@ -1161,6 +1270,7 @@ export default function SettingsPage() {
                 <TabsTrigger value="appearance">Appearance</TabsTrigger>
                 <TabsTrigger value="discovery">Discovery & Downloads</TabsTrigger>
                 <TabsTrigger value="notifications">Notifications</TabsTrigger>
+                <TabsTrigger value="platforms">Platforms</TabsTrigger>
                 <TabsTrigger value="integrations">Integrations</TabsTrigger>
                 <TabsTrigger value="import">Import</TabsTrigger>
                 <TabsTrigger value="account-security">Account & Security</TabsTrigger>
@@ -1234,6 +1344,12 @@ export default function SettingsPage() {
             </Card>
 
             {contentFilteringCard}
+
+            {libraryFilteringCard}
+          </TabsContent>
+
+          <TabsContent value="platforms" className="space-y-6">
+            <PlatformsSettings />
           </TabsContent>
 
           <TabsContent value="discovery" className="space-y-6">
@@ -1387,6 +1503,10 @@ export default function SettingsPage() {
               onGroupsChange={setPreferredReleaseGroups}
               onFilterChange={setFilterByPreferredGroups}
             />
+            <ReleaseNameBlacklistSettings
+              blacklistTerms={releaseNameBlacklist}
+              onTermsChange={setReleaseNameBlacklist}
+            />
 
             {/* Blacklisted Releases */}
             <Card>
@@ -1451,8 +1571,6 @@ export default function SettingsPage() {
                 )}
               </CardContent>
             </Card>
-
-            {contentFilteringCard}
           </TabsContent>
 
           <TabsContent value="notifications" className="space-y-6">
@@ -1870,10 +1988,18 @@ export default function SettingsPage() {
             {/* TypeSafe (Jev) AI Card */}
             <Card id="typesafe-config">
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Sparkles className="h-5 w-5 text-blue-500" />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Sparkles className="h-5 w-5 shrink-0 text-blue-500" />
                     <CardTitle className="text-lg">AI Release Analysis (TypeSafe)</CardTitle>
+                    <Badge
+                      variant="outline"
+                      className="gap-1 border-amber-600/50 text-amber-700 in-[.dark]:border-amber-500/50 in-[.dark]:text-amber-500"
+                      title="Experimental feature: behavior and results may change between releases"
+                    >
+                      <FlaskConical className="h-3 w-3" aria-hidden="true" />
+                      Experimental
+                    </Badge>
                   </div>
                   {typesafeSettings?.configured ? (
                     <Badge variant="default">Enabled</Badge>
@@ -1886,7 +2012,11 @@ export default function SettingsPage() {
                   DLC, update, repack...) and flag suspiciously small files in search results.
                   Entirely optional and off by default &mdash; QuestarrNG works normally without it.
                   Bring your own API key and endpoint (TypeSafe, OpenRouter, a self-hosted proxy,
-                  etc.).
+                  etc.).{" "}
+                  <span className="mt-2 block text-amber-700 in-[.dark]:text-amber-500">
+                    Experimental: Jev classifications can be wrong, and how they are used may change
+                    between releases. Check flagged results before relying on them.
+                  </span>
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">

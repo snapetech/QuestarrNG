@@ -3,11 +3,24 @@ import { body, param, query, validationResult } from "express-validator";
 import type { Request, Response, NextFunction } from "express";
 import { TORRENT_DOWNLOADER_TYPES, USENET_DOWNLOADER_TYPES } from "../shared/downloader-types.js";
 import { GAME_STATUSES } from "../shared/schema.js";
+import { normalizeReleaseTitle } from "../shared/title-utils.js";
 import { storage } from "./storage.js";
 import { expressLogger } from "./logger.js";
 import { reportServerError } from "./error-telemetry.js";
 
 const DOWNLOADER_TYPES = [...TORRENT_DOWNLOADER_TYPES, ...USENET_DOWNLOADER_TYPES];
+
+// End-to-end runs (`npm run dev:test`) drive the whole app from a single IP within seconds,
+// which trips the per-IP limits below and makes back-to-back or retried runs fail with 429s.
+// DISABLE_RATE_LIMITS=true lets that harness opt out. It only takes effect when NODE_ENV is
+// explicitly "development" or "test" (an unset NODE_ENV means production for the server
+// config), so it can never switch the limits off in a real deployment.
+export function rateLimitsDisabled(): boolean {
+  const nodeEnv = process.env.NODE_ENV;
+  return (
+    process.env.DISABLE_RATE_LIMITS === "true" && (nodeEnv === "development" || nodeEnv === "test")
+  );
+}
 
 // Dynamic rate limiter for IGDB API endpoints to prevent blacklisting
 // IGDB has a limit of 4 requests per second, we default to 3 to be conservative
@@ -31,6 +44,7 @@ export const igdbRateLimiter = rateLimit({
   message: "Too many IGDB requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: rateLimitsDisabled,
   skipSuccessfulRequests: false,
 });
 
@@ -41,6 +55,7 @@ export const sensitiveEndpointLimiter = rateLimit({
   message: "Too many requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: rateLimitsDisabled,
 });
 
 // Rate limiter for authentication/login endpoints
@@ -50,6 +65,7 @@ export const authRateLimiter = rateLimit({
   message: "Too many authentication attempts, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: rateLimitsDisabled,
 });
 
 // Rate limiter for expensive per-user filesystem work (recursive scans).
@@ -66,6 +82,7 @@ export const scanRateLimiter = rateLimit({
   message: "Too many scan requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: rateLimitsDisabled,
 });
 
 // A secondary limit after authentication keeps one integration credential from
@@ -91,6 +108,21 @@ export const generalApiLimiter = rateLimit({
   message: "Too many requests, please try again later",
   standardHeaders: true,
   legacyHeaders: false,
+  skip: rateLimitsDisabled,
+});
+
+// Rate limiter for the SPA catch-all route (vite's dev middleware transform and the
+// production static/index.html fallback). generalApiLimiter only covers "/api", so
+// without this, that wildcard handler — which does a disk read (and, in dev, a full
+// Vite HTML transform) on every request — has no limit at all. Kept more permissive
+// than the API limiter since real page loads fan out into many asset requests.
+export const staticAssetLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 300, // limit each IP to 300 requests per minute
+  message: "Too many requests, please try again later",
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: rateLimitsDisabled,
 });
 
 // Validation middleware to check for validation errors
@@ -486,7 +518,9 @@ export const sanitizeDownloaderDownloadData = [
     })
     .withMessage("Invalid download URL"),
   body("title")
-    .trim()
+    // Collapse whitespace runs first: results cached from before the indexer-side
+    // normalization can still carry a multi-line scraped title.
+    .customSanitizer(normalizeReleaseTitle)
     .isLength({ min: 1, max: 500 })
     .withMessage("Title must be between 1 and 500 characters"),
   body("category")

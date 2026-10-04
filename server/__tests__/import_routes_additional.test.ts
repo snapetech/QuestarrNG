@@ -8,6 +8,7 @@ const { mockStorage, mockImportManager, mockPlatformMappingService, fsMock } = v
     getEnabledDownloaders: vi.fn(),
     getPendingImportReviews: vi.fn(),
     getUnlinkedImportReviews: vi.fn(),
+    getQuarantinedDownloads: vi.fn(),
     relinkGameDownload: vi.fn(),
     getGameDownload: vi.fn(),
     getGame: vi.fn(),
@@ -60,6 +61,7 @@ describe("importRouter additional coverage", () => {
     mockStorage.getRomMConfig.mockResolvedValue(makeRomMConfig());
     mockStorage.getPathMappings.mockResolvedValue([]);
     mockStorage.getUnlinkedImportReviews.mockResolvedValue([]);
+    mockStorage.getQuarantinedDownloads.mockResolvedValue([]);
   });
 
   const createApp = (withUser = true) => createImportTestApp(importRouter, withUser);

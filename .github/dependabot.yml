@@ -82,64 +82,30 @@ updates:
         patterns:
           - "*"
 
-  # Track the pinned Apprise runtime and its hash-locked transitive packages.
-  - package-ecosystem: "pip"
-    directory: "/security"
+  # Hash-pinned runtime and scanner Python dependencies.
+  - package-ecosystem: pip
+    directories:
+      - /requirements
+      - /.github/requirements
+    target-branch: "main"
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
+      interval: weekly
     cooldown:
       default-days: 7
-    open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "automated"
-    groups:
-      security-updates:
-        applies-to: security-updates
-        patterns:
-          - "*"
-
-  # Keep the hash-locked security overrides for the Semgrep scanner up to date.
-  - package-ecosystem: "pip"
-    directory: "/.github/requirements"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    cooldown:
-      default-days: 7
     open-pull-requests-limit: 5
-    labels:
-      - "dependencies"
-      - "automated"
     ignore:
-      # Semgrep's bundled MCP integration still uses the v1 API. The v2 SDK is
-      # a breaking rewrite; revisit once the pinned scanner supports that line.
-      - dependency-name: "mcp"
+      # Semgrep's bundled MCP integration still uses the v1 API. Revisit after
+      # the pinned scanner supports the v2 SDK.
+      - dependency-name: mcp
         update-types:
           - "version-update:semver-major"
     groups:
-      security-updates:
-        applies-to: security-updates
+      python-tooling:
         patterns:
           - "*"
-
-  # Track the pinned Semgrep scanner image used by the SAST job.
-  - package-ecosystem: "docker"
-    directory: "/.github/semgrep"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    cooldown:
-      default-days: 7
-    open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "automated"
-    groups:
       security-updates:
         applies-to: security-updates
         patterns:
@@ -186,11 +152,6 @@ updates:
       interval: daily
     cooldown:
       default-days: 7
-    groups:
-      security-updates:
-        applies-to: security-updates
-        patterns:
-          - "*"
 
   - package-ecosystem: docker
     directory: /casaos

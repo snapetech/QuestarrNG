@@ -316,6 +316,13 @@
       "when": 1791060500499,
       "tag": "0043_dry_shiver_man",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1791129859230,
+      "tag": "0044_freezing_shaman",
+      "breakpoints": true
     }
   ]
 }

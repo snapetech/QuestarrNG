@@ -1,6 +1,6 @@
 {
   "name": "questarrng",
-  "version": "1.8.3",
+  "version": "1.9.0",
   "description": "A video game management application inspired by the -Arr apps. Track and organize your video game collection with automated discovery and download management.",
   "type": "module",
   "packageManager": "npm@11.7.0",
@@ -38,7 +38,8 @@
     "release-notes:check": "node scripts/check-release-notes.mjs",
     "release-notes:preview": "node scripts/preview-release-notes.mjs",
     "sync-yunohost-package": "node scripts/sync-yunohost-package.mjs",
-    "dev:test": "tsx scripts/clean-test-db.ts && cross-env SQLITE_DB_PATH=data/test.db PORT=5100 npm run dev",
+    "audit:prod": "node scripts/audit-prod.mjs",
+    "dev:test": "tsx scripts/clean-test-db.ts && cross-env SQLITE_DB_PATH=data/test.db PORT=5100 DISABLE_RATE_LIMITS=true npm run dev",
     "prepare": "husky"
   },
   "dependencies": {
@@ -208,6 +209,7 @@
   "overrides": {
     "proxy-addr": "^2.0.8",
     "socket.io-parser": "4.2.7",
+    "engine.io": "^6.6.10",
     "@esbuild-kit/core-utils": {
       "esbuild": "^0.25.0"
     },
@@ -218,7 +220,7 @@
     "eslint-plugin-react": {
       "eslint": "^10.9.1"
     },
-    "ip-address": "^10.7.0"
+    "ip-address": "^10.7.2"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,

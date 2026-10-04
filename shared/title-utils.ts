@@ -17,6 +17,22 @@ export function normalizeTitle(title: string): string {
 }
 
 /**
+ * Collapses every run of whitespace (newlines, tabs, repeated spaces) in a release title
+ * into a single space and trims it. Some indexer definitions scrape a whole results-table
+ * row into the title, which otherwise blows past the 500-character download title limit.
+ */
+export function normalizeReleaseTitle(title: unknown): string {
+  if (typeof title === "string" || typeof title === "number") {
+    return String(title).replaceAll(/\s+/g, " ").trim();
+  }
+  // fast-xml-parser yields { "#text": ... } for a <title> element that carries attributes
+  if (title !== null && typeof title === "object" && "#text" in title) {
+    return normalizeReleaseTitle(title["#text"]);
+  }
+  return "";
+}
+
+/**
  * Common scene release tags and patterns to remove from release names.
  */
 const RELEASE_TAGS = [
@@ -499,7 +515,9 @@ export function parseJsonStringArray(value: string | null | undefined): string[]
   if (!value) return [];
   try {
     const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? (parsed as string[]) : [];
+    return Array.isArray(parsed) && parsed.every((entry) => typeof entry === "string")
+      ? (parsed as string[])
+      : [];
   } catch {
     return [];
   }

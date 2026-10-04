@@ -125,36 +125,6 @@ export type _InsertAiAutoDownloadHolds = Expect<
     typeof pgSchema.aiAutoDownloadHolds.$inferInsert
   >
 >;
-export type _SelectGameJournalEntries = Expect<
-  Equal<
-    typeof sqliteSchema.gameJournalEntries.$inferSelect,
-    typeof pgSchema.gameJournalEntries.$inferSelect
-  >
->;
-export type _InsertGameJournalEntries = Expect<
-  Equal<
-    typeof sqliteSchema.gameJournalEntries.$inferInsert,
-    typeof pgSchema.gameJournalEntries.$inferInsert
-  >
->;
-export type _SelectGameMilestones = Expect<
-  Equal<
-    typeof sqliteSchema.gameMilestones.$inferSelect,
-    typeof pgSchema.gameMilestones.$inferSelect
-  >
->;
-export type _InsertGameMilestones = Expect<
-  Equal<
-    typeof sqliteSchema.gameMilestones.$inferInsert,
-    typeof pgSchema.gameMilestones.$inferInsert
-  >
->;
-export type _SelectGameScreenshots = Expect<
-  Equal<
-    typeof sqliteSchema.gameScreenshots.$inferSelect,
-    typeof pgSchema.gameScreenshots.$inferSelect
-  >
->;
 export type _SelectNotifications = Expect<
   Equal<typeof sqliteSchema.notifications.$inferSelect, typeof pgSchema.notifications.$inferSelect>
 >;
@@ -196,6 +166,42 @@ export type _SelectGameFiles = Expect<
 >;
 export type _InsertGameFiles = Expect<
   Equal<typeof sqliteSchema.gameFiles.$inferInsert, typeof pgSchema.gameFiles.$inferInsert>
+>;
+export type _SelectGameJournalEntries = Expect<
+  Equal<
+    typeof sqliteSchema.gameJournalEntries.$inferSelect,
+    typeof pgSchema.gameJournalEntries.$inferSelect
+  >
+>;
+export type _InsertGameJournalEntries = Expect<
+  Equal<
+    typeof sqliteSchema.gameJournalEntries.$inferInsert,
+    typeof pgSchema.gameJournalEntries.$inferInsert
+  >
+>;
+export type _SelectGameMilestones = Expect<
+  Equal<
+    typeof sqliteSchema.gameMilestones.$inferSelect,
+    typeof pgSchema.gameMilestones.$inferSelect
+  >
+>;
+export type _InsertGameMilestones = Expect<
+  Equal<
+    typeof sqliteSchema.gameMilestones.$inferInsert,
+    typeof pgSchema.gameMilestones.$inferInsert
+  >
+>;
+export type _SelectGameScreenshots = Expect<
+  Equal<
+    typeof sqliteSchema.gameScreenshots.$inferSelect,
+    typeof pgSchema.gameScreenshots.$inferSelect
+  >
+>;
+export type _InsertGameScreenshots = Expect<
+  Equal<
+    typeof sqliteSchema.gameScreenshots.$inferInsert,
+    typeof pgSchema.gameScreenshots.$inferInsert
+  >
 >;
 export type _SelectRootFolders = Expect<
   Equal<typeof sqliteSchema.rootFolders.$inferSelect, typeof pgSchema.rootFolders.$inferSelect>

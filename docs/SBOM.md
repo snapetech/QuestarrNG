@@ -25,7 +25,7 @@ docker buildx imagetools inspect ghcr.io/snapetech/questarrng:latest --format '{
 
 Scanning this SBOM (or the image directly) with a tool like Grype or Trivy
 may surface CVEs that don't actually affect Questarr — e.g. an OS package in
-the `node:22-alpine` base image that's present but never executed. Questarr
+the `node:26-alpine` base image that's present but never executed. Questarr
 publishes exploitability assessments for exactly this scenario as an
 [OpenVEX](https://github.com/openvex/spec) feed; see
 [docs/VEX.md](/docs/VEX.md) for the format and

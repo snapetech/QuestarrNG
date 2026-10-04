@@ -160,6 +160,24 @@ describe("DatabaseStorage Extended Coverage", () => {
       expect(statusUpdated?.status).toBe("completed");
       expect(statusUpdated?.completedAt).toBeTruthy();
 
+      // An automated update checks the status in the same UPDATE, so the
+      // user's pick survives even if the caller read the game earlier.
+      const skipped = await storage.updateGameStatus(
+        game.id,
+        { status: "owned" },
+        { preserveCurated: true }
+      );
+      expect(skipped).toBeUndefined();
+      expect((await storage.getGame(game.id))?.status).toBe("completed");
+
+      await storage.updateGameStatus(game.id, { status: "wanted" });
+      const moved = await storage.updateGameStatus(
+        game.id,
+        { status: "downloading" },
+        { preserveCurated: true }
+      );
+      expect(moved?.status).toBe("downloading");
+
       const hiddenUpdated = await storage.updateGameHidden(game.id, true);
       expect(hiddenUpdated?.hidden).toBe(true);
 
@@ -186,6 +204,12 @@ describe("DatabaseStorage Extended Coverage", () => {
         userId,
         hidden: false,
       });
+      const otherGame = await storage.addGame({
+        title: "Other Game",
+        status: "playing",
+        userId,
+        hidden: false,
+      });
 
       const entry = await storage.addGameJournalEntry({
         gameId: game.id,
@@ -194,8 +218,10 @@ describe("DatabaseStorage Extended Coverage", () => {
       });
       expect(entry.note).toBe("Reached the second boss");
       expect(await storage.getGameJournalEntries(game.id, userId)).toHaveLength(1);
-      expect(await storage.deleteGameJournalEntry(entry.id, "someone-else")).toBe(false);
-      expect(await storage.deleteGameJournalEntry(entry.id, userId)).toBe(true);
+      expect(await storage.deleteGameJournalEntry(entry.id, game.id, "someone-else")).toBe(false);
+      expect(await storage.deleteGameJournalEntry(entry.id, otherGame.id, userId)).toBe(false);
+      expect(await storage.getGameJournalEntries(game.id, userId)).toHaveLength(1);
+      expect(await storage.deleteGameJournalEntry(entry.id, game.id, userId)).toBe(true);
 
       const milestone = await storage.addGameMilestone({
         gameId: game.id,
@@ -203,9 +229,15 @@ describe("DatabaseStorage Extended Coverage", () => {
         label: "100% completion",
       });
       expect(milestone.completedAt).toBeNull();
-      const completed = await storage.updateGameMilestone(milestone.id, userId, true);
+      expect(
+        await storage.updateGameMilestone(milestone.id, otherGame.id, userId, true)
+      ).toBeUndefined();
+      const unchangedMilestones = await storage.getGameMilestones(game.id, userId);
+      expect(unchangedMilestones[0]?.completedAt).toBeNull();
+      const completed = await storage.updateGameMilestone(milestone.id, game.id, userId, true);
       expect(completed?.completedAt).not.toBeNull();
-      expect(await storage.deleteGameMilestone(milestone.id, userId)).toBe(true);
+      expect(await storage.deleteGameMilestone(milestone.id, otherGame.id, userId)).toBe(false);
+      expect(await storage.deleteGameMilestone(milestone.id, game.id, userId)).toBe(true);
 
       const screenshot = await storage.addGameScreenshot({
         gameId: game.id,
@@ -213,8 +245,14 @@ describe("DatabaseStorage Extended Coverage", () => {
         filePath: "/data/screenshots/example.png",
       });
       expect(screenshot.filePath).toBe("/data/screenshots/example.png");
+      expect(
+        await storage.updateGameScreenshotCaption(screenshot.id, otherGame.id, userId, "Wrong game")
+      ).toBeUndefined();
+      const unchangedScreenshots = await storage.getGameScreenshots(game.id, userId);
+      expect(unchangedScreenshots[0]?.caption).toBeNull();
       const captioned = await storage.updateGameScreenshotCaption(
         screenshot.id,
+        game.id,
         userId,
         "Final boss"
       );
@@ -363,6 +401,59 @@ describe("DatabaseStorage Extended Coverage", () => {
 
       const results = await storage.getUnlinkedImportReviews();
       expect(results.map((d) => d.id)).toEqual([unlinked?.id]);
+    });
+
+    it("getQuarantinedDownloads returns only quarantined downloads owned by the given user", async () => {
+      const { userId, game, downloader } = await setup();
+
+      const quarantined = await storage.addGameDownload({
+        gameId: game.id,
+        downloaderId: downloader.id,
+        downloadHash: "hash-quarantined",
+        downloadTitle: "Flagged-GROUP",
+        status: "downloading",
+        downloadType: "torrent",
+        fileSize: null,
+      } as InsertGameDownload);
+      await storage.updateGameDownloadStatus(quarantined!.id, "quarantined", "flagged by scan");
+
+      await storage.addGameDownload({
+        gameId: game.id,
+        downloaderId: downloader.id,
+        downloadHash: "hash-clean",
+        downloadTitle: "Clean-GROUP",
+        status: "completed",
+        downloadType: "torrent",
+        fileSize: null,
+      } as InsertGameDownload);
+
+      // A second user's own quarantined download — proves the userId filter
+      // is actually applied, not just that a status filter happens to work.
+      const otherUserId = await createUser();
+      const otherGame = await storage.addGame({
+        title: "Other User's Game",
+        igdbId: 6002,
+        status: "wanted",
+        hidden: false,
+        userId: otherUserId,
+      } as InsertGame);
+      const otherQuarantined = await storage.addGameDownload({
+        gameId: otherGame.id,
+        downloaderId: downloader.id,
+        downloadHash: "hash-other-quarantined",
+        downloadTitle: "OtherFlagged-GROUP",
+        status: "downloading",
+        downloadType: "torrent",
+        fileSize: null,
+      } as InsertGameDownload);
+      await storage.updateGameDownloadStatus(otherQuarantined!.id, "quarantined");
+
+      const results = await storage.getQuarantinedDownloads(userId);
+      expect(results.map((d) => d.id)).toEqual([quarantined?.id]);
+      expect(results[0].errorMessage).toBe("flagged by scan");
+
+      const otherResults = await storage.getQuarantinedDownloads(otherUserId);
+      expect(otherResults.map((d) => d.id)).toEqual([otherQuarantined?.id]);
     });
 
     it("relinkGameDownload reattaches the game and returns to manual_review_required", async () => {

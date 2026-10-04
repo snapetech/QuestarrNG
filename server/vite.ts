@@ -5,6 +5,7 @@ import { type Server } from "http";
 import { nanoid } from "nanoid";
 import rateLimit from "express-rate-limit";
 import { expressLogger } from "./logger.js";
+import { rateLimitsDisabled, staticAssetLimiter } from "./middleware.js";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -55,11 +56,12 @@ export async function setupVite(app: Express, server: Server) {
       standardHeaders: true,
       legacyHeaders: false,
       message: "Too many development-server requests, please try again shortly",
+      skip: rateLimitsDisabled,
     });
     app.use(developmentRequestLimiter);
     app.use(vite.middlewares);
 
-    app.use(async (req, res, next) => {
+    app.use(staticAssetLimiter, async (req, res, next) => {
       const url = req.originalUrl;
 
       try {
@@ -96,7 +98,7 @@ export async function serveStatic(app: Express) {
   app.use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
-  app.use((_req, res) => {
+  app.use(staticAssetLimiter, (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

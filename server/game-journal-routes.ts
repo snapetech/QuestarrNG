@@ -1,16 +1,16 @@
-import { Router, type Request, type Response } from "express";
+import { Router, type Request, type Response, type NextFunction } from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
-import { randomUUID } from "crypto";
+import path from "node:path";
+import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { fileTypeFromBuffer } from "file-type";
 import { storage } from "./storage.js";
 import { authenticateToken } from "./auth.js";
 import { configLoader } from "./config-loader.js";
 import { routesLogger } from "./logger.js";
-import { sensitiveEndpointLimiter } from "./middleware.js";
 import {
+  sensitiveEndpointLimiter,
   sanitizeGameId,
   sanitizeJournalEntryId,
   sanitizeMilestoneId,
@@ -54,7 +54,7 @@ const ALLOWED_SCREENSHOT_MIME_TYPES: Record<string, string> = {
 const screenshotUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB
+    fileSize: 8_000_000, // 8MB, at SonarCloud's advisory threshold for this rule
     files: 1,
     fields: 1, // only the "caption" text field is allowed alongside the file
     fieldSize: 1024,
@@ -149,7 +149,7 @@ router.delete(
       if (!gameId) return;
       const user = req.user as User;
       const entryId = typeof req.params.entryId === "string" ? req.params.entryId : "";
-      const deleted = await storage.deleteGameJournalEntry(entryId, user.id);
+      const deleted = await storage.deleteGameJournalEntry(entryId, gameId, user.id);
       if (!deleted) return res.status(404).json({ error: "Journal entry not found" });
       return res.status(204).send();
     } catch (error) {
@@ -217,13 +217,10 @@ router.patch(
       const gameId = await requireOwnedGame(req, res);
       if (!gameId) return;
       const user = req.user as User;
+      const milestoneId = typeof req.params.milestoneId === "string" ? req.params.milestoneId : "";
       const { completed } = updateGameMilestoneSchema.parse(req.body);
 
-      const updated = await storage.updateGameMilestone(
-        typeof req.params.milestoneId === "string" ? req.params.milestoneId : "",
-        user.id,
-        completed
-      );
+      const updated = await storage.updateGameMilestone(milestoneId, gameId, user.id, completed);
       if (!updated) return res.status(404).json({ error: "Milestone not found" });
       return res.json(updated);
     } catch (error) {
@@ -249,7 +246,7 @@ router.delete(
       if (!gameId) return;
       const user = req.user as User;
       const milestoneId = typeof req.params.milestoneId === "string" ? req.params.milestoneId : "";
-      const deleted = await storage.deleteGameMilestone(milestoneId, user.id);
+      const deleted = await storage.deleteGameMilestone(milestoneId, gameId, user.id);
       if (!deleted) return res.status(404).json({ error: "Milestone not found" });
       return res.status(204).send();
     } catch (error) {
@@ -291,7 +288,14 @@ router.post(
   sensitiveEndpointLimiter,
   sanitizeGameId,
   validateRequest,
-  screenshotUpload.single("file"),
+  (req: Request, res: Response, next: NextFunction) =>
+    screenshotUpload.single("file")(req, res, (err: unknown) => {
+      if (err) {
+        const message = err instanceof Error ? err.message : "Invalid upload";
+        return res.status(400).json({ error: message });
+      }
+      return next();
+    }),
   async (req: Request, res: Response) => {
     try {
       const gameId = await requireOwnedGame(req, res);
@@ -393,10 +397,13 @@ router.patch(
       const gameId = await requireOwnedGame(req, res);
       if (!gameId) return;
       const user = req.user as User;
+      const screenshotId =
+        typeof req.params.screenshotId === "string" ? req.params.screenshotId : "";
       const { caption } = updateGameScreenshotSchema.parse(req.body);
 
       const updated = await storage.updateGameScreenshotCaption(
-        typeof req.params.screenshotId === "string" ? req.params.screenshotId : "",
+        screenshotId,
+        gameId,
         user.id,
         caption
       );
@@ -426,6 +433,10 @@ router.delete(
       const user = req.user as User;
       const screenshotId =
         typeof req.params.screenshotId === "string" ? req.params.screenshotId : "";
+      const owned = await storage.getGameScreenshots(gameId, user.id);
+      if (!owned.some((s) => s.id === screenshotId)) {
+        return res.status(404).json({ error: "Screenshot not found" });
+      }
       const deleted = await storage.deleteGameScreenshot(screenshotId, user.id);
       if (!deleted) return res.status(404).json({ error: "Screenshot not found" });
 
