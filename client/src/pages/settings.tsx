@@ -2230,7 +2230,12 @@ export default function SettingsPage() {
                 <CardDescription>Help maintain this fork.</CardDescription>
               </CardHeader>
               <CardContent>
-                <a className="text-sm text-primary underline-offset-4 hover:underline" href="https://ko-fi.com/snapetech" target="_blank" rel="noreferrer">
+                <a
+                  className="text-sm text-primary underline-offset-4 hover:underline"
+                  href="https://ko-fi.com/snapetech"
+                  target="_blank"
+                  rel="noreferrer"
+                >
                   Support on Ko-fi
                 </a>
               </CardContent>
