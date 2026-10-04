@@ -8,6 +8,16 @@ Discord announcement while this file remains the chronological changelog.
 
 ## [1.8.3] - 2026-10-03
 
+### User-facing changes
+
+#### Added
+
+- **Settings:** System settings now include a Ko-fi link for users who want to support QuestarrNG fork maintenance.
+
+#### Security
+
+- **Dependencies:** All application dependencies now pass the full npm security audit, including development tooling. The cache-policy fix from upstream PR #60 is covered locally while it awaits maintainer review, and license checks no longer pull in a separate npm resolver stack.
+
 ## [1.8.1] - 2026-10-03
 
 ### User-facing changes
