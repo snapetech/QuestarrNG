@@ -218,8 +218,7 @@
     "eslint-plugin-react": {
       "eslint": "^10.9.1"
     },
-    "ip-address": "^10.7.0",
-    "http-cache-semantics": "file:vendor/http-cache-semantics"
+    "ip-address": "^10.7.0"
   },
   "allowScripts": {
     "esbuild@0.25.12": true,

@@ -20,9 +20,8 @@ const necessaryFeatureOverrides = new Set([
   "eslint-plugin-react -> eslint", // ESLint v10 support (eslint-plugin-react@7 doesn't officially support it yet)
 ]);
 
-const pinnedCacheFork = {
+const vendoredCacheFix = {
   name: "http-cache-semantics",
-  spec: "file:vendor/http-cache-semantics",
   version: "4.2.1-questarr.0",
   upstreamCommit: "11fb104275349bbd84bf21eafd40b18220c29c46",
   testPath: "server/http-cache-semantics.security.test.mjs",
@@ -102,8 +101,6 @@ let anyRemovable = false;
 for (const { pkgName, safeRange, parent } of entries) {
   const label = parent ? `${parent} -> ${pkgName}` : pkgName;
 
-  if (label === pinnedCacheFork.name) continue;
-
   const safeMin = semver.minVersion(safeRange);
 
   // Skip removability check for necessary feature overrides
@@ -140,39 +137,33 @@ for (const { pkgName, safeRange, parent } of entries) {
   }
 }
 
-const cacheForkOverrideSpec = overrides[pinnedCacheFork.name];
-const cacheForkPath = pinnedCacheFork.spec.slice("file:".length);
-const cacheForkLock = lock.packages?.[cacheForkPath];
-const cacheForkLinks = Object.entries(lock.packages ?? {}).filter(
-  ([packagePath]) =>
-    packagePath === `node_modules/${pinnedCacheFork.name}` ||
-    packagePath.endsWith(`/node_modules/${pinnedCacheFork.name}`)
+const cacheFixLockEntries = Object.keys(lock.packages ?? {}).filter(
+  (packagePath) =>
+    packagePath === `node_modules/${vendoredCacheFix.name}` ||
+    packagePath.endsWith(`/node_modules/${vendoredCacheFix.name}`) ||
+    packagePath === `vendor/${vendoredCacheFix.name}`
 );
-const cacheForkManifest = readManifest(path.join("vendor", pinnedCacheFork.name));
-const cacheTestSource = existsSync(pinnedCacheFork.testPath)
-  ? readFileSync(pinnedCacheFork.testPath, "utf8")
+const cacheFixManifest = readManifest(path.join("vendor", vendoredCacheFix.name));
+const cacheTestSource = existsSync(vendoredCacheFix.testPath)
+  ? readFileSync(vendoredCacheFix.testPath, "utf8")
   : "";
-const cacheForkIsValid =
-  cacheForkOverrideSpec === pinnedCacheFork.spec &&
-  !pkg.dependencies?.[pinnedCacheFork.name] &&
-  !pkg.devDependencies?.[pinnedCacheFork.name] &&
-  (!cacheForkLock || cacheForkLock.version === pinnedCacheFork.version) &&
-  cacheForkLinks.every(
-    ([, entry]) => entry?.link === true && entry.resolved === cacheForkPath
-  ) &&
-  (cacheForkLinks.length === 0 || cacheForkLock?.version === pinnedCacheFork.version) &&
-  cacheForkManifest?.version === pinnedCacheFork.version &&
-  cacheForkManifest?.["x-upstream-commit"] === pinnedCacheFork.upstreamCommit &&
+const cacheFixIsValid =
+  !overrides[vendoredCacheFix.name] &&
+  !pkg.dependencies?.[vendoredCacheFix.name] &&
+  !pkg.devDependencies?.[vendoredCacheFix.name] &&
+  cacheFixLockEntries.length === 0 &&
+  cacheFixManifest?.version === vendoredCacheFix.version &&
+  cacheFixManifest?.["x-upstream-commit"] === vendoredCacheFix.upstreamCommit &&
   cacheTestSource.includes('require("../vendor/http-cache-semantics")');
 
-if (!cacheForkIsValid) {
+if (!cacheFixIsValid) {
   console.error(
-    `[invalid] ${pinnedCacheFork.name}: expected the global override, reviewed local fork, and active direct-source security regression test without a direct dependency.`
+    `[invalid] ${vendoredCacheFix.name}: expected no npm dependency, a reviewed vendored fix, and an active direct-source security regression test.`
   );
   anyRemovable = true;
 } else {
   console.log(
-    `[pinned security fork] ${pinnedCacheFork.name}@${pinnedCacheFork.version} (upstream ${pinnedCacheFork.upstreamCommit})`
+    `[reviewed cache fix] ${vendoredCacheFix.name}@${vendoredCacheFix.version} (upstream ${vendoredCacheFix.upstreamCommit}); absent from the npm dependency graph`
   );
 }
 
@@ -183,4 +174,4 @@ if (anyRemovable) {
   process.exit(1);
 }
 
-console.log("\nAll overrides are still required and the local cache security fork is pinned.");
+console.log("\nAll overrides are still required and the vendored cache fix remains covered by tests.");
