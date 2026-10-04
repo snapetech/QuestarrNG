@@ -1,0 +1,11 @@
+{
+  "name": "http-cache-semantics",
+  "version": "4.2.1-questarr.0",
+  "description": "QuestarrNG's local security fork of http-cache-semantics",
+  "repository": "https://github.com/kornelski/http-cache-semantics.git",
+  "main": "index.js",
+  "types": "index.js",
+  "license": "BSD-2-Clause",
+  "x-upstream-pull-request": "https://github.com/kornelski/http-cache-semantics/pull/60",
+  "x-upstream-commit": "11fb104275349bbd84bf21eafd40b18220c29c46"
+}

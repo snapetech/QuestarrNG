@@ -10,6 +10,7 @@
 // checks whether the latest published version has actually resolved the deprecation.
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { parseLatestPackageMetadata } from "./npm-view-metadata.mjs";
 
 // npm package names are restricted to lowercase letters, digits, and - . _ ~ with an optional
 // @scope/ prefix, so double-quoting is sufficient to pass them through a shell safely.
@@ -44,9 +45,8 @@ const opts = { encoding: "utf8" };
 
 function npmViewLatest(name) {
   assertSafePackageName(name);
-  const raw = execSync(`npm view "${name}" --json`, opts);
-  const info = JSON.parse(raw);
-  return { version: info.version, deprecated: info.deprecated || null };
+  const raw = execSync(`npm view "${name}@latest" version deprecated --json`, opts);
+  return parseLatestPackageMetadata(raw);
 }
 
 function consumerChain(name) {

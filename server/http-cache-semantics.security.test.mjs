@@ -26,7 +26,7 @@ function makePolicy(cacheControl, headers = {}) {
   return { request, policy };
 }
 
-describe("http-cache-semantics security override", () => {
+describe("http-cache-semantics security fork", () => {
   it("does not serve a shared Set-Cookie response for max-stale", () => {
     const { request, policy } = makePolicy(
       "max-age=60, stale-if-error=600, stale-while-revalidate=600",

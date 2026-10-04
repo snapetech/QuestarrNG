@@ -1,5 +1,6 @@
 node_modules
 vendor/node-forge/**
+vendor/http-cache-semantics/index.js
 dist
 .git
 .env
