@@ -6,6 +6,14 @@ User-facing pull requests add validated fragments under [`release-notes/`](../re
 The release workflow adds those fragments to the versioned release notes and
 Discord announcement while this file remains the chronological changelog.
 
+## [1.8.1] - 2026-10-03
+
+### User-facing changes
+
+#### Security
+
+- **Dependencies:** Questarr now pins a tested upstream fix for CVE-2026-93748, preventing stale-cache directives from reusing shared responses that require validation while upstream reviews the fix.
+
 ## [1.8.0] - 2026-10-03
 
 ### User-facing changes
