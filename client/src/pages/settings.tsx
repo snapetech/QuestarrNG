@@ -2224,6 +2224,17 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="system" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Support QuestarrNG</CardTitle>
+                <CardDescription>Help maintain this fork.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <a className="text-sm text-primary underline-offset-4 hover:underline" href="https://ko-fi.com/snapetech" target="_blank" rel="noreferrer">
+                  Support on Ko-fi
+                </a>
+              </CardContent>
+            </Card>
             {/* Application Management */}
             <Card>
               <CardHeader>

@@ -7,6 +7,8 @@ This fork adds the SeerrNG catalog and acquisition contract. Use
 the upstream Questarr image does not contain the SeerrNG integration routes.
 The fork image is published for `linux/amd64` and `linux/arm64` from `main`.
 
+Support QuestarrNG on [Ko-fi](https://ko-fi.com/snapetech).
+
 ![Questarr Logo](images/Questarr_Logo-nobg.png)
 
 A video game management application inspired by the -Arr apps (Sonarr, Radarr, Prowlarr...) and GamezServer. Track and organize your video game collection with automated discovery and download management.
