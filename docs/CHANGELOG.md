@@ -12,8 +12,8 @@ Discord announcement while this file remains the chronological changelog.
 
 #### Added
 
-- **Game Details:** The game details view now includes an expansions tab with available DLC and expansion covers, release years, category labels, and IGDB links.
-- **Library Platforms:** Platform preferences now carry across library filters, discovery, game adding, download searches, and import eligibility. You can also hide shelved or already-owned games from results by default, and track active games on a Playing page with notes, milestones, screenshots, and Steam achievements.
+- **Game Details:** Game details now include an expansions tab with available DLC and expansion covers, release years, category labels, and links to their IGDB pages.
+- **Library Platforms:** Platform preferences now carry across library filters, discovery, game adding, download searches, and import eligibility. Hide shelved or already-owned results by default, and track games on a Playing page with notes, milestones, screenshots, and Steam achievements.
 - **Discovery:** Settings now support a global release-name blacklist that filters matching terms from manual searches, auto-search cycles, and AI-assisted release selection.
 
 #### Security
