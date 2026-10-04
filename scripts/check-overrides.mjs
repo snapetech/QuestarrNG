@@ -140,31 +140,34 @@ for (const { pkgName, safeRange, parent } of entries) {
   }
 }
 
-const cacheForkSpec = pkg.devDependencies?.[pinnedCacheFork.name];
 const cacheForkOverrideSpec = overrides[pinnedCacheFork.name];
-const cacheForkLink = lock.packages?.[`node_modules/${pinnedCacheFork.name}`];
-const cacheForkLock = lock.packages?.[pinnedCacheFork.spec.slice("file:".length)];
-const cacheForkManifest = readManifest(path.join("vendor", pinnedCacheFork.name));
-const installedCacheForkManifest = readManifest(
-  path.join("node_modules", ...pinnedCacheFork.name.split("/"))
+const cacheForkPath = pinnedCacheFork.spec.slice("file:".length);
+const cacheForkLock = lock.packages?.[cacheForkPath];
+const cacheForkLinks = Object.entries(lock.packages ?? {}).filter(
+  ([packagePath]) =>
+    packagePath === `node_modules/${pinnedCacheFork.name}` ||
+    packagePath.endsWith(`/node_modules/${pinnedCacheFork.name}`)
 );
+const cacheForkManifest = readManifest(path.join("vendor", pinnedCacheFork.name));
 const cacheTestSource = existsSync(pinnedCacheFork.testPath)
   ? readFileSync(pinnedCacheFork.testPath, "utf8")
   : "";
 const cacheForkIsValid =
-  cacheForkSpec === pinnedCacheFork.spec &&
   cacheForkOverrideSpec === pinnedCacheFork.spec &&
-  cacheForkLink?.resolved === pinnedCacheFork.spec.slice("file:".length) &&
-  cacheForkLink?.link === true &&
-  cacheForkLock?.version === pinnedCacheFork.version &&
+  !pkg.dependencies?.[pinnedCacheFork.name] &&
+  !pkg.devDependencies?.[pinnedCacheFork.name] &&
+  (!cacheForkLock || cacheForkLock.version === pinnedCacheFork.version) &&
+  cacheForkLinks.every(
+    ([, entry]) => entry?.link === true && entry.resolved === cacheForkPath
+  ) &&
+  (cacheForkLinks.length === 0 || cacheForkLock?.version === pinnedCacheFork.version) &&
   cacheForkManifest?.version === pinnedCacheFork.version &&
   cacheForkManifest?.["x-upstream-commit"] === pinnedCacheFork.upstreamCommit &&
-  installedCacheForkManifest?.version === pinnedCacheFork.version &&
-  cacheTestSource.includes('require("http-cache-semantics")');
+  cacheTestSource.includes('require("../vendor/http-cache-semantics")');
 
 if (!cacheForkIsValid) {
   console.error(
-    `[invalid] ${pinnedCacheFork.name}: expected the global override, reviewed local fork, lockfile entry, and active security regression test.`
+    `[invalid] ${pinnedCacheFork.name}: expected the global override, reviewed local fork, and active direct-source security regression test without a direct dependency.`
   );
   anyRemovable = true;
 } else {

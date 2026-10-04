@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
-const CachePolicy = require("http-cache-semantics");
+const CachePolicy = require("../vendor/http-cache-semantics");
 
 function makePolicy(cacheControl, headers = {}) {
   const request = {
