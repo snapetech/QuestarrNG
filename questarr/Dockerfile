@@ -1,5 +1,5 @@
 # NOSONAR - ha-entrypoint.sh must run as root to chown /data before su-exec drops to questarr
-FROM ghcr.io/snapetech/questarrng:1.7.3@sha256:2baf65e2b5192a16971f0e2823bb12632546c905b528e58b9e9742cd23667c58
+FROM ghcr.io/snapetech/questarrng:1.9.0@sha256:f862662e6f3239d0afa60a42ad3771159b361c6a6108dc5b804a1e55ebee458d
 ARG BUILD_ARCH=amd64
 ARG QUESTARR_VERSION=1.7.3
 
