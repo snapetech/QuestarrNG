@@ -1,6 +1,6 @@
 # Dependency Management
 
-This document describes how Questarr selects, obtains, and tracks its dependencies.
+This document describes how QuestarrNG selects, obtains, and tracks its dependencies.
 
 ## Selection
 
@@ -23,7 +23,7 @@ Dependencies are added deliberately as part of normal development, via `npm inst
   - `proxy-addr: ^2.0.8` patches [CVE-2026-90711](https://vuldb.com/cve/CVE-2026-90711) ([AIKIDO-2026-101201](https://security.aikido.dev/cve/AIKIDO-2026-101201), critical: accepts undersized IPv4-mapped IPv6 trust subnets, letting unauthenticated clients spoof `X-Forwarded-For` and bypass IP-based access controls, rate limiting, and audit logging), affecting `>=1.1.0 <=2.0.7`. Needed because `express` pins `proxy-addr: ~2.0.7`, which had not yet bumped its declared range to include the patched `2.0.8`.
   - `ip-address: ^10.7.2` patches [CVE-2026-101913](https://github.com/advisories/GHSA-rpw4-54j3-4h4q) and [CVE-2026-101910](https://github.com/advisories/GHSA-2vr4-cq9g-pvrc) (affecting `<=10.5.0`). Needed because `express-rate-limit` (`^10.2.0`) and `socks` (`^10.1.1`) still allow a vulnerable release.
   - `eslint-plugin-react`'s `eslint` dependency is bumped to `^10.9.1` to allow ESLint v10 support. Needed because `eslint-plugin-react@7.37.2` officially supports only up to `eslint@^9.7`, but the linting rules in ESLint v10 are stricter and require updating the codebase to comply. This override is temporary — once `eslint-plugin-react` releases a new major version with official ESLint v10 support, it can be removed.
-  - `http-cache-semantics` is not currently an npm dependency. Its reviewed source is retained at [`vendor/http-cache-semantics`](../vendor/http-cache-semantics), copied from proposed upstream commit [`11fb104`](https://github.com/Sergey360/http-cache-semantics/commit/11fb104275349bbd84bf21eafd40b18220c29c46) in still-open upstream PR [#60](https://github.com/kornelski/http-cache-semantics/pull/60), and exercised directly by `server/http-cache-semantics.security.test.mjs`. Questarr's former consumer was the removed license-checking toolchain, so the cache library no longer needs to be in the installed dependency graph. `check:overrides` fails if it returns to the lockfile until a patched upstream release or an explicit safe integration is in place.
+  - `http-cache-semantics` is not currently an npm dependency. Its reviewed source is retained at [`vendor/http-cache-semantics`](../vendor/http-cache-semantics), copied from proposed upstream commit [`11fb104`](https://github.com/Sergey360/http-cache-semantics/commit/11fb104275349bbd84bf21eafd40b18220c29c46) in still-open upstream PR [#60](https://github.com/kornelski/http-cache-semantics/pull/60), and exercised directly by `server/http-cache-semantics.security.test.mjs`. QuestarrNG's former consumer was the removed license-checking toolchain, so the cache library no longer needs to be in the installed dependency graph. `check:overrides` fails if it returns to the lockfile until a patched upstream release or an explicit safe integration is in place.
   - The `@lizenz/checker` dev tool was removed because its install/registry dependency chain produced the 11 HIGH-severity package findings in full `npm audit`. `check:licenses` now uses npm's `.prod` dependency selector and the same explicit SPDX allow-list, without adding another dependency resolver. Unknown or missing licenses still fail the check; this does not suppress or accept npm audit findings.
   - All of the above should be revisited (and likely removed) once the upstream packages bump their own internal dependency ranges past the vulnerable versions.
   - The `check-overrides` CI job (`npm run check:overrides`, see [`scripts/check-overrides.mjs`](../scripts/check-overrides.mjs)) checks this automatically on every PR and fails once an override is no longer needed, so there's no need to track removal manually.
@@ -34,7 +34,7 @@ Dependencies are added deliberately as part of normal development, via `npm inst
 
 - Version updates are opened as grouped pull requests (e.g. React-related packages, Radix UI components, dev vs. production dependencies, and all GitHub Actions bumps). Security updates are grouped by ecosystem as well.
 - Semver-major bumps are proposed automatically like any other update rather than excluded, since silently skipping them meant a major-version-only security fix could go unnoticed; they aren't folded into the minor/patch groups, so they still land as their own PR and get individual review.
-- TypeScript major updates are temporarily ignored because `typescript-eslint@8.71.0` currently declares support only for TypeScript versions below 6.1. Dependabot will resume proposing TypeScript majors after its parser peer range supports them.
+- TypeScript 7 updates are temporarily ignored because `typescript-eslint@8.70.1` and `@typescript-eslint/parser@8.70.1` currently declare TypeScript peer support below 6.1. Dependabot will resume proposing TypeScript majors after the parser peer range supports them.
 - Every dependency-update PR runs through the same CI gate as any other change — lint, type check, the full test suite, and a Docker build (see [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) — before it can be merged.
 
 ## Release-time visibility
@@ -45,11 +45,6 @@ Every published Docker image ships with a generated Software Bill of Materials l
 
 Tracked here so a blocked Dependabot PR doesn't get silently re-proposed and re-investigated from scratch. Remove an entry once its update is unblocked and merged.
 
-_As of 2026-07-04, `release/1.4.0`:_
+_Reviewed 2026-10-04 against `main` at v1.9.0: the older React 19 and resolver blockers recorded against the v1.4.0 release branch are resolved._
 
-- **`@hookform/resolvers`** `3.10.0` → `5.4.0` (PR #756) — blocked. Installs, but the TypeScript check fails in form resolver usage (`client/src/pages/downloaders.tsx`, `client/src/pages/indexers.tsx`). The project is on Zod 3 (`zod: ^3.25.0`); this upgrade likely needs resolver/schema compatibility adjustments first.
-- **React 19** `react 18.3.1` → `19.2.7`, `@types/react 18.3.11` → `19.2.17` (PR #761) — blocked. Install fails on peer dependency resolution across UI dependencies; needs a broader compatibility pass across the React ecosystem packages first.
-
-_As of 2026-10-01, `main`:_
-
-- **TypeScript 7** `6.0.3` → `7.0.2` (PR #4) — blocked by the current `typescript-eslint@8.71.0` peer range (`typescript <6.1.0`). Dependabot ignores TypeScript major bumps until upstream support is released.
+- **TypeScript 7** — remains blocked by the current TypeScript ESLint parser peer range (`typescript <6.1.0`). QuestarrNG currently uses TypeScript 6.0.3; revisit when `typescript-eslint` and `@typescript-eslint/parser` support TypeScript 7.

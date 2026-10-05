@@ -1,24 +1,25 @@
-# Questarr — Threat Model & Attack Surface Analysis
+# QuestarrNG — Threat Model & Attack Surface Analysis
 
 **Version:** 1.0
-**Date:** 2026-10-03
-**Last reviewed:** 2026-10-03
-**Author:** Doezer
+**Date:** 2026-10-04
+**Last reviewed:** 2026-10-04
+**Author:** Snapetech maintainers
 **Audience:** Maintainers, contributors, security reviewers
 
 ---
 
 ## 1. Purpose & Scope
 
-This document is Questarr's attack-surface analysis, satisfying [OpenSSF Baseline
+This document is QuestarrNG's attack-surface analysis, satisfying [OpenSSF Baseline
 OSPS-SA-03.02](https://baseline.openssf.org/): it identifies critical code paths, trust
 boundaries, and external interactions, and records how each threat is mitigated or
 knowingly accepted.
 
 **In scope:** the Express API and its route handlers, the React client, the SQLite/Postgres
 Drizzle data layer, Socket.io realtime channel, SeerrNG provider API, downloaded archive
-contents, and every external service Questarr talks to (indexers, download clients, IGDB,
-Steam, HowLongToBeat, NexusMods, xREL, PCGamingWiki).
+contents, PC and RomM library folders, optional VirusTotal and ClamAV scanning, and every
+external service QuestarrNG talks to (indexers, download clients, IGDB, Steam,
+HowLongToBeat, NexusMods, xREL, PCGamingWiki).
 
 **Out of scope:** OS/host hardening, reverse proxy/TLS termination, and Docker deployment
 configuration — those are covered by [`.github/SECURITY.md`](../.github/SECURITY.md)'s
@@ -46,6 +47,12 @@ flowchart LR
     SSRF{{"safeFetch / isSafeUrl\nssrf.ts"}}
     Seerr["SeerrNG server\nscoped, expiring key"]
     Archives["Downloaded archives\nuntrusted release data"]
+    Import["ImportManager\nPC / RomM destinations"]
+    Scans["Optional SecurityScanService"]
+    VT["VirusTotal\nSHA-256 lookup"]
+    ClamAV["Configured ClamAV daemon\nINSTREAM file data"]
+    Quarantine["Sibling quarantine folder"]
+    RomM["RomM library\nshared filesystem"]
 
     Browser -- "JWT bearer" --> API
     Seerr -- "provider API key / JWT" --> API
@@ -60,6 +67,13 @@ flowchart LR
     SSRF --> IGDB["IGDB / Twitch OAuth\nhardcoded host"]
     SSRF --> Steam["Steam / HLTB / NexusMods /\nxREL / PCGamingWiki\nhardcoded hosts"]
     Handlers --> Archives
+    Handlers --> Import
+    Import --> Scans
+    Scans -- "hash only" --> VT
+    Scans -- "file stream" --> ClamAV
+    Scans -- "flagged" --> Quarantine
+    Scans -- "continue" --> Import
+    Import --> RomM
 ```
 
 Six named trust boundaries:
@@ -80,16 +94,20 @@ Six named trust boundaries:
    to the versioned SeerrNG routes and expires by default; every operation is scoped to the
    QuestarrNG account that owns the key.
 6. **Downloaded archive ↔ filesystem** — release archives are untrusted even when fetched
-   through an administrator-configured indexer. Before extraction, Questarr checks listed
+   through an administrator-configured indexer. Before extraction, QuestarrNG checks listed
    paths, links, declared expanded size, and total entry count; extraction also has a 30-minute
    process timeout and bounded listing output.
+7. **Server ↔ optional scanners** — VirusTotal receives only a SHA-256 hash over HTTPS; the
+   configured API key stays server-side. ClamAV receives scanned file contents over its
+   INSTREAM TCP protocol at a DNS-validated address. That connection is not encrypted, so
+   operators should keep the configured daemon on a trusted network.
 
 ---
 
 ## 3. Assets
 
 - **Credentials:** user password hashes, the JWT signing secret, indexer API keys,
-  download-client passwords, the NexusMods API key. See
+  download-client passwords, NexusMods and VirusTotal API keys. See
   [`docs/SECRETS.md`](./SECRETS.md) for the authoritative inventory of where each of these
   lives and how it's protected.
 - **Library/download metadata:** game collections, download history — low sensitivity, but
@@ -164,22 +182,45 @@ capped at 10 MiB and each tool invocation times out after 30 minutes. These meta
 preflight limits reduce path escape and decompression-bomb risk, but do not impose an OS
 filesystem quota if an archive lies about its declared sizes.
 
+### 4.5 Optional pre-import security scan
+
+When enabled, `SecurityScanService` checks a completed download before it is imported:
+
+- **VirusTotal** computes a SHA-256 digest of the primary file and queries the fixed HTTPS
+  API endpoint. The file itself is not sent. Detection threshold and whether an unknown hash
+  blocks import are configurable.
+- **ClamAV** streams files through the configured daemon's INSTREAM protocol. The configured
+  hostname is resolved and validated before QuestarrNG connects; file contents cross that TCP
+  connection, so deploy the daemon on a trusted network.
+- A detection moves the download to a sibling `.questarr-quarantine` directory, marks it
+  `quarantined`, and creates a Security Alert. The normal import-review flow rejects
+  quarantined downloads.
+- Scanner network and time-out errors fail open and allow processing to continue. A partially
+  enumerated or truncated ClamAV directory scan blocks import rather than claiming it was
+  clean. VirusTotal can also block unknown hashes when that option is enabled.
+
+Scanning is optional defense in depth, not a guarantee that every file is safe. It should not
+replace operator review or host-level endpoint protection.
+
 ---
 
 ## 5. External Integration Trust Table
 
-| Integration                                                         | Host source                    | Auth surface                                      | SSRF-checked?                                                                              | Notes                                           |
-| ------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------- |
-| Indexers (Torznab/Newznab/Prowlarr)                                 | user-configured                | API key (AES-256-GCM encrypted at rest)           | Yes                                                                                        | highest risk — user-supplied host               |
-| Download clients (qBittorrent/Transmission/rTorrent/SABnzbd/NZBGet) | user-configured, typically LAN | username/password (AES-256-GCM encrypted at rest) | Payload-URL fetches: yes. Control-plane calls to the configured client: N/A (trust anchor) | see 4.1                                         |
-| RSS feeds                                                           | user-configured                | none                                              | Yes (`server/rss.ts`)                                                                      |                                                 |
-| IGDB / Twitch                                                       | hardcoded                      | client ID/secret (`system_config`)                | Yes (fixed in this revision)                                                               | see 4.2                                         |
-| Steam                                                               | hardcoded                      | none (public endpoint)                            | Yes (`server/steam.ts`)                                                                    | wishlist import only                            |
-| HowLongToBeat                                                       | hardcoded                      | none                                              | Yes (`server/hltb.ts`)                                                                     |                                                 |
-| NexusMods                                                           | hardcoded                      | API key (`system_config`)                         | Yes (`server/nexusmods.ts`)                                                                |                                                 |
-| xREL                                                                | hardcoded allowlist            | none                                              | Yes (`server/xrel.ts`)                                                                     | only `api.xrel.to`/`xrel-api.nfos.to` permitted |
-| PCGamingWiki                                                        | hardcoded                      | none                                              | Yes (`server/pcgamingwiki-router.ts`)                                                      |                                                 |
-| SeerrNG                                                             | configured peer                | scoped, expiring integration API key or JWT       | Not applicable                                                                             | provider version 1; caller-owned account scope  |
+| Integration                                                         | Host source                    | Auth surface                                      | SSRF-checked?                                                                              | Notes                                                     |
+| ------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| Indexers (Torznab/Newznab/Prowlarr)                                 | user-configured                | API key (AES-256-GCM encrypted at rest)           | Yes                                                                                        | highest risk — user-supplied host                         |
+| Download clients (qBittorrent/Transmission/rTorrent/SABnzbd/NZBGet) | user-configured, typically LAN | username/password (AES-256-GCM encrypted at rest) | Payload-URL fetches: yes. Control-plane calls to the configured client: N/A (trust anchor) | see 4.1                                                   |
+| RSS feeds                                                           | user-configured                | none                                              | Yes (`server/rss.ts`)                                                                      |                                                           |
+| IGDB / Twitch                                                       | hardcoded                      | client ID/secret (`system_config`)                | Yes (fixed in this revision)                                                               | see 4.2                                                   |
+| Steam                                                               | hardcoded                      | none (public endpoint)                            | Yes (`server/steam.ts`)                                                                    | wishlist import only                                      |
+| HowLongToBeat                                                       | hardcoded                      | none                                              | Yes (`server/hltb.ts`)                                                                     |                                                           |
+| NexusMods                                                           | hardcoded                      | API key (`system_config`)                         | Yes (`server/nexusmods.ts`)                                                                |                                                           |
+| xREL                                                                | hardcoded allowlist            | none                                              | Yes (`server/xrel.ts`)                                                                     | only `api.xrel.to`/`xrel-api.nfos.to` permitted           |
+| PCGamingWiki                                                        | hardcoded                      | none                                              | Yes (`server/pcgamingwiki-router.ts`)                                                      |                                                           |
+| SeerrNG                                                             | configured peer                | scoped, expiring integration API key or JWT       | Not applicable                                                                             | provider version 1; caller-owned account scope            |
+| RomM library destination                                            | configured local/shared path   | filesystem permissions of QuestarrNG process      | Not applicable                                                                             | file routing only; QuestarrNG does not call RomM's API    |
+| VirusTotal                                                          | fixed HTTPS API                | API key in server-side system config              | Yes (`safeFetch`, HTTPS)                                                                   | hash lookup only; file data is not uploaded               |
+| ClamAV daemon                                                       | user-configured host and port  | local network trust; ClamAV INSTREAM protocol     | Yes (DNS-validated pinned address)                                                         | optional file-content stream; trusted network recommended |
 
 ---
 
@@ -201,6 +242,9 @@ linked file as the source of truth.
   `server/routes/integration.ts` (request/asset ownership and path containment)
 - **Archive extraction:** `server/services/ArchiveService.ts` (path/link/count/size preflight,
   process timeout and bounded child-process output)
+- **Pre-import scanning and quarantine:** `server/security-scan.ts`,
+  `server/services/ImportManager.ts` (optional hash reputation and ClamAV scan; detections
+  block import and move the download to quarantine)
 - **SQL injection:** not applicable by construction — Drizzle ORM parameterizes all
   application queries; the only raw SQL (`sql.raw`/`sql` template literals in
   `server/migrate.ts`) is hardcoded migration DDL with no user input.
@@ -249,11 +293,11 @@ authentication or a narrowly-scoped, low-sensitivity response.
 
 ## 8. Residual & Accepted Risks
 
-| Risk                                                                                                                                                                                                             | Status                                    | Rationale                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Socket.io (`server/socket.ts`) has no per-connection authentication; `notifyUser()` broadcasts via plain `io.emit()` to every connected client regardless of which user owns the event                           | **Accepted risk / documented assumption** | Connections are restricted to configured origins (CORS), so this is a same-install, cross-account metadata leak (e.g. one user seeing another's download progress), not an externally exposed one. Questarr is not a multi-user application (see [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) §9) — the supported deployment has one trusted operator, so this is low severity by design, not a gap awaiting a fix. |
-| Path-traversal checks in `sanitizeDownloaderData`/`sanitizeIndexerData` use a `!value.includes("..")` blocklist rather than the resolve-and-prefix-check pattern `server/routes.ts`'s file-browser endpoint uses | **Recommended follow-up**                 | Downstream consumers don't currently perform direct filesystem access with these values, so risk is low; migrating to the stronger pattern is still worthwhile for consistency. File a follow-up issue.                                                                                                                                                                                                          |
-| Flat, single-tier trust model — an authenticated user has full access with no RBAC/admin split                                                                                                                   | **Accepted risk / documented assumption** | Deliberate simplicity tradeoff for a small, self-hosted app with one trusted operator per instance — Questarr is not a multi-user application (see [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) §9).                                                                                                                                                                                                                |
+| Risk                                                                                                                                                                                                             | Status                                    | Rationale                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Socket.io (`server/socket.ts`) has no per-connection authentication; `notifyUser()` broadcasts via plain `io.emit()` to every connected client regardless of which user owns the event                           | **Accepted risk / documented assumption** | Connections are restricted to configured origins (CORS), so this is a same-install, cross-account metadata leak (e.g. one user seeing another's download progress), not an externally exposed one. QuestarrNG is not a multi-user application (see [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) §9) — the supported deployment has one trusted operator, so this is low severity by design, not a gap awaiting a fix. |
+| Path-traversal checks in `sanitizeDownloaderData`/`sanitizeIndexerData` use a `!value.includes("..")` blocklist rather than the resolve-and-prefix-check pattern `server/routes.ts`'s file-browser endpoint uses | **Recommended follow-up**                 | Downstream consumers don't currently perform direct filesystem access with these values, so risk is low; migrating to the stronger pattern is still worthwhile for consistency. File a follow-up issue.                                                                                                                                                                                                            |
+| Flat, single-tier trust model — an authenticated user has full access with no RBAC/admin split                                                                                                                   | **Accepted risk / documented assumption** | Deliberate simplicity tradeoff for a small, self-hosted app with one trusted operator per instance — QuestarrNG is not a multi-user application (see [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) §9).                                                                                                                                                                                                                |
 
 ---
 

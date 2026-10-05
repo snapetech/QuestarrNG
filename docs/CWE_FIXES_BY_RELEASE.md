@@ -1,8 +1,9 @@
-# Questarr — CWEs addressed per release (v1.2.0 → v1.5.0)
+# QuestarrNG — CWEs addressed per released tag (v1.2.0 → v1.9.0)
 
 Method: same as [`docs/CVE_FIXES_BY_RELEASE.md`](CVE_FIXES_BY_RELEASE.md) — diffed `package-lock.json` at each
 tag boundary and cross-checked every bumped package through OSV.dev. Each advisory is then mapped to its CWE
-IDs sourced from the `database_specific.cwe_ids` field in the OSV.dev response (e.g. `["CWE-400", "CWE-770"]`;
+IDs sourced from the `database_specific.cwe_ids` field in the OSV.dev response.
+Data refreshed 2026-10-04. For example, OSV records may list `["CWE-400", "CWE-770"]`;
 older records used `database_specific.cwes`). The script that automates this
 process is `scripts/cwe-report.mjs`.
 
@@ -14,6 +15,9 @@ neither replaces the other.
 Scope note: same as the CVE doc — this covers dependency-bump _fixes_, not a full current-exposure audit.
 First-party code weaknesses are tracked separately in [`docs/SECURITY_ASSESSMENT.md`](SECURITY_ASSESSMENT.md)
 and [`docs/THREAT_MODEL.md`](THREAT_MODEL.md).
+
+QuestarrNG's v1.5.0 release was not published. Its completed work was included
+in v1.6.0, the first published fork release.
 
 ---
 
@@ -218,124 +222,288 @@ No dependency bump in this release crosses a `fixed` OSV boundary — no CWE fix
 
 ---
 
-## v1.5.0 (from v1.4.2)
+## v1.6.0 (first published fork release; changes since v1.4.2)
 
-`proxy-addr` 2.0.7 → 2.0.8 (CVE-2026-90711, CRITICAL) is not yet indexed by OSV.dev, so it carries no CWE here; the Docker base-image fixes (#1113) are OS packages, outside this npm report.
+### Production dependencies
 
-### CWE-20: Improper Input Validation
+#### CWE-20
 
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-75975 (GHSA-f65p-4m7j-42xc) — fast-uri vulnerable to server-side request forgery via malformed IPv6 normalization
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-75975: fast-uri vulnerable to server-side request forgery via malformed IPv6 normalization
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-84947: undici vulnerable to response truncation via oversized chunked responses in the dump interceptor
 
-### CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')
+#### CWE-74
 
-- **postcss 8.5.18 → 8.5.28** — CVE-2026-69153 (GHSA-fxqj-rqcc-2cmp) — PostCSS: incomplete fix of CVE-2026-45623 — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset _(devDep)_
-- **vitest / @vitest/mocker 4.1.10 → 5.0.1** — CVE-2026-84373 (GHSA-82fw-gwwq-j7x9) — Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock _(devDep)_
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101900: Axios: Fetch Adapter Header Injection via Inherited FormData getHeaders
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101904: Axios: Header Injection via Inherited headers After Minimal Interceptor
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-16729: undici vulnerable to cookie attribute injection via unsanitized domain and unparsed setCookie fields
 
-### CWE-116: Improper Encoding or Escaping of Output
+#### CWE-93
 
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-84292 (GHSA-qw65-cvwx-89v3) — fast-uri vulnerable to authority injection via an unvalidated port in serialize
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-15157: undici vulnerable to CRLF Injection via blob-like body 'type' property
 
-### CWE-174: Double Decoding of the Same Data
+#### CWE-116
 
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-75899 (GHSA-fph4-wmhf-6fwf) — fast-uri vulnerable to server-side request forgery via repeated hostname percent-decoding
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-84292: fast-uri vulnerable to authority injection via an unvalidated port in serialize
 
-### CWE-177: Improper Handling of URL Encoding (Hex Encoding)
+#### CWE-174
 
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-76172 (GHSA-jqff-g426-hqxp) — fast-uri vulnerable to host confusion via percent-encoded scheme normalization
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-75899: fast-uri vulnerable to server-side request forgery via repeated hostname percent-decoding
 
-### CWE-200: Exposure of Sensitive Information to an Unauthorized Actor
+#### CWE-177
 
-- **postcss 8.5.18 → 8.5.28** — CVE-2026-69153 (GHSA-fxqj-rqcc-2cmp) — PostCSS: incomplete fix of CVE-2026-45623 — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset _(devDep)_
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-76172: fast-uri vulnerable to host confusion via percent-encoded scheme normalization
 
-### CWE-248: Uncaught Exception
+#### CWE-200
 
-- **multer 2.2.0 → 2.4.0** — CVE-2026-77078 (GHSA-wc9g-mqfw-jrwm) — multer vulnerable to Denial of Service via crafted multipart field names
-- **qs 6.15.2 → 6.16.0** — CVE-2026-82417 (GHSA-4mjr-xmp4-gh2g) — qs.stringify throws TypeError on objects with a non-callable constructor.isBuffer property
-- **undici 8.10.0 → 8.10.2** — CVE-2026-85024 (GHSA-3wwx-pv8p-q78v) — undici vulnerable to Denial of Service via unhandled error in WebSocket permessage-deflate decompression
-- **browserslist 4.28.4 → 4.28.9** — CVE-2026-73088 (GHSA-73wf-gq98-2v4g) — Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats) _(devDep)_
-- **undici (node-gyp) 6.28.0 → 6.29.0** — CVE-2026-85024 (GHSA-3wwx-pv8p-q78v) — undici vulnerable to Denial of Service via unhandled error in WebSocket permessage-deflate decompression _(devDep)_
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-84933: undici vulnerable to cross-user cookie disclosure via Set-Cookie caching in shared caches
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-13697: undici vulnerable to cross-user information disclosure and parse-time crash via degenerate private cache directives
 
-### CWE-362: Race Condition
+#### CWE-248
 
-- **multer 2.2.0 → 2.4.0** — CVE-2026-77063 (GHSA-qvfw-j98x-7q72) — multer vulnerable to file size limit bypass via async fileFilter race condition
+- **multer** 2.2.0 → 2.4.0 — fixes CVE-2026-77078: multer vulnerable to Denial of Service via crafted multipart field names
+- **qs** 6.15.2 → 6.16.0 — fixes CVE-2026-82417: qs: Denial of Service via Attacker Controlled isBuffer
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-84947: undici vulnerable to response truncation via oversized chunked responses in the dump interceptor
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-13697: undici vulnerable to cross-user information disclosure and parse-time crash via degenerate private cache directives
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-85014: undici vulnerable to Denial of Service via WebSocketStream unclean close
 
-### CWE-400: Uncontrolled Resource Consumption
+#### CWE-295
 
-- **multer 2.2.0 → 2.4.0** — CVE-2026-82333 (GHSA-535w-7cp7-47q4) — multer vulnerable to Denial of Service via oversized array index in field names
-- **multer 2.2.0 → 2.4.0** — CVE-2026-77037 (GHSA-qfvm-cv95-jqjf) — multer vulnerable to Denial of Service via file descriptor leak on aborted uploads
-- **multer 2.2.0 → 2.4.0** — CVE-2026-88932 (GHSA-3pph-fpjx-jg34) — multer vulnerable to Denial of Service via orphaned disk writes on aborted uploads
-- **js-yaml 4.3.0 → 4.3.2** — CVE-2026-84375 (GHSA-2883-xcg3-v3hh) — js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources _(devDep)_
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-84961: undici vulnerable to TLS certificate validation bypass via dropped connect options in BalancedPool
 
-### CWE-407: Inefficient Algorithmic Complexity
+#### CWE-345
 
-- **js-yaml 4.3.0 → 4.3.2** — GHSA-5p4m-2wfm-xmqj — JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported _(devDep)_
-- **js-yaml 4.3.0 → 4.3.2** — CVE-2026-84375 (GHSA-2883-xcg3-v3hh) — js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources _(devDep)_
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-85008: undici vulnerable to caching and replay of unsafe HTTP method responses
 
-### CWE-436: Interpretation Conflict
+#### CWE-362
 
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-18446 (GHSA-7p8r-x3mc-p8w7) — fast-uri vulnerable to host confusion via backslash authority introducer
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-75931 (GHSA-5jgf-p345-68v8) — fast-uri vulnerable to host confusion via skipped IDN canonicalization on scheme-relative references
+- **multer** 2.2.0 → 2.4.0 — fixes CVE-2026-77063: multer vulnerable to file size limit bypass via async fileFilter race condition
 
-### CWE-459: Incomplete Cleanup
+#### CWE-400
 
-- **multer 2.2.0 → 2.4.0** — CVE-2026-77037 (GHSA-qfvm-cv95-jqjf) — multer vulnerable to Denial of Service via file descriptor leak on aborted uploads
-- **multer 2.2.0 → 2.4.0** — CVE-2026-88932 (GHSA-3pph-fpjx-jg34) — multer vulnerable to Denial of Service via orphaned disk writes on aborted uploads
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101901: Axios: Denial of Service via Unhandled 'error' Event in HTTP/2 ClientHttp2Session Initialization
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101906: Axios: ReDoS (O(N²)) in shouldBypassProxy host normalization, reachable via untrusted redirect Location
+- **ip-address** 10.5.0 → 10.7.2 — fixes CVE-2026-101911: ip-address: Address6 builds a parse diagnostic proportional to the input with no length bound, allowing a single long string to stall or crash the process
+- **js-yaml** 4.3.0/5.2.2 → 4.3.2/5.4.2 — fixes CVE-2026-84375: js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources
+- **js-yaml** 4.3.0/5.2.2 → 4.3.2/5.4.2 — fixes GHSA-r3ph-w7gj-g6xm: js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources
+- **multer** 2.2.0 → 2.4.0 — fixes CVE-2026-88932: multer vulnerable to Denial of Service via orphaned disk writes on aborted uploads
+- **multer** 2.2.0 → 2.4.0 — fixes CVE-2026-82333: multer vulnerable to Denial of Service via oversized array index in field names
+- **multer** 2.2.0 → 2.4.0 — fixes CVE-2026-77037: multer vulnerable to Denial of Service via file descriptor leak on aborted uploads
 
-### CWE-697: Incorrect Comparison
+#### CWE-407
 
-- **ip-address 10.5.0 → 10.7.2** — CVE-2026-101913 (GHSA-rpw4-54j3-4h4q) — ip-address: Address6.isLinkLocal() recognizes fe80::/64 rather than fe80::/10, allowing SSRF and trust-boundary bypass to on-link hosts
+- **js-yaml** 4.3.0/5.2.2 → 4.3.2/5.4.2 — fixes CVE-2026-84375: js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources
+- **js-yaml** 4.3.0/5.2.2 → 4.3.2/5.4.2 — fixes GHSA-5p4m-2wfm-xmqj: JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported
+- **js-yaml** 4.3.0/5.2.2 → 4.3.2/5.4.2 — fixes GHSA-r3ph-w7gj-g6xm: js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources
 
-### CWE-703: Improper Check or Handling of Exceptional Conditions
+#### CWE-436
 
-- **qs 6.15.2 → 6.16.0** — CVE-2026-82417 (GHSA-4mjr-xmp4-gh2g) — qs.stringify throws TypeError on objects with a non-callable constructor.isBuffer property
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-75931: fast-uri vulnerable to host confusion via skipped IDN canonicalization on scheme-relative references
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-18446: fast-uri vulnerable to host confusion via backslash authority introducer
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-14643: undici vulnerable to cross-user information disclosure via whitespace around equals in Cache-Control directives
 
-### CWE-705: Incorrect Control Flow Scoping
+#### CWE-441
 
-- **baseline-browser-mapping 2.10.40 → 2.11.21** — CVE-2026-45819 (GHSA-w5vr-8v7q-w6rv) — _(devDep)_
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101905: Axios: Node HTTP adapter prototype-pollution gadget allows request socket hijack via inherited createConnection
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101907: Axios: maxRedirects: 0 is not enforced by the fetch adapter, allowing redirect-based SSRF
 
-### CWE-755: Improper Handling of Exceptional Conditions
+#### CWE-444
 
-- **baseline-browser-mapping 2.10.40 → 2.11.21** — CVE-2026-45819 (GHSA-w5vr-8v7q-w6rv) — _(devDep)_
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-16728: undici vulnerable to downstream response desynchronization via retry interceptor
 
-### CWE-770: Allocation of Resources Without Limits or Throttling
+#### CWE-459
 
-- **qs 6.15.2 → 6.16.0** — CVE-2026-82562 (GHSA-x5fp-wj9c-mxmx) — qs.parse does not enforce arrayLimit on comma groups under bracket-push keys when throwOnLimitExceeded is set (incomplete fix for CVE-2026-2391)
-- **browserslist 4.28.4 → 4.28.9** — CVE-2026-73089 (GHSA-c83g-rgw3-j3cx) — Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM _(devDep)_
+- **multer** 2.2.0 → 2.4.0 — fixes CVE-2026-88932: multer vulnerable to Denial of Service via orphaned disk writes on aborted uploads
+- **multer** 2.2.0 → 2.4.0 — fixes CVE-2026-77037: multer vulnerable to Denial of Service via file descriptor leak on aborted uploads
 
-### CWE-835: Loop with Unreachable Exit Condition ('Infinite Loop')
+#### CWE-524
 
-- **nanoid 3.3.12 → 3.3.18** — CVE-2026-67214 (GHSA-28wg-ghj8-5hjv) — nanoid Infinite Loop via Negative Size in non-secure module _(devDep)_
-- **nanoid 3.3.12 → 3.3.18** — CVE-2026-67213 (GHSA-2v37-7h3g-55p8) — nanoid before 5.1.6 Infinite Loop via Zero Size in customAlphabet and customRandom _(devDep)_
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-84933: undici vulnerable to cross-user cookie disclosure via Set-Cookie caching in shared caches
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-14643: undici vulnerable to cross-user information disclosure via whitespace around equals in Cache-Control directives
 
-### CWE-918: Server-Side Request Forgery (SSRF)
+#### CWE-525
 
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-75975 (GHSA-f65p-4m7j-42xc) — fast-uri vulnerable to server-side request forgery via malformed IPv6 normalization
-- **fast-uri 3.1.4 → 3.1.7** — CVE-2026-75899 (GHSA-fph4-wmhf-6fwf) — fast-uri vulnerable to server-side request forgery via repeated hostname percent-decoding
-- **ip-address 10.5.0 → 10.7.2** — CVE-2026-101913 (GHSA-rpw4-54j3-4h4q) — ip-address: Address6.isLinkLocal() recognizes fe80::/64 rather than fe80::/10, allowing SSRF and trust-boundary bypass to on-link hosts
-- **ip-address 10.5.0 → 10.7.2** — CVE-2026-101910 (GHSA-2vr4-cq9g-pvrc) — ip-address: no classifier recognizes the NAT64 local-use range 64:ff9b:1::/48, allowing SSRF and trust-boundary bypass
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-13697: undici vulnerable to cross-user information disclosure and parse-time crash via degenerate private cache directives
 
-### CWE-1321: Improperly Controlled Modification of Object Prototype Attributes ('Prototype Pollution')
+#### CWE-601
 
-- **browserslist 4.28.4 → 4.28.9** — CVE-2026-73088 (GHSA-73wf-gq98-2v4g) — Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats) _(devDep)_
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101907: Axios: maxRedirects: 0 is not enforced by the fetch adapter, allowing redirect-based SSRF
 
----
+#### CWE-693
 
-## Footnote: devDependencies (build-time only, not shipped to production)
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101899: Axios: CIDR-form NO_PROXY entries are ignored, causing proxy exclusion bypass for internal IP ranges
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101900: Axios: Fetch Adapter Header Injection via Inherited FormData getHeaders
 
-The CWE entries marked _(devDep)_ above apply only to tooling that runs at build time (Vite, esbuild,
-secretlint). They don't affect the deployed server. Included for completeness so `npm audit` is fully clean.
+#### CWE-697
 
-### CWE-22: Improper Limitation of a Pathname to a Restricted Directory _(devDep)_
+- **ip-address** 10.5.0 → 10.7.2 — fixes CVE-2026-101912: ip-address: isInSubnet() and isHostInSubnet() compare addresses of different families as if they shared an address space, allowing an allowlist check to admit an address outside its range
+- **ip-address** 10.5.0 → 10.7.2 — fixes CVE-2026-101913: ip-address: Address6.isLinkLocal() recognizes fe80::/64 rather than fe80::/10, allowing SSRF and trust-boundary bypass to on-link hosts
 
-- **esbuild** 0.27.2 → 0.27.3 (v1.2.1) — GHSA-g7r4-m6w7-qqqr — the esbuild dev server served arbitrary files
-  outside the configured root on Windows when path traversal sequences were used in asset requests. Fixed
-  properly in 0.28.1 (v1.4.0). A separate advisory (GHSA-67mh-4wv8-2f99) in the `@esbuild-kit/core-utils`
-  nested copy covered permissive cross-origin request handling (related CWE-942).
-- **vite** 5.4.21 → 8.0.9 (v1.3.0) — CVE-2026-39365 — path traversal in optimised-deps `.map` handling
-  (build-time only).
+#### CWE-703
 
----
+- **qs** 6.15.2 → 6.16.0 — fixes CVE-2026-82417: qs: Denial of Service via Attacker Controlled isBuffer
 
-_To regenerate this report, run `node scripts/cwe-report.mjs` after fetching all `v*` tags (`git fetch --tags`).
-To save a specific range: `node scripts/cwe-report.mjs v1.3.0 v1.4.0`. OSV.dev is queried live; network access
-is required._
+#### CWE-754
+
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-85014: undici vulnerable to Denial of Service via WebSocketStream unclean close
+
+#### CWE-770
+
+- **ip-address** 10.5.0 → 10.7.2 — fixes CVE-2026-101911: ip-address: Address6 builds a parse diagnostic proportional to the input with no length bound, allowing a single long string to stall or crash the process
+- **qs** 6.15.2 → 6.16.0 — fixes CVE-2026-82562: qs array-limit bypass via bracket-key comma parsing
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-84890: undici vulnerable to Denial of Service via unbounded decompression of compressed responses
+
+#### CWE-772
+
+- **undici** 7.28.0 → 6.28.0/8.10.2 — fixes CVE-2026-18149: undici vulnerable to Denial of Service via orphaned RetryHandler response body
+
+#### CWE-835
+
+- **nanoid** 6.0.0/3.3.12 → 6.0.1/3.3.18 — fixes CVE-2026-67214: nanoid: non-secure generators can loop indefinitely with negative size
+- **nanoid** 6.0.0/3.3.12 → 6.0.1/3.3.18 — fixes CVE-2026-67213: nanoid: custom generators can loop indefinitely when size is zero
+
+#### CWE-843
+
+- **ip-address** 10.5.0 → 10.7.2 — fixes CVE-2026-101912: ip-address: isInSubnet() and isHostInSubnet() compare addresses of different families as if they shared an address space, allowing an allowlist check to admit an address outside its range
+
+#### CWE-918
+
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101898: Axios: HTTP/2 adapter bypasses configured DNS lookup and proxy controls
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-75975: fast-uri vulnerable to server-side request forgery via malformed IPv6 normalization
+- **fast-uri** 3.1.4 → 3.1.7 — fixes CVE-2026-75899: fast-uri vulnerable to server-side request forgery via repeated hostname percent-decoding
+- **ip-address** 10.5.0 → 10.7.2 — fixes CVE-2026-101910: ip-address: no classifier recognizes the NAT64 local-use range 64:ff9b:1::/48, allowing SSRF and trust-boundary bypass
+- **ip-address** 10.5.0 → 10.7.2 — fixes CVE-2026-101913: ip-address: Address6.isLinkLocal() recognizes fe80::/64 rather than fe80::/10, allowing SSRF and trust-boundary bypass to on-link hosts
+
+#### CWE-1321
+
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101900: Axios: Fetch Adapter Header Injection via Inherited FormData getHeaders
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101902: Axios: Prototype-Pollution Gadget in the Default Instance Allows Inherited Object.prototype.method to Override HTTP Method
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101904: Axios: Header Injection via Inherited headers After Minimal Interceptor
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101905: Axios: Node HTTP adapter prototype-pollution gadget allows request socket hijack via inherited createConnection
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101908: Axios: Prototype pollution gadget in fetch adapter can alter outbound requests
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101909: Axios: Prototype Pollution Gadget in axios toFormData Options
+
+#### CWE-1333
+
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101903: Axios: ReDoS in fromDataURI data: URL parser freezes the Node event loop (DoS)
+- **axios** 1.18.1 → 1.20.0 — fixes CVE-2026-101906: Axios: ReDoS (O(N²)) in shouldBypassProxy host normalization, reachable via untrusted redirect Location
+
+### Development dependencies
+
+#### CWE-22
+
+- **@vitest/mocker** 4.1.10 → 5.0.0 — fixes CVE-2026-84373: Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock
+- **postcss** 8.5.18 → 8.5.28 — fixes CVE-2026-69153: PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset
+- **vitest** 4.1.10 → 5.0.0 — fixes CVE-2026-84373: Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock
+
+#### CWE-200
+
+- **postcss** 8.5.18 → 8.5.28 — fixes CVE-2026-69153: PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `from` is unset
+
+#### CWE-248
+
+- **browserslist** 4.28.4 → 4.28.9 — fixes CVE-2026-73088: Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats)
+
+#### CWE-705
+
+- **baseline-browser-mapping** 2.10.40 → 2.11.21 — fixes CVE-2026-45819: baseline-browser-mapping process termination on invalid input causes denial of service
+
+#### CWE-770
+
+- **browserslist** 4.28.4 → 4.28.9 — fixes CVE-2026-73089: Browserslist: Unbounded memory growth (no cache eviction) via distinct query results, leading to eventual OOM
+
+#### CWE-1321
+
+- **browserslist** 4.28.4 → 4.28.9 — fixes CVE-2026-73088: Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats)
+
+457 other packages bumped in this range with no known CWE fix.
+
+### Additional v1.6.0 fixes outside the npm/OSV report
+
+`proxy-addr` 2.0.7 → 2.0.8 fixed **CVE-2026-90711** (CRITICAL), but OSV.dev had no CWE classification for that advisory when checked. Patched Alpine `openssl` and `expat` packages are operating-system fixes and are outside this npm dependency report.
+
+## v1.6.0 → v1.6.1
+
+No dependency version changes.
+
+## v1.6.1 → v1.7.0
+
+No dependency version changes.
+
+## v1.7.0 → v1.7.1
+
+No dependency version changes.
+
+## v1.7.1 → v1.7.2
+
+### Production dependencies
+
+#### CWE-178
+
+- **fast-uri** 3.1.7 → 3.1.8 — fixes CVE-2026-86472: fast-uri vulnerable to inconsistent host case normalization via percent-encoded octets
+
+#### CWE-248
+
+- **engine.io** 6.6.9 → 6.6.11 — fixes CVE-2026-102599: Socket.IO: Engine.IO Protocol Revision Mismatch DoS
+- **undici** 6.28.0/8.10.2 → 6.29.0/8.11.2 — fixes CVE-2026-85024: undici vulnerable to Denial of Service via unhandled error in WebSocket permessage-deflate decompression
+- **undici** 6.28.0/8.10.2 → 6.29.0/8.11.2 — fixes CVE-2026-19534: undici vulnerable to Denial of Service via unrequested WebSocket subprotocol
+
+#### CWE-252
+
+- **undici** 6.28.0/8.10.2 → 6.29.0/8.11.2 — fixes CVE-2026-19534: undici vulnerable to Denial of Service via unrequested WebSocket subprotocol
+
+#### CWE-400
+
+- **brace-expansion** 5.0.9 → 5.0.12 — fixes CVE-2026-102276: brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion
+- **brace-expansion** 5.0.9 → 5.0.12 — fixes CVE-2026-102277: brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service
+- **brace-expansion** 5.0.9 → 5.0.12 — fixes CVE-2026-102278: brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion
+
+#### CWE-407
+
+- **brace-expansion** 5.0.9 → 5.0.12 — fixes CVE-2026-102277: brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service
+
+#### CWE-444
+
+- **undici** 6.28.0/8.10.2 → 6.29.0/8.11.2 — fixes CVE-2026-18540: undici vulnerable to downstream response splitting via retry interceptor
+
+#### CWE-674
+
+- **brace-expansion** 5.0.9 → 5.0.12 — fixes CVE-2026-102276: brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion
+- **brace-expansion** 5.0.9 → 5.0.12 — fixes CVE-2026-102278: brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion
+
+100 other packages bumped in this range with no known CWE fix.
+
+## v1.7.2 → v1.7.3
+
+### Production dependencies
+
+#### CWE-347
+
+- **node-forge** 1.4.0 → (removed) — fixes CVE-2026-33894, CVE-2026-85393: node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements
+
+1 other package bumped in this range with no known CWE fix.
+
+## v1.7.3 → v1.8.0
+
+No dependency version changes.
+
+## v1.8.0 → v1.8.1
+
+No dependency version changes.
+
+## v1.8.1 → v1.8.2
+
+No dependency version changes.
+
+## v1.8.2 → v1.8.3
+
+### Development dependencies
+
+#### CWE-524
+
+- **http-cache-semantics** 4.2.0 → (removed) — fixes CVE-2026-93748: http-cache-semantics max-stale handling can disclose cross-user cached responses
+
+96 other packages bumped in this range with no known CWE fix.
+
+## v1.8.3 → v1.9.0
+
+No dependency version changes.

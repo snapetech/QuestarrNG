@@ -1,0 +1,103 @@
+# What changed in QuestarrNG
+
+QuestarrNG is Snapetech's maintained fork of
+[Doezer/Questarr](https://github.com/Doezer/Questarr). This guide summarizes
+the main product and maintenance additions made for the fork. The
+[changelog](CHANGELOG.md) remains the complete versioned record, including
+individual fixes and security updates.
+
+The Snapetech fork was created in September 2026. The v1.5.0 release was not
+published; its completed work shipped in v1.6.0. Fork releases from v1.6.0
+through [v1.9.0](https://github.com/snapetech/QuestarrNG/releases/tag/v1.9.0)
+added the capabilities below.
+
+## Product capabilities
+
+### Library and discovery
+
+- Platform preferences now scope discovery, library filtering, adding games,
+  download searches, and import eligibility. Users can hide owned or shelved
+  titles by default and scan platform-specific local roots to reconcile files.
+- The **Playing** workflow records personal journal entries, milestones,
+  screenshots, and Steam achievements. Game details include DLC and expansion
+  entries, and discovery can use the exact release date for a selected IGDB
+  platform.
+- A global release-name blacklist applies across manual search, automatic
+  search, and AI-assisted release selection. Existing genre, year, platform,
+  and content filters continue to apply to discovery results.
+
+### Acquisition, import, and safety
+
+- Post-processing moves or copies completed downloads into configured library
+  locations and handles archive extraction. RomM imports can be mapped to
+  RomM's platform folders with configurable transfer and conflict behavior.
+- Prowlarr feed diagnostics test each enabled torrent or usenet indexer
+  separately. HTTP Prowlarr/API-key forwarding is opt-in, and indexer/download
+  diagnostics explain when credentials are withheld for an insecure transport.
+- Archive imports reject traversal and link entries and enforce configured
+  entry-count and expanded-size limits. Optional VirusTotal hash lookups and
+  local ClamAV scans can quarantine flagged files before they enter the library.
+  See the [import setup and scanning guide](IMPORTS.md) for operator steps and
+  scanner behavior.
+
+### Integrations
+
+- **Playnite:** the extension can synchronize the local library, promote
+  installed games to owned, and submit a request that enters Questarr's normal
+  search and download workflow. See the
+  [Playnite extension guide](../extensions/playnite-questarr/README.md).
+- **RomM:** matched ROM downloads can be routed to mapped RomM platform folders.
+- **SeerrNG:** the versioned provider API supplies an IGDB catalog and
+  request-scoped PC-game acquisition. It carries an external request ID and
+  selected operating system/architecture through search and download, reports
+  lifecycle status, and exposes imported files through authenticated,
+  request-scoped streaming. See the
+  [integration guide](SEERRNG-INTEGRATION.md),
+  [API reference](API.md#integration-api-external-clients), and
+  [OpenAPI contract](contracts/seerrng-v1.openapi.yaml).
+
+### Deployment and operations
+
+- SQLite remains the zero-configuration default; PostgreSQL is available as an
+  optional backend. See [database setup](DATABASE.md).
+- The maintained release image is published for `linux/amd64` and
+  `linux/arm64`. QuestarrNG also maintains a self-contained .NET 10 Windows
+  service host, a Helm chart, and home-server installation definitions.
+- Compose and Helm can run the service as a non-root user with a read-only
+  root filesystem and dropped Linux capabilities. Published images include
+  SBOM and provenance attestations. See the
+  [security overview](THREAT_MODEL.md),
+  [Proxmox guide](PROXMOX.md), and
+  [home-server app guides](HOME_SERVER_APPS.md).
+- Releases use curated user-facing notes; dependency and code scanning are
+  part of the maintained release process. See the
+  [security policy](../.github/SECURITY.md) and
+  [release-note guide](../release-notes/README.md).
+
+## Release timeline
+
+| Release         | Main additions                                                                                                                                                                                           |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1.6.0–1.6.1** | RomM import routing, Prowlarr feed diagnostics and HTTP controls, safer library and archive imports, multi-architecture release images, and fork-owned installation guidance.                            |
+| **1.7.0–1.7.3** | Exact platform release dates in the SeerrNG catalog, clearer indexer/downloader diagnostics, hardened outbound and proxy requests, the .NET 10 Windows service, and maintained release-note publication. |
+| **1.8.0–1.8.3** | Versioned SeerrNG OpenAPI contract, scoped and expiring integration keys, bounded archive extraction, rootless container settings, SBOM/provenance attestations, and dependency/security maintenance.    |
+| **1.9.0**       | Platform-scoped library and discovery behavior, the Playing journal and Steam achievements, DLC/expansion details, a release-name blacklist, and optional pre-import VirusTotal/ClamAV checks.           |
+
+For every released change, including fixes and action-required upgrade notes, use
+the [full changelog](CHANGELOG.md) and the
+[GitHub releases](https://github.com/snapetech/QuestarrNG/releases).
+
+## Current SeerrNG provider compatibility
+
+QuestarrNG 1.9.0 advertises SeerrNG `apiVersion: 1` and
+`requestContractVersion: 1`. It supports the IGDB catalog, PC acquisition,
+request retry/cancel, and imported-file streaming. The handshake reports
+emulation acquisition as unsupported; the request asset-list response reports
+`bundleSupported: false`.
+
+SeerrNG's v3.51.0 release adds PC play-time and multi-file download behavior
+that requests provider contract version 2. Until QuestarrNG implements and
+advertises that version, consumers should treat those v2-specific capabilities
+as unavailable. See the
+[SeerrNG release note](https://github.com/snapetech/seerrng/blob/main/release-notes/questarr-catalog-estimates-and-bundles.md)
+and the current [QuestarrNG provider contract](contracts/seerrng-v1.openapi.yaml).

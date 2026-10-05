@@ -1,10 +1,10 @@
-# Questarr — Product Requirements Document
+# QuestarrNG — Product Requirements Document
 
-**Version:** 1.0  
-**Date:** 2026-06-07  
-**Author:** Doezer
-**Audience:** Project owner, AI coding agents, open source contributors  
-**Horizon:** 6 months (Q3–Q4 2026)
+- **Version:** 1.1
+- **Last reviewed:** 2026-10-04
+- **Maintainer:** Snapetech QuestarrNG
+- **Audience:** Project owner, contributors, and coding agents
+- **Status:** Living product brief; planned work has no release-date commitment.
 
 ---
 
@@ -48,41 +48,45 @@ A user who wants to automate ROM downloads for retro gaming, feeding tools like 
 
 ## 4. What Exists Today
 
-Questarr is a working, production-ready application. The features below are live in the current release.
+QuestarrNG is a maintained fork of Questarr. The following capabilities are
+available in the current release; the fork's release-by-release additions are
+summarized in [FORK_CHANGES.md](FORK_CHANGES.md).
 
 ### Library Management
 
-- Add games manually, via IGDB search, or by importing from Steam wishlist
-- Game detail modal: cover art, metadata, user rating (0.5–10), hidden flag
-- Filter, sort, and search the library
-- Per-game status tracking (wanted, downloading, downloaded, etc.)
-- Platform detection (from release title, IGDB data, fallback to PC)
+- Add games manually, through IGDB discovery, from a Steam wishlist, or from a
+  scan of configured local platform roots
+- Track wanted, owned, playing, completed, and shelved titles with ratings and
+  notes; hide owned or shelved results where appropriate
+- Record Playing journal entries, milestones, screenshots, and Steam
+  achievements; view game DLC and expansions
+- Scope discovery, library views, downloads, and import eligibility by platform
 
 ### Discovery
 
-- IGDB-powered game discovery and metadata enrichment
-- Steam App ID resolution + PCGamingWiki integration
-- NexusMods trending mods per game
+- IGDB discovery and metadata enrichment, including exact platform release
+  dates, Steam App ID matching, PCGamingWiki links, and NexusMods trends
+- RSS and xREL release feeds, with platform, genre, year, and content filters
 
 ### Search & Indexers
 
-- Torznab and Newznab indexer aggregation
-- Manual search with per-release download triggers
-- Release blacklisting
-- Preferred release groups setting
+- Torznab and Newznab search, direct configuration or Prowlarr synchronization
+- Per-indexer feed diagnostics and manual per-release download actions
+- Preferred release groups/platforms and a global release-name blacklist
 
 ### Download Client Integration
 
-- qBittorrent, Transmission, rTorrent, SABnzbd, NZBGet
-- Download status tracking and progress via WebSocket
-- Auto-delete completed downloads setting
+- Supported torrent and usenet clients, including qBittorrent, Transmission,
+  rTorrent, Deluge, Synology Download Station, SABnzbd, and NZBGet
+- Download status tracking, progress updates, and configurable cleanup
+- Automated post-processing, archive extraction, and optional pre-import
+  VirusTotal or ClamAV checks
+- Optional RomM folder routing for matched ROM imports
 
 ### Automation
 
-- Scheduled auto-search for wanted games
-- Download completion checks (cron)
-- xREL release monitoring with direct "add to library" from release list
-- RSS feed monitoring
+- Scheduled search for wanted games and download-completion processing
+- xREL and RSS release monitoring with direct add-to-library actions
 
 ### Calendar
 
@@ -94,44 +98,45 @@ Questarr is a working, production-ready application. The features below are live
 
 ### Settings & Config
 
-- Per-user settings (preferred release groups, Steam sync)
-- Indexer and downloader configuration UI
-- System logs page
+- Platform and content preferences, release selection, indexer/downloader
+  configuration, and system logs
+- In-app and external notifications, including Apprise providers
+- Library and download statistics
 
 ### Infrastructure
 
-- JWT authentication (single-user)
-- SQLite database (Drizzle ORM)
-- Docker-first deployment
-- Socket.io real-time updates
-- SSRF-protected outbound fetch
-- React 18 SPA + Express REST API + TypeScript strict mode throughout
+- JWT authentication and a REST/Socket.io API
+- SQLite by default, with PostgreSQL as an optional backend
+- Docker images for `linux/amd64` and `linux/arm64`, plus Helm and home-server
+  install definitions
+- A self-contained .NET 10 Windows service host for the Node.js application
+- Rootless container options, SSRF and filesystem boundary checks, and
+  published SBOM/provenance attestations
+- Playnite integration and a versioned SeerrNG catalog/acquisition provider
 
 ---
 
-## 5. Six-Month Roadmap
+## 5. Roadmap and delivery status
 
-Features are ordered by current priority. Each section includes the user value and the scope.
-
----
-
-### P0 — Post-Processing Pipeline _(in progress)_
-
-**Problem:** After a download completes, files land wherever the download client puts them. Users currently manage file organization manually or with external scripts.
-
-**Feature:** A configurable pipeline that runs after a download is marked complete:
-
-- Copy or move files to a user-defined destination path
-- Support variable tokens in paths (e.g. `{game.title}`, `{platform}`)
-- Extract archives (`.rar`, `.zip`, nested subdirs)
-- Optional: run a custom post-processing script (hook)
-- Show post-processing status per download
-
-**Why now:** This is the single most-requested feature. Without it, the "set it and forget it" promise is incomplete — users still have to manually move files.
+This section adapts the upstream roadmap to the current QuestarrNG codebase.
+Items marked shipped are maintained capabilities; the remaining ideas are
+proposals without a promised release date.
 
 ---
 
-### P1 — Smart Game Backlog (Version-Aware Updates)
+### P0 — Post-processing pipeline _(shipped)_
+
+**Delivered:** Completed downloads can be moved or copied into configured
+library locations, archives can be extracted, and import status is tracked.
+Path and archive safety checks apply before files are written. Optional
+VirusTotal or ClamAV checks can quarantine flagged files before import.
+
+See the [import and security details](IMPORTS.md) and the
+[fork history](FORK_CHANGES.md#acquisition-import-and-safety).
+
+---
+
+### P1 — Smart game backlog (version-aware updates) _(planned)_
 
 **Problem:** Once a game is downloaded, Questarr forgets about it. Users have no way to know when a newer version (patch, repack, upgrade) becomes available on indexers.
 
@@ -146,7 +151,7 @@ Features are ordered by current priority. Each section includes the user value a
 
 ---
 
-### P2 — Direct Download Support (Real-Debrid and similar)
+### P2 — Direct download support (Real-Debrid and similar) _(proposed)_
 
 **Problem:** Some users prefer direct download services (Real-Debrid, AllDebrid, etc.) over traditional torrent/usenet pipelines — no seeding required.
 
@@ -161,38 +166,43 @@ Features are ordered by current priority. Each section includes the user value a
 
 ---
 
-### P3 — External Library Sync
+### P3 — External library sync _(partly shipped)_
 
-**Problem:** Users own games on Steam, GOG, and other platforms. Questarr currently only imports from Steam wishlists, not the actual library.
+**Shipped:** Steam wishlist import and local platform-root scanning are
+available. Playnite can synchronize its library and promote installed games.
+These features do not import a user's complete Steam or GOG owned-game library.
 
-**Feature:**
-
-- Import owned games from Steam library (via Steam API)
-- Import from GOG (if API available, otherwise file-based)
-- Filesystem scanner: detect games installed on a local path and add them to the library as "owned"
-- Mark synced games with their source; avoid duplicates across sources
-- Periodic background re-sync
+**Remaining proposal:** Import complete owned-game libraries from Steam or GOG,
+with source-aware duplicate handling and periodic synchronization if their
+available APIs and local data formats support it.
 
 **Why:** Serves the Library Centralizer persona and makes Questarr useful even for users who don't download anything.
 
 ---
 
-### P4 — Integrations with External Tools
+### P4 — Integrations with external tools _(partly shipped)_
 
 **Problem:** Self-hosters already use tools like Playnite, Gameyfin, and RomM. Questarr should fit into those ecosystems rather than compete with them.
 
 **Integrations:**
 
-- **Playnite** ✅ Shipped — a Playnite extension (`extensions/playnite-questarr/`) syncs the local library up to Questarr (matched by Steam App ID, then normalized title), can promote installed games from `wanted` to `owned`, and can request a game from Playnite's right-click menu, which adds it as `wanted` and hands it to the existing auto-search pipeline. Backed by a dedicated integration API (`/api/integration`, see `docs/API.md`) authenticated with a long-lived API key minted in Settings → Integrations, kept separate from the interactive JWT session so a leaked key cannot manage other keys or reach the rest of the app.
-- **RomM** (planned): Tag ROMs with metadata from Questarr; trigger ROM downloads via Questarr pipeline
-- **Gameyfin** (planned): Notify or sync when a new game is added/downloaded
-- **Generic webhook** (planned): POST to a user-defined URL on events (game added, download complete, post-processing done) — enables any integration not explicitly supported
+- **Playnite — shipped:** the extension synchronizes the local library, can
+  promote installed games to owned, and can submit requests into Questarr's
+  existing search/download workflow. See the
+  [Playnite guide](../extensions/playnite-questarr/README.md).
+- **RomM — shipped:** matched ROM imports can be routed to configured RomM
+  platform folders.
+- **SeerrNG — shipped:** a versioned, authenticated provider API supplies an
+  IGDB catalog and request-scoped PC-game acquisition. See
+  [SEERRNG-INTEGRATION.md](SEERRNG-INTEGRATION.md).
+- **Gameyfin and user-defined webhooks — proposals:** neither is currently a
+  supported integration.
 
 **Why:** Lowers switching cost and increases stickiness for users already in the self-hosted ecosystem.
 
 ---
 
-### P5 — Indexer Page Links
+### P5 — Indexer page links _(shipped)_
 
 **Problem:** When a user wants more context about a specific release (description, NFO, comments), they have to manually navigate to the indexer.
 
@@ -205,9 +215,10 @@ Features are ordered by current priority. Each section includes the user value a
 
 ---
 
-### P6 — PostgreSQL Support (Re-introduction)
+### P6 — PostgreSQL support _(shipped)_
 
-**Problem:** SQLite is limiting for users running Questarr in containerized or NAS environments where a shared DB or larger datasets are needed. PostgreSQL was previously supported and removed.
+SQLite remains the default database, and PostgreSQL is available as an optional
+backend. See [DATABASE.md](DATABASE.md) for setup and migration guidance.
 
 **Feature:**
 
@@ -220,9 +231,9 @@ Features are ordered by current priority. Each section includes the user value a
 
 ---
 
-### Ongoing — Quality of Life, Design & UX
+### Ongoing — quality, design, and UX
 
-Not features but a standing priority for all 6 months. In line with the project philosophy: a well-maintained side project that is useful and pleasant to use beats a bloated one.
+These are continuous product-quality goals rather than dated release promises.
 
 - Mobile responsiveness: thumb-first navigation, touch-safe density, progressive disclosure on small screens
 - Notification system improvements (granular per-event control)
@@ -247,25 +258,18 @@ The following will not be built within this roadmap and are not planned:
 
 ---
 
-## 7. Success Metrics
-
-### Growth
-
-- **Docker Hub pulls**: 200k at project start → **500k by end of roadmap** (6 months)
-- **GitHub stars**: continued growth; no hard target, trend matters more than absolute number
-- **GitHub issues / discussions**: response to every issue or question (community health)
+## 7. Success Measures
 
 ### Quality
 
-- Zero regressions on post-processing pipeline at launch
-- Test coverage maintained or improved (no coverage cliff from new features)
-- No open P0/P1 bugs older than 30 days
+- Keep release behavior and installation documentation aligned with shipped
+  versions.
+- Maintain contract tests for integrations and regression coverage for security-
+  sensitive import and download paths.
+- Publish supported architectures and release artifacts with their provenance
+  information.
 
-### Community
-
-- Pre-release testing by users for major features (post-processing, smart backlog)
-- Active engagement on Reddit posts and GitHub issues
-- Feature requests acknowledged within 48 hours
+Community growth targets are not currently maintained in this product brief.
 
 ---
 
@@ -281,10 +285,13 @@ The following will not be built within this roadmap and are not planned:
 
 ---
 
-## 9. Open Questions
+## 9. Unscheduled proposals
 
-| Question                               | Notes                                                                |
-| -------------------------------------- | -------------------------------------------------------------------- |
-| Which debrid API to support first?     | Real-Debrid has the largest user base in the community               |
-| GOG library import — API or file scan? | GOG's public API is limited; may need to read the GOG Galaxy DB file |
-| PostgreSQL migration tooling           | Provide an official migration script or leave it to the user?        |
+The following ideas need product and implementation decisions before they are
+scheduled. Their appearance here is not a commitment to ship them:
+
+- Whether to support debrid/direct-download services, and which provider to
+  support first.
+- Whether to import owned Steam or GOG libraries, and which supported APIs or
+  local data sources would be appropriate.
+- Whether to add Gameyfin or user-defined webhook integrations.

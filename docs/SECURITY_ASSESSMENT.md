@@ -1,6 +1,6 @@
 # Security Assessment
 
-This is a technical risk assessment of Questarr's most likely and impactful
+This is a technical risk assessment of QuestarrNG's most likely and impactful
 potential security problems. It is distinct from two other documents that
 cover adjacent ground and are linked rather than duplicated here:
 
@@ -9,9 +9,9 @@ cover adjacent ground and are linked rather than duplicated here:
   escalation policy.
 - [`docs/SECRETS.md`](SECRETS.md) — a full inventory of every secret/
   credential in the system, how each is stored, and how it's rotated.
-- [`docs/VEX.md`](/docs/VEX.md) — exploitability assessments for known
+- [`docs/VEX.md`](VEX.md) — exploitability assessments for known
   vulnerabilities (CVE/GHSA) reported against third-party components
-  Questarr ships. This document covers first-party design risk; VEX covers
+  QuestarrNG ships. This document covers first-party design risk; VEX covers
   third-party component vulnerabilities.
 
 Read those first for the complete credential, access-control, and
@@ -26,7 +26,7 @@ for the actor list).
 ## Methodology
 
 Each row below is a specific, source-verified risk area rated by likelihood
-and impact given Questarr's threat model — a self-hosted, typically
+and impact given QuestarrNG's threat model — a self-hosted, typically
 single-or-few-user application, often run behind a home network or reverse
 proxy rather than exposed as a multi-tenant public service. Full STRIDE-style
 modeling was judged to be more process than a small project can keep current;
@@ -63,6 +63,17 @@ this lighter table format matches the pragmatic tone of the rest of `docs/`.
 | zizmor `cache-poisoning` on `actions/setup-node` (`ci.yml`)            | zizmor's static analysis flags every job in `.github/workflows/ci.yml` that sets `cache: "npm"` on `actions/setup-node` (`secrets-scan`, `check-overrides`, `sca-scan`, `test`, `merge-test-reports`, `build`) — code executing before the cache is saved could in principle poison it for a later, more-trusted run.                                                                                                                                                                              | Low             | Low        | Accepted risk, suppressed inline (`# zizmor: ignore[cache-poisoning]`) rather than splitting cache restore/save by trust: GitHub Actions caches are scoped per-branch, so a `pull_request` run cannot write into the cache a `push`/`main` run restores from, and every `npm ci` in this workflow already runs `--ignore-scripts`, so a compromised dependency can't run install/postinstall code to tamper with the cache before it's saved. Repo also has a single maintainer with push access. Follow-up considered and declined during PR #806 review.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | `.github/workflows/ci.yml`                                                                                                                            |
 | Unauthenticated Socket.IO channel                                      | The Socket.IO server used to accept any connection and broadcast every event to it, including the live server log stream (`logLine`), notifications, and download/import progress, so anyone who could reach the port could read them without logging in.                                                                                                                                                                                                                                          | Medium          | Medium     | Fixed for 1.5.0: `io.use` in `server/socket.ts` verifies the same JWT the REST API accepts (the httpOnly auth cookie, or a bearer token passed as `auth.token` for legacy sessions) and rejects the handshake otherwise. A cookie-authenticated handshake must also come from this server's own origin (its `Host`, or `X-Forwarded-Host` behind a reverse proxy) or one listed in `ALLOWED_ORIGINS` / `APP_URL`, since WebSockets bypass CORS and a same-site page could otherwise ride the cookie. Events are still broadcast to every authenticated socket, which matches the single-user design; per-user rooms remain tracked in #1081.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `server/socket.ts`, `client/src/lib/socket.ts`                                                                                                        |
 
+## Optional pre-import scanning
+
+The VirusTotal and ClamAV checks are disabled unless an operator enables and
+configures them. VirusTotal receives a SHA-256 hash; its API key is stored
+unencrypted in `system_config`. ClamAV receives file contents over the
+configured INSTREAM TCP connection, so use a trusted network for that daemon.
+Scanner connectivity errors fail open; an incomplete ClamAV directory scan
+blocks import. These controls provide optional defense in depth and are not a
+guarantee that every file is safe. See [`docs/THREAT_MODEL.md`](THREAT_MODEL.md)
+§4.5 and [`docs/SECRETS.md`](SECRETS.md) §3 for operating details.
+
 ## Out of scope / already covered elsewhere
 
 - Full credential inventory, rotation procedures, and per-secret storage
@@ -71,8 +82,8 @@ this lighter table format matches the pragmatic tone of the rest of `docs/`.
   escalation policy: [`.github/SECURITY.md`](../.github/SECURITY.md).
 - Exploitability assessments for known vulnerabilities in third-party
   dependencies and the container base image (satisfies OSPS-VM-04.02):
-  [`docs/VEX.md`](/docs/VEX.md) and the feed itself at
-  [`security/vex/questarr.openvex.json`](/security/vex/questarr.openvex.json).
+  [`docs/VEX.md`](VEX.md) and the feed itself at
+  [`security/vex/questarr.openvex.json`](../security/vex/questarr.openvex.json).
 - System actors and data-flow diagrams referenced throughout this register:
   [`docs/ARCHITECTURE.md`](ARCHITECTURE.md).
 - Formal attack-surface analysis (trust boundaries, high-risk data flows,

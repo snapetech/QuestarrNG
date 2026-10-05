@@ -1,20 +1,20 @@
 # VEX Feed
 
-This document describes Questarr's Vulnerability Exploitability eXchange (VEX)
+This document describes QuestarrNG's Vulnerability Exploitability eXchange (VEX)
 feed: how known vulnerabilities in third-party components are tracked,
 assessed for exploitability in the context of this project, and published.
 It satisfies [OpenSSF Baseline OSPS-VM-04.02](https://baseline.openssf.org/):
-any vulnerability reported against a component Questarr ships that does not
+any vulnerability reported against a component QuestarrNG ships that does not
 actually affect the project must be recorded here with a justification,
 rather than silently ignored.
 
 This is distinct from two adjacent documents:
 
-- [`docs/SBOM.md`](/docs/SBOM.md) — the inventory of components (what's shipped).
+- [`docs/SBOM.md`](SBOM.md) — the inventory of components (what's shipped).
   The VEX feed makes exploitability statements _about_ entries in that
   inventory.
-- [`docs/SECURITY_ASSESSMENT.md`](/docs/SECURITY_ASSESSMENT.md) — a risk register
-  of Questarr's _own_ architectural/design risks (e.g. session handling,
+- [`docs/SECURITY_ASSESSMENT.md`](SECURITY_ASSESSMENT.md) — a risk register
+  of QuestarrNG's _own_ architectural/design risks (e.g. session handling,
   SSRF surface). VEX only covers vulnerabilities in third-party
   dependencies (npm packages and the `node:26-alpine` base image), identified
   by CVE/GHSA ID, not first-party design tradeoffs.
@@ -33,7 +33,7 @@ Each entry is a `statement` scoped to a `vulnerability` (CVE/GHSA ID) and a
 the published container image), with a `status` of one of:
 
 - `not_affected` — the vulnerable code path is present but not reachable or
-  not exploitable in how Questarr uses the component. Requires a
+  not exploitable in how QuestarrNG uses the component. Requires a
   `justification` (OpenVEX's fixed enum, e.g.
   `vulnerable_code_not_in_execute_path`,
   `vulnerable_code_not_present`,
@@ -65,23 +65,24 @@ path evidence and review before they are added.
 
 ## How the feed is generated and kept current
 
-1. **Scanning** — [`.github/workflows/vulnerability-scan.yml`](/.github/workflows/vulnerability-scan.yml)
+1. **Scanning** — [`.github/workflows/vulnerability-scan.yml`](../.github/workflows/vulnerability-scan.yml)
    runs on every push to `main`, on a weekly schedule, and on demand. It:
    - Runs `npm audit --omit=dev --json` against the committed
      `package-lock.json`.
    - Builds the production Docker image and scans it with
      [Trivy](https://github.com/aquasecurity/trivy), which covers both the
      npm dependency tree and OS packages in the `node:26-alpine` base image
-     (a common source of "known but unreachable" findings, since Questarr
+     (a common source of "known but unreachable" findings, since QuestarrNG
      never invokes most Alpine base-image tooling at runtime).
-   - Passes `security/vex/questarr.openvex.json` to Trivy via `--vex` so
-     previously-assessed `not_affected`/`fixed` findings are suppressed from
-     the report instead of re-flagging on every run.
+   - Passes [`security/vex/questarr.openvex.json`](../security/vex/questarr.openvex.json)
+     to Trivy via `--vex` so previously-assessed `not_affected`/`fixed`
+     findings are suppressed from the report instead of re-flagging on every
+     run.
    - Uploads the raw scan results (SARIF) to GitHub code scanning and as a
      workflow artifact for maintainer review.
 2. **Triage** — when the scan surfaces a new CVE/GHSA not already covered by
    a statement, a maintainer assesses it:
-   - If Questarr's usage of the component doesn't exercise the vulnerable
+   - If QuestarrNG's usage of the component doesn't exercise the vulnerable
      code (e.g. a CLI-only flag never invoked, a dev-only tool that never
      ships to production, an Alpine package present in the base image but
      never executed by the app), add a `not_affected` statement with a
@@ -98,12 +99,12 @@ path evidence and review before they are added.
 3. **Publishing** — the feed is committed to the repository (so it's
    versioned alongside the code it describes) and, like the SBOM, attached
    as a workflow artifact on each scan run so external consumers (e.g.
-   Dependency-Track, or anyone running Trivy/Grype against a Questarr image
+   Dependency-Track, or anyone running Trivy/Grype against a QuestarrNG image
    themselves) can pull it in with `--vex`.
 
 ## Consuming the feed
 
-To apply Questarr's exploitability assessments when scanning a Questarr
+To apply QuestarrNG's exploitability assessments when scanning a QuestarrNG
 image yourself:
 
 ```bash
@@ -116,8 +117,8 @@ Revisit this document, and add/update statements in the feed, whenever:
 
 - The vulnerability-scan workflow flags a new CVE/GHSA not yet covered.
 - A dependency named in an existing `not_affected`/`affected` statement is
-  upgraded, removed, or its usage in Questarr changes such that the
+  upgraded, removed, or its usage in QuestarrNG changes such that the
   justification no longer holds (re-verify or flip the statement to
   `fixed`).
 - The base image (`node:26-alpine`) digest pinned in
-  [`Dockerfile`](/Dockerfile) is bumped.
+  [`Dockerfile`](../Dockerfile) is bumped.

@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 User-facing pull requests add validated fragments under [`release-notes/`](../release-notes/).
 The release workflow adds those fragments to the versioned release notes and
 Discord announcement while this file remains the chronological changelog.
+For a reader-oriented summary of the Snapetech fork's additions since the
+upstream baseline, see [What changed in QuestarrNG](FORK_CHANGES.md).
 
 ## [1.9.0] - 2026-10-04
 
@@ -18,7 +20,7 @@ Discord announcement while this file remains the chronological changelog.
 
 #### Security
 
-- **Imports:** Optional VirusTotal hash lookups and local ClamAV scans run before downloads are unpacked or moved into the library. Flagged files are quarantined and create a Security Alert instead of being imported.
+- **Imports:** Optional VirusTotal hash lookups and local ClamAV scans run before downloads are unpacked or moved into the library. Flagged files are quarantined and create a Security Alert instead of being imported. See the [import and scanning guide](IMPORTS.md).
 
 ## [1.8.3] - 2026-10-03
 

@@ -1,6 +1,6 @@
 # System Architecture & Actors
 
-This document describes Questarr's system design: the actors (subsystems and
+This document describes QuestarrNG's system design: the actors (subsystems and
 external entities that can influence one another) and the data flows between
 them. It complements [`CLAUDE.md`](../CLAUDE.md), which covers code-level
 conventions rather than system design, and [`docs/API.md`](API.md) /
@@ -13,7 +13,7 @@ how data flows between existing actors.
 
 ## 1. Overview
 
-Questarr is a three-layer TypeScript application in a single `package.json`
+QuestarrNG is a three-layer TypeScript application in a single `package.json`
 (not a monorepo):
 
 - **`/client`** — a React 18 single-page app (Wouter routing, TanStack Query
@@ -38,14 +38,17 @@ of the system — by writing data, triggering a request, or emitting an event.
 | Server — routes (`server/routes.ts`, `server/steam-routes.ts`, `server/pcgamingwiki-router.ts`, `server/routes/integration.ts`, `server/routes/api-keys.ts`) | Validates input, orchestrates business logic                                               | Storage layer, downloaders, search, Socket.io                                                                                                                             |
 | Server — `auth.ts`                                                                                                                                           | Issues/verifies JWTs, hashes passwords, mints/validates integration API keys               | Storage (`system_config` for the JWT secret; `api_keys` table), request `req.user`                                                                                        |
 | Playnite extension (`extensions/playnite-questarr/`)                                                                                                         | External couch-PC client                                                                   | Server, via `/api/integration` (through an API key, not a JWT) — pushes the local library, requests games                                                                 |
-| Server — `storage.ts` (Drizzle ORM)                                                                                                                          | Sole writer/reader of the SQLite DB                                                        | SQLite database                                                                                                                                                           |
-| SQLite database                                                                                                                                              | Persists all app state                                                                     | Read by every server module via `storage.ts`                                                                                                                              |
+| SeerrNG server                                                                                                                                               | External catalog and PC-acquisition client                                                 | Server, via the versioned `/api/integration/seerrng/v1` provider API and a scoped integration key or JWT                                                                  |
+| Server — `storage.ts` (Drizzle ORM)                                                                                                                          | Sole application reader/writer for the configured relational database                      | SQLite or PostgreSQL database                                                                                                                                             |
+| SQLite / PostgreSQL database                                                                                                                                 | Persists all app state                                                                     | Read and written by server modules through `storage.ts`                                                                                                                   |
 | Server — `ssrf.ts` (`safeFetch`)                                                                                                                             | Validates and pins outbound URLs                                                           | Every outbound HTTP(S) call to indexers, downloaders, and most metadata services                                                                                          |
 | Server — `cron.ts` (scheduler)                                                                                                                               | Runs unattended background jobs                                                            | Storage, IGDB, indexers (via `search.ts`), downloaders, Socket.io                                                                                                         |
 | Server — `socket.ts` (Socket.io)                                                                                                                             | Pushes real-time events                                                                    | Client SPA (broadcast to authenticated sockets)                                                                                                                           |
 | Server — `search.ts`                                                                                                                                         | Orchestrates indexer search, applies filtering/dedup                                       | Torznab/Newznab indexers (read), routes/cron (results)                                                                                                                    |
 | Server — `downloaders.ts` (`DownloaderManager`)                                                                                                              | Abstracts the 5 download-client integrations                                               | qBittorrent/Transmission/rTorrent/SABnzbd/NZBGet (write: submit; read: status)                                                                                            |
 | Server — `library-scanner.ts` / `root-folders.ts`                                                                                                            | Discovers games already on disk in user-configured root folders (outside the library root) | Reads the local filesystem directly (not via `safeFetch` — local paths, not URLs); queries IGDB for matching; writes `games`/`game_files`/`root_folders` via `storage.ts` |
+| Server — `ImportManager` / `SecurityScanService`                                                                                                             | Plans and performs imports; optionally scans downloads before they enter a library         | Configured PC library or RomM folder; VirusTotal hash lookup; configured ClamAV daemon; quarantine folder                                                                 |
+| RomM library folders (shared filesystem)                                                                                                                     | ROM destination for configured platform mappings                                           | Read/write filesystem operations from the QuestarrNG server; QuestarrNG does not call the RomM API                                                                        |
 | IGDB (via Twitch OAuth)                                                                                                                                      | External game-metadata provider                                                            | Server, via `server/igdb.ts` (through `safeFetch`) — read-only queries; also drives `cron.ts::checkGameUpdates`                                                           |
 | HowLongToBeat                                                                                                                                                | External gameplay-length provider                                                          | Server, via `server/hltb.ts` (through `safeFetch`)                                                                                                                        |
 | NexusMods                                                                                                                                                    | External mod-listing provider                                                              | Server, via `server/nexusmods.ts` (through `safeFetch`)                                                                                                                   |
@@ -54,6 +57,8 @@ of the system — by writing data, triggering a request, or emitting an event.
 | Torznab/Newznab indexers (user-configured)                                                                                                                   | External release-search providers                                                          | Server, via `search.ts` (through `safeFetch`); user-supplied URL/API key                                                                                                  |
 | qBittorrent / Transmission / rTorrent / SABnzbd / NZBGet (user-configured)                                                                                   | External download clients                                                                  | Server, via `downloaders.ts` (through `safeFetch`); user-supplied host/credentials                                                                                        |
 | xREL.to                                                                                                                                                      | External scene-release monitor                                                             | Server, via `server/xrel.ts`, driven by `cron.ts::checkXrelReleases`                                                                                                      |
+| VirusTotal                                                                                                                                                   | Optional hash-reputation lookup                                                            | Server sends a file's SHA-256 hash over HTTPS; file contents are not uploaded                                                                                             |
+| ClamAV daemon (user-configured)                                                                                                                              | Optional local/network malware scanner                                                     | Server streams file contents over ClamAV's INSTREAM protocol to the configured, DNS-validated address                                                                     |
 
 ## 3. High-level data flow
 
@@ -74,9 +79,11 @@ flowchart TB
         Socket["socket.ts (Socket.io)"]
         SearchOrch["search.ts (indexer orchestration)"]
         DLManager["downloaders.ts (DownloaderManager)"]
+        Import["ImportManager"]
+        Scan["SecurityScanService"]
     end
 
-    DB[("SQLite (Drizzle)")]
+    DB[("SQLite or PostgreSQL (Drizzle)")]
 
     subgraph Metadata["Metadata & Discovery Services"]
         IGDB["IGDB (Twitch OAuth)"]
@@ -98,8 +105,23 @@ flowchart TB
         NZB["NZBGet"]
     end
 
+    subgraph Integrations["External clients and import targets"]
+        Playnite["Playnite extension"]
+        SeerrNG["SeerrNG"]
+        RomM["RomM library folder (shared mount)"]
+        PCGames["PC game library folder"]
+        Quarantine["Quarantine folder"]
+    end
+
+    subgraph Scanners["Optional malware scanners"]
+        VT["VirusTotal (SHA-256 lookup)"]
+        ClamAV["ClamAV daemon (INSTREAM)"]
+    end
+
     User <--> UI
     UI <--> Routes
+    Playnite <--> Routes
+    SeerrNG <--> Routes
     Routes --> Auth
     Routes --> Storage
     Storage <--> DB
@@ -108,6 +130,14 @@ flowchart TB
     SSRF --> Torznab
     Routes --> DLManager
     DLManager --> SSRF
+    DLManager --> Import
+    Import --> Scan
+    Scan -->|hash only| VT
+    Scan -->|file stream| ClamAV
+    Scan -->|flagged| Quarantine
+    Scan -->|clear or scans disabled| Import
+    Import --> PCGames
+    Import --> RomM
     SSRF --> QB
     SSRF --> TR
     SSRF --> RT
@@ -140,7 +170,7 @@ sequenceDiagram
     participant S as search.ts
     participant I as Torznab/Newznab Indexers
     participant D as DownloaderManager
-    participant DB as SQLite
+    participant DB as SQLite/PostgreSQL
 
     U->>C: Click "Search" on a game
     C->>R: GET /api/indexers/search (JWT)
@@ -157,11 +187,51 @@ sequenceDiagram
     Note over R,DB: cron.ts::checkDownloadStatus polls the downloader every minute and emits downloadUpdate over Socket.io on status change
 ```
 
+### 4.2 Example flow: completed download → scan → library import
+
+```mermaid
+sequenceDiagram
+    participant C as Download client
+    participant R as cron.ts / ImportManager
+    participant S as SecurityScanService
+    participant V as VirusTotal (optional)
+    participant A as ClamAV (optional)
+    participant D as PC library or RomM folder
+    participant Q as Quarantine folder
+
+    C-->>R: Completed download at configured path
+    R->>S: Scan before import
+    opt VirusTotal enabled
+        S->>V: HTTPS lookup by SHA-256 hash only
+        V-->>S: clean, flagged, unknown, or error
+    end
+    opt ClamAV enabled
+        S->>A: Stream files using INSTREAM
+        A-->>S: clean, infected, or error
+    end
+    alt Blocking result
+        S-->>R: Block with scanner reason
+        R->>Q: Move the download out of the library
+        R-->>R: Mark quarantined and create a Security Alert
+    else No blocking result or scanning disabled
+        S-->>R: Continue import
+        R->>D: Move or copy into the selected destination
+    end
+```
+
+VirusTotal receives the selected file's hash rather than its contents. ClamAV
+receives file contents when enabled. A flagged download is moved to a sibling
+`.questarr-quarantine` directory and cannot be imported through the normal
+review route. See [`docs/THREAT_MODEL.md`](THREAT_MODEL.md) §4.5 for scanner
+failure and partial-scan behavior.
+
 ## 5. Request/response flow
 
-Every REST call follows the same path: **Client → routes (`server/routes.ts`
-et al., validated via `express-validator`/Zod) → `storage.ts` (Drizzle ORM
-queries against `shared/schema.ts`) → JSON response.** Routes never touch
+JSON REST calls follow the same path: **Client or integration → routes
+(`server/routes.ts` et al., validated via `express-validator`/Zod) →
+`storage.ts` (Drizzle ORM queries against `shared/schema.ts`) → JSON response.**
+The SeerrNG asset-streaming route is the exception: it streams a registered
+imported file after ownership and path checks. Routes never touch
 the database directly — all reads/writes go through `storage.ts`, which is
 the only module importing the Drizzle `db` client for application data.
 
@@ -175,7 +245,7 @@ the handshake is rejected with "Authentication required". Once connected,
 `io.emit(type, payload)` — a broadcast to every authenticated socket, with
 no per-user rooms (a `TODO` in `cron.ts` flags this — see
 `server/cron.ts:978,1045`; tracked in #1081). This is consistent with §9:
-Questarr's supported deployment is one trusted operator per instance, so a
+QuestarrNG's supported deployment is one trusted operator per instance, so a
 cross-account broadcast is not a hardened boundary today and isn't being
 prioritized as one. Two event types are emitted today:
 
@@ -226,7 +296,7 @@ default 24) tracked via `userSettings.lastSteamSync`.
   metadata/broadcast ranges unconditionally, and re-validates every resolved
   IP to guard against DNS rebinding (`server/ssrf.ts:4-18,181-249`).
   `allowPrivate` defaults to `true` (`server/ssrf.ts:19-22,86`), i.e. private/
-  loopback ranges are reachable by design — Questarr is meant to be
+  loopback ranges are reachable by design — QuestarrNG is meant to be
   self-hosted alongside indexers/downloaders that often live on the same
   LAN.
 - `server/igdb.ts` also routes its Twitch/IGDB requests through `safeFetch`,
@@ -240,7 +310,7 @@ data flows, and the unauthenticated-route inventory).
 
 ## 9. Multi-user status
 
-**Questarr is not, and is not planned to become, a multi-user application
+**QuestarrNG is not, and is not planned to become, a multi-user application
 for the foreseeable future.** The supported deployment is one trusted
 operator per instance (see [`docs/PRD.md`](PRD.md) §6 Non-Goals and §8
 Technical Constraints, and [`../GOAL-product.md`](../GOAL-product.md)).
@@ -274,7 +344,7 @@ to eliminate wholesale:
 **For review purposes:** a finding that one authenticated account can read
 or influence another account's data on the same instance is not, by
 itself, a release-blocking vulnerability under this deployment model —
-Questarr has exactly one intended operator per instance. It's still fine
+QuestarrNG has exactly one intended operator per instance. It's still fine
 to close such a gap opportunistically when already touching that code
 (consistency and defense-in-depth have value even here), but it should not
 be treated as urgent, and should not be used to justify widening a PR's

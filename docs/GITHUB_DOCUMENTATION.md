@@ -1,26 +1,63 @@
 # GitHub Documentation Map (Canonical)
 
-This file is the single entry point for GitHub-facing documentation in this repository.
+This file is the entry point for user, operator, contributor, and security
+documentation in this repository.
 
-- Product overview and setup: [`README.md`](../README.md)
+## Product and releases
+
+- Product overview and installation: [`README.md`](../README.md)
+- Snapetech fork additions since the upstream baseline:
+  [`docs/FORK_CHANGES.md`](./FORK_CHANGES.md)
+- Download post-processing, RomM routing, and pre-import security scans:
+  [`docs/IMPORTS.md`](./IMPORTS.md)
+- Versioned release history: [`docs/CHANGELOG.md`](./CHANGELOG.md)
+- Release-note fragment format and preview command:
+  [`release-notes/README.md`](../release-notes/README.md)
+- Product direction and shipped-versus-planned status:
+  [`docs/PRD.md`](./PRD.md)
+
+## Install and operate
+
+- Database backends and SQLite-to-PostgreSQL migration:
+  [`docs/DATABASE.md`](./DATABASE.md)
+- Legacy PostgreSQL-to-SQLite migration:
+  [`docs/MIGRATION.md`](./MIGRATION.md)
+- Reverse proxy and subdirectory deployment:
+  [`docs/REVERSE_PROXY.md`](./REVERSE_PROXY.md)
+- Proxmox VE LXC deployment:
+  [`docs/PROXMOX.md`](./PROXMOX.md)
+- Unraid, CasaOS, Umbrel, Cosmos Cloud, and Home Assistant definitions:
+  [`docs/HOME_SERVER_APPS.md`](./HOME_SERVER_APPS.md)
+- Supported indexers and downloader behavior:
+  [`docs/DOWNLOADERS_COMPATIBILITY.md`](./DOWNLOADERS_COMPATIBILITY.md)
+
+## Integrate and develop
+
+- REST and Socket.io reference, including both integration APIs:
+  [`docs/API.md`](./API.md)
+- SeerrNG setup, authentication, request lifecycle, and compatibility:
+  [`docs/SEERRNG-INTEGRATION.md`](./SEERRNG-INTEGRATION.md)
+- Machine-readable SeerrNG provider contract:
+  [`docs/contracts/seerrng-v1.openapi.yaml`](./contracts/seerrng-v1.openapi.yaml)
+- Playnite library synchronization and request extension:
+  [`extensions/playnite-questarr/README.md`](../extensions/playnite-questarr/README.md)
+- System architecture and background actors:
+  [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)
 - Contribution guide: [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md)
+- Code of conduct: [`.github/CODE_OF_CONDUCT.md`](../.github/CODE_OF_CONDUCT.md)
+
+## Security and supply chain
+
 - Security policy and reporting: [`.github/SECURITY.md`](../.github/SECURITY.md)
-- API reference: [`docs/API.md`](./API.md), for the REST/Socket.io interface reference
-- Architecture: [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md), for a system architecture and actor overview
-- Changelog: [`docs/CHANGELOG.md`](./CHANGELOG.md)
-- Release-note fragment guide: [`release-notes/README.md`](../release-notes/README.md)
-- Migration notes: [`docs/MIGRATION.md`](./MIGRATION.md), for migration from PostgreSQL to SQLite in v1.1
-- Database: [`docs/DATABASE.md`](./DATABASE.md), for running Questarr on the optional PostgreSQL backend instead of SQLite
-- Reverse proxy / subdirectory deployment: [`docs/REVERSE_PROXY.md`](./REVERSE_PROXY.md), for serving Questarr from a path like `/Questarr` behind nginx/Traefik/Caddy
-- Proxmox VE deployment: [`docs/PROXMOX.md`](./PROXMOX.md), for deploying Questarr into a Proxmox LXC container without Docker
-- Home server app definitions: [`docs/HOME_SERVER_APPS.md`](./HOME_SERVER_APPS.md), for the UNRAID/CasaOS/Umbrel/Cosmos Cloud/Home Assistant install definitions
-- Playnite extension: [`extensions/playnite-questarr/README.md`](../extensions/playnite-questarr/README.md), for syncing your Playnite library and requesting games from the couch
-- Security model and operations:
-  - [`docs/THREAT_MODEL.md`](./THREAT_MODEL.md), for the attack surface analysis and security architecture
-  - [`docs/SECURITY_ASSESSMENT.md`](./SECURITY_ASSESSMENT.md), security risk assessment.
-  - [`docs/VULNERABILITY_MANAGEMENT.md`](./VULNERABILITY_MANAGEMENT.md), for the SCA/SAST remediation policy and release gates
-  - [`docs/SECRETS.md`](./SECRETS.md), for details on how API keys, indexer/downloader credentials, and other secrets are stored and managed.
-  - [`docs/SBOM.md`](./SBOM.md): Every published image ships with a Software Bill of Materials.
-  - [`docs/VEX.md`](./VEX.md), for details on the Questar's Vulnerability Exploitability Exchange feed
-  - [`docs/DEPENDENCIES.md`](./DEPENDENCIES.md), for how dependencies are selected, obtained, and tracked.
-- `.github/CODE_OF_CONDUCT.md` (community health file)
+- Threat model: [`docs/THREAT_MODEL.md`](./THREAT_MODEL.md)
+- Security assessment: [`docs/SECURITY_ASSESSMENT.md`](./SECURITY_ASSESSMENT.md)
+- Vulnerability management and release gates:
+  [`docs/VULNERABILITY_MANAGEMENT.md`](./VULNERABILITY_MANAGEMENT.md)
+- Secret storage and rotation: [`docs/SECRETS.md`](./SECRETS.md)
+- Software bill of materials: [`docs/SBOM.md`](./SBOM.md)
+- Vulnerability Exploitability eXchange:
+  [`docs/VEX.md`](./VEX.md)
+- Dependency policy: [`docs/DEPENDENCIES.md`](./DEPENDENCIES.md)
+- Dependency fixes by release:
+  [`docs/CVE_FIXES_BY_RELEASE.md`](./CVE_FIXES_BY_RELEASE.md) and
+  [`docs/CWE_FIXES_BY_RELEASE.md`](./CWE_FIXES_BY_RELEASE.md)

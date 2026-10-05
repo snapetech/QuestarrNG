@@ -2,10 +2,19 @@
 
 ## Snapetech QuestarrNG fork
 
-This fork adds the SeerrNG catalog and acquisition contract. Use
-`ghcr.io/snapetech/questarrng:latest` or the Compose file in this repository;
-the upstream Questarr image does not contain the SeerrNG integration routes.
-The fork image is published for `linux/amd64` and `linux/arm64` from `main`.
+QuestarrNG is Snapetech's maintained fork of
+[Doezer/Questarr](https://github.com/Doezer/Questarr). It keeps the upstream
+game-management foundation and adds a substantial set of fork-maintained
+features: platform-aware discovery and library views, richer play tracking,
+post-processing and RomM imports, Playnite and SeerrNG integrations, optional
+PostgreSQL, and hardened multi-architecture releases. See
+[What changed in QuestarrNG](docs/FORK_CHANGES.md) for the overview and
+[the changelog](docs/CHANGELOG.md) for the release-by-release history.
+
+Use `ghcr.io/snapetech/questarrng:latest` or the Compose file in this
+repository; the upstream Questarr image does not contain the SeerrNG provider
+routes. The fork image is published for `linux/amd64` and `linux/arm64` from
+`main`.
 
 Support QuestarrNG on [Ko-fi](https://ko-fi.com/snapetech).
 
@@ -29,19 +38,41 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 
 ## Table of Contents
 
-- [Questarr](#questarr)
-  - [Table of Contents](#table-of-contents)
-  - [List of features](#list-of-features)
-  - [Installation](#installation)
-  - [Screenshots](#screenshots)
-  - [Tech Stack](#tech-stack)
-  - [Configuration](#configuration)
-  - [Roadmap](#roadmap)
-  - [Troubleshooting](#troubleshooting)
-  - [Project Security \& Documentation](#project-security--documentation)
-  - [Contributing](#contributing)
-  - [License](#license)
-  - [Acknowledgments](#acknowledgments)
+- [What this fork adds](#what-this-fork-adds)
+- [List of features](#list-of-features)
+- [Installation](#installation)
+- [Screenshots](#screenshots)
+- [Tech Stack](#tech-stack)
+- [Configuration](#configuration)
+- [Roadmap](#roadmap)
+- [Troubleshooting](#troubleshooting)
+- [Project Security & Documentation](#project-security--documentation)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+
+## What this fork adds
+
+QuestarrNG continues to share its foundation with upstream Questarr. Its
+Snapetech-maintained work has expanded the product in several areas:
+
+- **A richer game library:** platform-scoped discovery and filters, local
+  library scanning, a Playing page with journal entries, milestones, screenshots
+  and Steam achievements, plus DLC and expansion details.
+- **A complete acquisition path:** Prowlarr and Torznab/Newznab search,
+  configurable release selection, download monitoring, automated post-
+  processing, safer archive extraction, and optional VirusTotal or ClamAV
+  checks before import.
+- **External library workflows:** mapped RomM imports, a Playnite extension
+  for library sync and request-to-download, and a versioned SeerrNG catalog and
+  PC acquisition API.
+- **More deployment choices:** optional PostgreSQL alongside the default
+  SQLite setup, multi-architecture images, a Windows service installer, and
+  rootless container configurations with release attestations.
+
+The [fork changes guide](docs/FORK_CHANGES.md) summarizes these additions and
+their release history. The [documentation map](docs/GITHUB_DOCUMENTATION.md)
+links to setup, integration, API, database, and security guides.
 
 ## List of features
 
@@ -53,9 +84,10 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 | **Download Management**     | Integrates with indexers and downloaders with optional auto-download and automatic post-processing import, password-protected archive handling, optional pre-import VirusTotal/ClamAV scanning and optional, experimental "Powered by AI" workflow to improve game matches (using Typesafe's Jev, in BYOK)                            |
 | **Real-time Notifications** | In-app alerts for releases and downloads, plus external notifications to 100+ providers via [Apprise](https://github.com/caronc/apprise).                                                                                                                                                                                             |
 | **Rich Game Metadata**      | Details enriched with IGDB, Steam, PCGamingWiki, and NexusMods, including trending mods where available.                                                                                                                                                                                                                              |
-| **Statistics**              | Visualize collection statistics with Discord sharing support. 🚧                                                                                                                                                                                                                                                                      |
+| **Statistics**              | Review collection and download statistics, with sharing to Discord where supported.                                                                                                                                                                                                                                                   |
 | **Security Focused**        | General security hardening, SSL support, and [OpenSSF certified](https://www.bestpractices.dev/projects/13450) — see [SECURITY.md](.github/SECURITY.md) for the full process.                                                                                                                                                         |
-| **Integrations**            | One-click install on UNRAID, CasaOS, Umbrel and Cosmos Cloud, a Home Assistant add-on, a Windows installer, and a Helm chart for Kubernetes, plus a [Playnite extension](extensions/playnite-questarr/README.md) to sync your library and request games from the couch. 🚧                                                            |
+| **Deployment**              | Install through Unraid, CasaOS, Umbrel, Cosmos Cloud, Home Assistant, Windows, or Kubernetes; use published amd64/arm64 images and optional rootless container settings.                                                                                                                                                              |
+| **Integrations**            | Connect Playnite, RomM, and SeerrNG using the documented integration paths.                                                                                                                                                                                                                                                           |
 | **Design**                  | Clean, minimalist, dark-first UI built with mobile usage in mind.                                                                                                                                                                                                                                                                     |
 
 ### Supported Indexers/Downloaders
@@ -73,7 +105,7 @@ A video game management application inspired by the -Arr apps (Sonarr, Radarr, P
 
 QuestarrNG provides SeerrNG with an IGDB catalog and request-scoped PC-game
 acquisition through a versioned, authenticated integration API. The contract
-keeps SeerrNG's request ID and selected OS/architecture attached to Questarr's
+keeps SeerrNG's request ID and selected OS/architecture attached to QuestarrNG's
 tracked game and download records. See [docs/API.md](docs/API.md) for the
 catalog, status, retry, cancellation, and imported-file streaming routes.
 Cancellation stops only downloads safely correlated to the SeerrNG request;
@@ -82,16 +114,30 @@ Questarr restarts during a handoff before recording its download, it pauses the
 request for a duplicate-download check before retrying or cancelling. The retry
 or cancel endpoint returns `409` with `confirmationRequired` until the caller
 checks the download queue/history and sends `confirmNoExistingDownload: true`.
+QuestarrNG 1.9.0 advertises provider contract v1; emulation acquisition and
+multi-file bundle delivery are not currently supported. See the
+[compatibility guide](docs/SEERRNG-INTEGRATION.md#current-capability-status)
+for version details.
+
+### Import processing and file safety
+
+Post-processing can move, copy, hardlink, or symlink completed downloads into
+your PC library, unpack supported archives, or route matched ROM imports into
+RomM folders. Optional VirusTotal hash checks and ClamAV scans run before
+unpacking or import. The [import guide](docs/IMPORTS.md) explains setup,
+platform-folder mappings, scanner behavior, and Pending Imports review.
 
 ## Installation
 
-Docker is the easiest way to deploy Questarr with all dependencies included. Questarr uses a SQLite database which is self-contained in the application container.
+Docker is the easiest way to deploy QuestarrNG with all dependencies included.
+SQLite is the default database; PostgreSQL is available as an optional backend.
+See [docs/DATABASE.md](docs/DATABASE.md) before configuring PostgreSQL.
 
-The optional Windows installer runs Questarr as a Windows service and bundles
-its service host as a self-contained .NET 10 LTS executable. Questarr itself is
+The optional Windows installer runs QuestarrNG as a Windows service and bundles
+its service host as a self-contained .NET 10 LTS executable. QuestarrNG itself is
 a Node.js application; the installer does not require a separate .NET runtime.
 
-**Supported architectures:** released Docker images are published for `linux/amd64` and `linux/arm64`, so Questarr runs on a Raspberry Pi 4/5 with a 64-bit OS, other 64-bit ARM SBCs, and ARM-based NAS boxes as well as on x86 hardware. Docker selects the right architecture automatically — the commands below are identical on every platform. (32-bit ARM, e.g. `armv7`/a 32-bit OS on Raspberry Pi 3 and earlier, is not supported. The [Home Assistant add-on](#home-assistant-add-on) is `amd64`-only.)
+**Supported architectures:** released QuestarrNG Docker images are published for `linux/amd64` and `linux/arm64`, so the app runs on a Raspberry Pi 4/5 with a 64-bit OS, other 64-bit ARM SBCs, and ARM-based NAS boxes as well as on x86 hardware. Docker selects the right architecture automatically — the commands below are identical on every platform. (32-bit ARM, e.g. `armv7`/a 32-bit OS on Raspberry Pi 3 and earlier, is not supported. The [Home Assistant add-on](#home-assistant-add-on) is `amd64`-only.)
 
 ### Option 1: One-liner (Simplest but minimal)
 
@@ -155,7 +201,7 @@ the app as the configured `PUID:PGID` directly, so prepare the bind-mounted
 
 Prefer running Questarr as a native Windows service instead of Docker? Download
 `QuestarrSetup-<version>-windows-x64.exe` from the
-[latest GitHub release](https://github.com/Doezer/Questarr/releases/latest) and
+[latest QuestarrNG release](https://github.com/snapetech/QuestarrNG/releases/latest) and
 run it. The installer bundles Node.js, installs Questarr as a Windows service
 (`Questarr.Service.exe`), and starts it automatically — open
 `http://localhost:5000` once it finishes.
@@ -476,19 +522,13 @@ full setup instructions (nginx, Traefik, Caddy).
 
 ## Roadmap
 
-Based on the [Product Requirements Document](docs/PRD.md), here's what's planned over the next 6 months, in priority order:
-
-- ✅ **P0 — Post-Processing Pipeline** : Move/copy completed downloads to a destination path, extract archives — closing the "set it and forget it" loop.
-- **P1 — Smart Game Backlog**: Track the version of each downloaded game and notify (or auto-download) when a newer release shows up on indexers.
-- **P2 — Direct Download Support**: Add debrid services (Real-Debrid and similar) as a downloader option, no seeding required.
-- **P3 — External Library Sync**: Import owned games from Steam/GOG libraries and local filesystem scans, not just wishlists.
-- **P4 — Integrations with External Tools**: ✅ Playnite extension shipped (library sync, request-to-download); RomM, Gameyfin, and a generic webhook for anything not explicitly supported are still planned.
-- ✅ **P5 — Indexer Page Links**: A "View on indexer" link on search results and downloads.
-- ✅ **P6 — PostgreSQL Support**: PostgreSQL is available as an optional backend, with SQLite remaining the zero-config default.
-
-**Ongoing:** mobile responsiveness, search UX, performance, and security improvements.
-
-See the full [PRD](docs/PRD.md) for problem statements, detailed scope, and non-goals.
+The original upstream roadmap is now partly delivered and partly superseded by
+fork work. Post-processing, indexer links, optional PostgreSQL, RomM import
+routing, and the Playnite and SeerrNG integrations are shipped. The remaining
+product proposals are version-aware game upgrades, debrid/direct-download
+providers, importing owned Steam or GOG libraries, and possible Gameyfin or
+user-defined webhook integrations. The maintained [PRD](docs/PRD.md) marks
+what is shipped, what remains, and which ideas have no delivery commitment.
 
 ## Troubleshooting
 
@@ -504,12 +544,14 @@ If you run into an issue, go to the **Logs** page and click **Send Logs** before
 
 ## Project Security & Documentation
 
-- Start with [docs/GITHUB_DOCUMENTATION.md](docs/GITHUB_DOCUMENTATION.md) for the canonical documentation map.
+- [What changed in the fork](docs/FORK_CHANGES.md) summarizes the maintained additions since the upstream baseline.
+- [Import processing and security scans](docs/IMPORTS.md) explains RomM routing, archive handling, and optional malware checks.
+- Start with [docs/GITHUB_DOCUMENTATION.md](docs/GITHUB_DOCUMENTATION.md) for the full documentation map.
 
 ## Contributing
 
 - See [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines on how to contribute to this project.
-- See [MAINTAINERS.md](/.github/MAINTAINERS.md) for how repository access and release permissions are managed.
+- See [MAINTAINERS.md](.github/MAINTAINERS.md) for how repository access and release permissions are managed.
 
 ### Contributors
 
@@ -521,7 +563,7 @@ Made with [contrib.rocks](https://contrib.rocks).
 
 ## Legal Disclaimer
 
-Questarr is a self-hosted game manager designed solely for organizing, tracking, and automating game libraries using user-provided data and metadata APIs (such as IGDB). Questarr does not host, distribute, or provide any copyrighted game content, ROMs, or download links. It is a technology-neutral tool: any indexers, download clients, or sources you configure are chosen and operated entirely by you. You are solely responsible for ensuring that your use of Questarr, and any content you access or download through third-party services you configure, complies with all applicable laws and the terms of service of those third parties.
+QuestarrNG is a self-hosted game manager designed solely for organizing, tracking, and automating game libraries using user-provided data and metadata APIs (such as IGDB). QuestarrNG does not host, distribute, or provide any copyrighted game content, ROMs, or download links. It is a technology-neutral tool: any indexers, download clients, or sources you configure are chosen and operated entirely by you. You are solely responsible for ensuring that your use of QuestarrNG, and any content you access or download through third-party services you configure, complies with all applicable laws and the terms of service of those third parties.
 
 ## License
 

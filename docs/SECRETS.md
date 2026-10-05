@@ -1,6 +1,6 @@
 # Secrets & Credentials Management
 
-This document describes every place Questarr stores or handles sensitive
+This document describes every place QuestarrNG stores or handles sensitive
 values — environment configuration, third-party API credentials, and the
 indexer/downloader/user credentials that users enter through the app — how
 access to them is controlled, and how they get rotated. It reflects the
@@ -27,6 +27,11 @@ rather than starting with an invalid configuration.
 | `NODE_ENV`                              | `development` \| `production` \| `test`                       | No (defaults to `production`)                                                                                                                                                                                                 |
 | `SQLITE_DB_PATH`                        | Path to the SQLite database file                              | No (default `sqlite.db`)                                                                                                                                                                                                      |
 | `CREDENTIALS_ENCRYPTION_KEY`            | AES-256 key encrypting indexer/downloader credentials at rest | No — auto-generated (32 random bytes) and persisted to the DB if unset; must be a 64-char hex string if provided (§4)                                                                                                         |
+
+For the optional PostgreSQL backend, set `DB_DIALECT=postgres` and supply
+`DATABASE_URL`. That connection string contains the database username and
+password; keep it out of source control and protect the environment file or
+secret store that supplies it. See [`docs/DATABASE.md`](DATABASE.md).
 
 A legacy hardcoded default, `"questarr-default-secret-change-me"`, is
 explicitly rejected by a Zod `.refine()` (`server/config.ts:18-24`) so the
@@ -64,26 +69,34 @@ existing session.
 
 ## 3. Third-party API credentials
 
-| Service                                          | Where configured                                                      | Storage                                                                                                                                                | Refresh/rotation                                                                                                                                                                                                         |
-| ------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **IGDB** (via Twitch OAuth)                      | `.env` (`IGDB_CLIENT_ID`/`IGDB_CLIENT_SECRET`) or Settings → Services | DB `system_config` keys `igdb.clientId` / `igdb.clientSecret` take priority over env if both are present (`server/igdb.ts:138-153`)                    | Twitch access token is fetched via `client_credentials` grant and cached in memory, auto-refreshed ~1 minute before expiry (`server/igdb.ts:187-214`). Client ID/secret themselves are user-rotated via the Settings UI. |
-| **NexusMods**                                    | `.env` (`NEXUSMODS_API_KEY`) or Settings → Services                   | DB `system_config` key `nexusmods.apiKey`; client reconfigured in-memory on save (`server/nexusmods.ts:46-69,176-182`)                                 | Manual — overwrite the key in Settings.                                                                                                                                                                                  |
-| **HowLongToBeat**, **PCGamingWiki**, **xREL.to** | N/A                                                                   | N/A                                                                                                                                                    | These are unauthenticated public APIs; no credentials involved.                                                                                                                                                          |
-| **Steam** wishlist import                        | N/A (public Steam endpoints + user's `steamId64`)                     | N/A                                                                                                                                                    | N/A                                                                                                                                                                                                                      |
-| **Steam** Web API (achievements)                 | `.env` (`STEAM_API_KEY`) only — no Settings UI                        | Env-only; never persisted to the DB. `GET /api/settings/steam` returns only `{ apiKeyConfigured: boolean }`, never the key itself (`server/routes.ts`) | Manual — change the environment variable and restart the server.                                                                                                                                                         |
-| **Discord** notification webhook                 | Settings → Services                                                   | DB `system_config` key `discord.webhookUrl`, plaintext (`server/routes.ts:2769-2801`)                                                                  | Manual — overwrite the URL in Settings.                                                                                                                                                                                  |
+| Service                                          | Where configured                                                      | Storage                                                                                                                                                                                                | Refresh/rotation                                                                                                                                                                                                         |
+| ------------------------------------------------ | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **IGDB** (via Twitch OAuth)                      | `.env` (`IGDB_CLIENT_ID`/`IGDB_CLIENT_SECRET`) or Settings → Services | DB `system_config` keys `igdb.clientId` / `igdb.clientSecret` take priority over env if both are present (`server/igdb.ts:138-153`)                                                                    | Twitch access token is fetched via `client_credentials` grant and cached in memory, auto-refreshed ~1 minute before expiry (`server/igdb.ts:187-214`). Client ID/secret themselves are user-rotated via the Settings UI. |
+| **NexusMods**                                    | `.env` (`NEXUSMODS_API_KEY`) or Settings → Services                   | DB `system_config` key `nexusmods.apiKey`; client reconfigured in-memory on save (`server/nexusmods.ts:46-69,176-182`)                                                                                 | Manual — overwrite the key in Settings.                                                                                                                                                                                  |
+| **HowLongToBeat**, **PCGamingWiki**, **xREL.to** | N/A                                                                   | N/A                                                                                                                                                                                                    | These are unauthenticated public APIs; no credentials involved.                                                                                                                                                          |
+| **Steam** wishlist import                        | N/A (public Steam endpoints + user's `steamId64`)                     | N/A                                                                                                                                                                                                    | N/A                                                                                                                                                                                                                      |
+| **Steam** Web API (achievements)                 | `.env` (`STEAM_API_KEY`) only — no Settings UI                        | Env-only; never persisted to the DB. `GET /api/settings/steam` returns only `{ apiKeyConfigured: boolean }`, never the key itself (`server/routes.ts`)                                                 | Manual — change the environment variable and restart the server.                                                                                                                                                         |
+| **VirusTotal** pre-import scan                   | Settings → Post-Processing → Security & Scanning                      | DB `system_config` key `security.vt.apiKey`, plaintext; the Settings API returns a masked sentinel and keeps the existing key when that sentinel is resubmitted (`server/routes.ts:299-336,4823-4873`) | Manual — replace the key in Security & Scanning settings.                                                                                                                                                                |
+| **Discord** notification webhook                 | Settings → Services                                                   | DB `system_config` key `discord.webhookUrl`, plaintext (`server/routes.ts:2769-2801`)                                                                                                                  | Manual — overwrite the URL in Settings.                                                                                                                                                                                  |
 
-All four of these settings endpoints follow the same pattern: `GET`
-never returns the real secret, and updating it without changing the
-non-secret part (if any) is done by sending the sentinel string
-`"********"` for the unchanged field. `GET /api/settings/igdb` returns
+For credential-editing settings, `GET` never returns the actual secret. When
+updating other fields, send the sentinel string `"********"` to keep an
+unchanged secret. `GET /api/settings/igdb` returns
 the `clientId` but never the `clientSecret` (`server/routes.ts:2709-2768`
 sends/accepts the sentinel). `GET /api/settings/nexusmods` returns only
 `{ configured, source }` booleans (`server/routes.ts:3311-3342`).
 `GET /api/settings/discord` returns `{ configured, webhookUrl: "********" }`
 when set, and `POST` treats the sentinel as "no change"
-(`server/routes.ts:2769-2801`). All four handlers sit behind
-`sensitiveEndpointLimiter`.
+(`server/routes.ts:2769-2801`). The VirusTotal key is likewise masked by
+`GET /api/settings/security-scan` and its sentinel means "keep the current
+key" on `POST` (`server/routes.ts:4823-4873`). These handlers sit behind
+`sensitiveEndpointLimiter`. The VirusTotal key is stored unencrypted in the
+database, so protect the QuestarrNG database and its backups accordingly.
+
+When PostgreSQL is enabled with `DB_DIALECT=postgres`, `DATABASE_URL` contains
+the database username and password. Keep it out of source control and protect
+the environment file or secret store that supplies it. See
+[`docs/DATABASE.md`](DATABASE.md) for backend configuration.
 
 ## 4. User-entered indexer & downloader credentials
 
@@ -127,9 +140,9 @@ Transmission, rTorrent, sabnzbd, nzbget).
     known collision weakness doesn't directly expose the password —
     the exposure is the same one every RFC 2617 MD5 deployment has always
     carried. Mitigation: always prefer a downloader/network path that
-    terminates in TLS between Questarr and the rTorrent host where
+    terminates in TLS between QuestarrNG and the rTorrent host where
     possible, since Digest Auth (either hash) still doesn't encrypt the
-    request/response bodies themselves. No other code path in Questarr
+    request/response bodies themselves. No other code path in QuestarrNG
     depends on MD5.
 - **Access control / API exposure:** every indexer/downloader route sits
   behind the global `authenticateToken` middleware (`server/routes.ts:821-829`).
@@ -224,7 +237,9 @@ points operators at is on the safe side of the fix.
       (`openssl rand -hex 32`).
 - [ ] Set IGDB and (optionally) NexusMods credentials via `.env` or
       Settings → Services.
-- [ ] Restrict who has login access to the app — Questarr has no per-user
+- [ ] If using PostgreSQL, protect `DATABASE_URL` and its password-bearing
+      environment file or secret store.
+- [ ] Restrict who has login access to the app — QuestarrNG has no per-user
       role scoping, so any account holder can use every configured
       indexer/downloader (though the API keys/passwords themselves are
       masked in responses and encrypted at rest, per §4).

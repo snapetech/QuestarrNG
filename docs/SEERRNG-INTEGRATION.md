@@ -55,6 +55,20 @@ contract is [`contracts/seerrng-v1.openapi.yaml`](contracts/seerrng-v1.openapi.y
 SeerrNG should reject an unknown request contract version before dispatching
 requests.
 
+### Current capability status
+
+QuestarrNG 1.9.0 advertises `apiVersion: 1` and
+`requestContractVersion: 1`. It reports catalog, PC acquisition, retry/cancel,
+and asset-streaming support in its handshake, with emulation acquisition set
+to false. Its request asset-list response reports `bundleSupported: false`.
+Current provider behavior is defined by the
+[v1 OpenAPI contract](contracts/seerrng-v1.openapi.yaml).
+
+SeerrNG v3.51.0 adds PC play-time and multi-file download behavior that asks
+providers to implement request contract v2. Until QuestarrNG implements and
+advertises v2, treat those v2-specific capabilities as unavailable. See the
+[SeerrNG release note](https://github.com/snapetech/seerrng/blob/main/release-notes/questarr-catalog-estimates-and-bundles.md).
+
 ## Compatibility and release discipline
 
 The `/v1` route prefix and `apiVersion` identify the provider API surface;
