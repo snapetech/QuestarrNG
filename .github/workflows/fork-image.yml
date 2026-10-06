@@ -27,6 +27,7 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.image.outputs.name }}
+      digest: ${{ steps.build-image.outputs.digest }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,6 +93,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish fork image
+        id: build-image
         uses: step-security/docker-build-push-action@144392094f7fc3199dda455efe3b70dbea4b72a0 # v7.3.0
         with:
           context: .
@@ -158,9 +160,59 @@ jobs:
           curl -fsS http://127.0.0.1:15001/api/health >/dev/null
           test "$(docker exec questarrng-rootless-smoke id -u)" = "1000"
 
+  addon-smoke:
+    if: github.repository == 'snapetech/QuestarrNG'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Log in to GHCR
+        uses: step-security/docker-login-action@8c7b695d8738c5699a679ff5254baf0f19f20a94 # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: step-security/setup-buildx-action@a4709e2865773e1792246433e8eb922f9743a875 # v4.2.0
+
+      - name: Build Home Assistant add-on and verify its scoped ownership helper
+        shell: bash
+        env:
+          QUESTARR_IMAGE: ${{ needs.publish.outputs.image }}@${{ needs.publish.outputs.digest }}
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          ha_image="questarrng-ha-addon:${version}"
+          docker buildx build --load --platform linux/amd64 \
+            --build-arg "QUESTARR_IMAGE=${QUESTARR_IMAGE}" \
+            --build-arg "QUESTARR_VERSION=${version}" \
+            --file questarr/Dockerfile \
+            --tag "$ha_image" \
+            questarr
+          test "$(docker image inspect "$ha_image" --format '{{.Config.User}}')" = "questarr:questarr"
+
+          data_volume="questarrng-ha-data-${GITHUB_RUN_ID}"
+          docker volume create "$data_volume" >/dev/null
+          trap 'docker volume rm "$data_volume" >/dev/null 2>&1 || true' EXIT
+          docker run --rm --user 0:0 \
+            --volume "$data_volume:/data" \
+            --entrypoint /bin/sh \
+            "$ha_image" \
+            -c 'umask 077; printf "existing\n" > /data/root-owned.db'
+          docker run --rm \
+            --volume "$data_volume:/data" \
+            "$ha_image" \
+            sh -c 'test -w /data && test "$(stat -c "%u:%g" /data/root-owned.db)" = "1000:1000"'
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: publish
+    needs: [publish, addon-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write
