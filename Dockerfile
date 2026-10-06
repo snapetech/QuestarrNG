@@ -98,9 +98,8 @@ COPY --from=builder /app/package.json ./
 # matches the non-root runtime identity instead of allocating the next free ID.
 RUN groupmod -n questarr node && \
     usermod -l questarr node && \
-    usermod -d /home/questarr -m questarr && \
-    mkdir -p /app/data && \
-    chown -R questarr:questarr /app
+    mkdir -p /app/data /home/questarr && \
+    chown -R questarr:questarr /app /home/questarr
 
 # Copy and set up entrypoint script
 COPY entrypoint.sh /entrypoint.sh
