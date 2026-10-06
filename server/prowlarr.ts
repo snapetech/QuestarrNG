@@ -65,6 +65,13 @@ interface ProwlarrIndexer {
   apiKey?: string; // Sometimes exposed
 }
 
+/** Settings the user chose in the sync dialog, applied to every imported indexer. */
+export interface ProwlarrSyncOverrides {
+  allowInsecureLan?: boolean | undefined;
+  priority?: number | undefined;
+  categories?: string[] | undefined;
+}
+
 export class ProwlarrClient {
   /**
    * Fetch all indexers from Prowlarr and convert them to Questarr Indexer format
@@ -72,7 +79,7 @@ export class ProwlarrClient {
   async getIndexers(
     prowlarrUrl: string,
     apiKey: string,
-    allowInsecureLan = false
+    overrides: ProwlarrSyncOverrides = {}
   ): Promise<Partial<Indexer>[]> {
     // Normalize URL
     let baseUrl = stripTrailingSlashes(prowlarrUrl);
@@ -83,12 +90,22 @@ export class ProwlarrClient {
     const apiUrl = `${baseUrl}/api/v1/indexer`;
 
     try {
+      const protocol = new URL(apiUrl).protocol;
+      const allowPlainHttp = protocol === "http:" && overrides.allowInsecureLan === true;
+      if (protocol !== "https:" && !allowPlainHttp) {
+        throw new Error("Refusing to send the Prowlarr API key over HTTP without explicit opt-in");
+      }
+
       const response = await safeFetch(apiUrl, {
         headers: {
           "X-Api-Key": apiKey,
           "User-Agent": "Questarr/1.0",
         },
         signal: AbortSignal.timeout(30000),
+        requireHttps: protocol === "https:",
+        // An explicitly allowed HTTP request must not forward the key to a
+        // redirect target. HTTPS redirects are pinned by safeFetch.
+        redirect: allowPlainHttp ? "manual" : "follow",
       });
 
       if (!response.ok) {
@@ -125,6 +142,11 @@ export class ProwlarrClient {
         "Filtered compatible Torznab and Newznab indexers"
       );
 
+      // Sending the key over plain HTTP needs the user's explicit opt-in from
+      // the sync dialog; it is never inferred from the URL scheme. Left
+      // undefined, an existing indexer keeps whatever it had.
+      const { allowInsecureLan } = overrides;
+
       return compatibleIndexers.map((idx) => {
         // Construct Torznab/Newznab URL
         // Prowlarr exposes Torznab feed at /<indexerId>/api for torrents
@@ -138,20 +160,22 @@ export class ProwlarrClient {
           name: idx.name,
           url: indexerUrl,
           apiKey: apiKey, // Prowlarr uses the main API key for all indexer feeds by default
-          allowInsecureLan,
           protocol: protocol as "torznab" | "newznab",
           enabled: idx.enable,
-          priority: idx.priority,
+          priority: overrides.priority ?? idx.priority,
           rssEnabled: true,
           autoSearchEnabled: true,
-          // We don't sync categories automatically as they differ per indexer
-          categories: [],
+          ...(allowInsecureLan === undefined ? {} : { allowInsecureLan }),
+          // Categories differ per indexer, so they are only set when the user
+          // picked some in the dialog. Leaving them out keeps the categories
+          // already chosen on an existing indexer instead of wiping them.
+          ...(overrides.categories?.length ? { categories: overrides.categories } : {}),
         };
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       torznabLogger.error(
-        { error: errorMessage, url: prowlarrUrl },
+        { error: errorMessage, url: redactDiagnosticDetail(prowlarrUrl, apiKey) },
         "Failed to sync from Prowlarr"
       );
       throw error;
@@ -181,10 +205,22 @@ export class ProwlarrClient {
     let baseUrl = stripTrailingSlashes(prowlarrUrl);
     if (!baseUrl.startsWith("http")) baseUrl = `http://${baseUrl}`;
     const headers = { "X-Api-Key": apiKey, "User-Agent": "Questarr/1.0" };
+    const protocol = new URL(baseUrl).protocol;
+    const allowPlainHttp = protocol === "http:" && allowInsecureLan;
+    if (protocol !== "https:" && !allowPlainHttp) {
+      return {
+        management: {
+          success: false,
+          error: "Prowlarr uses plain HTTP; enable the insecure LAN option only on a trusted network.",
+        },
+        indexers: [],
+      };
+    }
     const safeOptions = {
       headers,
       allowPrivate: true,
-      requireHttps: !allowInsecureLan,
+      requireHttps: protocol === "https:",
+      redirect: allowPlainHttp ? ("manual" as const) : ("follow" as const),
       timeoutMs: 15000,
     };
     let status: number | undefined;

@@ -572,7 +572,9 @@ _varyMatches(req) {
         }
         // 9.1.  Connection
         if (inHeaders.connection) {
-            const tokens = inHeaders.connection.trim().split(/\s*,\s*/);
+            // Split on the delimiter, then trim each token. Avoid a whitespace regex on
+            // attacker-controlled header values: long runs of spaces made this path slow.
+            const tokens = inHeaders.connection.split(',').map(name => name.trim());
             for (const name of tokens) {
                 delete headers[name];
             }

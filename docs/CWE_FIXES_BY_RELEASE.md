@@ -1,4 +1,4 @@
-# QuestarrNG — CWEs addressed per released tag (v1.2.0 → v1.9.0)
+# QuestarrNG — CWEs addressed per released tag (v1.2.0 → v1.9.1)
 
 Method: same as [`docs/CVE_FIXES_BY_RELEASE.md`](CVE_FIXES_BY_RELEASE.md) — diffed `package-lock.json` at each
 tag boundary and cross-checked every bumped package through OSV.dev. Each advisory is then mapped to its CWE
@@ -507,3 +507,13 @@ No dependency version changes.
 ## v1.8.3 → v1.9.0
 
 No dependency version changes.
+
+## v1.9.0 → v1.9.1
+
+### CWE-1333 — Inefficient Regular Expression Complexity
+
+- Replaced the whitespace-delimited regular expression in the vendored HTTP cache header parser with comma splitting and token trimming, avoiding polynomial work on untrusted header values.
+
+### CWE-250 — Execution with Unnecessary Privileges
+
+- The production Docker image now defaults to the dedicated `questarr` user. Compose and home-server definitions pass through the configured UID/GID so mounted data remains writable.

@@ -103,7 +103,7 @@ development code. Pin a release with `QUESTARR_REF` if you want to avoid that.
 To move to a specific version instead:
 
 ```bash
-pct exec 210 -- env QUESTARR_REPO=snapetech/QuestarrNG QUESTARR_REF=v1.7.0 bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-install.sh)"
+pct exec 210 -- env QUESTARR_REPO=snapetech/QuestarrNG QUESTARR_REF=v1.9.1 bash -c "$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' https://raw.githubusercontent.com/snapetech/QuestarrNG/main/scripts/proxmox/questarr-install.sh)"
 ```
 
 Take a Proxmox snapshot or backup before updating if you want a quick way back:
@@ -114,7 +114,7 @@ vzdump 210 --mode snapshot --compress zstd
 
 ## Configuration
 
-All of the options in [`.env.example`](../.env.example) apply. Edit `/opt/questarr/.env` and restart:
+All of the options in [`.env.example`](https://github.com/Doezer/Questarr/blob/main/.env.example) apply. Edit `/opt/questarr/.env` and restart:
 
 ```bash
 pct exec 210 -- sh -c 'vi /opt/questarr/.env && systemctl restart questarr'

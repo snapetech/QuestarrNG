@@ -5,7 +5,7 @@ import { igdbLogger } from "./logger.js";
 import { notifyUser } from "./socket.js";
 import { resolvePrefs } from "./notification-prefs.js";
 import { DownloaderManager } from "./downloaders.js";
-import { resolveDownloadRelativePath, buildRemoteImportPath } from "./downloaders/utils.js";
+import { resolveRemoteImportPath } from "./downloaders/utils.js";
 import { torznabClient } from "./torznab.js";
 import { newznabClient } from "./newznab.js";
 import {
@@ -30,6 +30,8 @@ import {
   type NotificationPreferences,
 } from "../shared/schema.js";
 import { categorizeDownload } from "../shared/download-categorizer.js";
+import { isReleasePossiblyNewer } from "../shared/version-utils.js";
+import { recordVersionFromCompletedDownload } from "./game-version.js";
 import {
   releaseMatchesGame,
   normalizeTitle,
@@ -708,11 +710,11 @@ export async function checkGameUpdates() {
     try {
       const addedNotifications = await storage.addNotificationsBatch(notificationsToSend);
       for (const notification of addedNotifications) {
-        notifyUser("notification", notification);
+        notifyUser("notification", notification, notification.userId);
         const prefs =
           gameUpdatePrefsCache.get(notification.userId ?? "") ?? DEFAULT_NOTIFICATION_PREFERENCES;
         const eventKey = GAME_UPDATE_TITLE_TO_EVENT[notification.title];
-        if (eventKey && prefs[eventKey].apprise) appriseClient.send(notification);
+        if (eventKey && prefs[eventKey].apprise) void appriseClient.send(notification);
       }
     } catch (error) {
       igdbLogger.error({ error }, "Failed to add notifications in batch");
@@ -977,10 +979,10 @@ export async function checkDownloadStatus() {
                 download.downloadHash
               );
               if (details?.downloadDir) {
-                const remoteImportPath = buildRemoteImportPath(
-                  details.downloadDir,
-                  resolveDownloadRelativePath(details)
-                );
+                const remoteImportPath = resolveRemoteImportPath({
+                  ...details,
+                  downloadDir: details.downloadDir,
+                });
                 try {
                   await importManager.processImport(download.id, remoteImportPath);
                 } catch (error) {
@@ -1004,7 +1006,7 @@ export async function checkDownloadStatus() {
                     link: "/downloads",
                     userId: game?.userId ?? undefined,
                   });
-                  notifyUser("notification", notification);
+                  notifyUser("notification", notification, notification.userId);
                 } catch (notifErr) {
                   igdbLogger.error(
                     { notifErr, downloadId: download.id },
@@ -1015,6 +1017,13 @@ export async function checkDownloadStatus() {
             } else {
               // Update DB - mark as completed
               await storage.updateGameDownloadStatus(download.id, "completed");
+              // With post-processing on, the import records it once the files are in place.
+              await recordVersionFromCompletedDownload(
+                storage,
+                download.gameId,
+                download.downloadTitle,
+                download.category
+              );
 
               // Update Game status to 'owned' (which means we have the files), unless
               // the user already moved it past that (e.g. an update for a game they're playing).
@@ -1048,8 +1057,8 @@ export async function checkDownloadStatus() {
                 link: "/",
                 userId: game?.userId ?? undefined,
               });
-              notifyUser("notification", notification);
-              if (dlPrefs.downloadCompleted.apprise) appriseClient.send(notification);
+              notifyUser("notification", notification, notification.userId);
+              if (dlPrefs.downloadCompleted.apprise) void appriseClient.send(notification);
             }
           } else {
             // Sync download status with actual status from downloader
@@ -1119,8 +1128,8 @@ export async function checkDownloadStatus() {
                   link: `modal:game:${download.gameId}`,
                   userId: game?.userId ?? undefined,
                 });
-                notifyUser("notification", notification);
-                if (prefs.downloadFailed.apprise) appriseClient.send(notification);
+                notifyUser("notification", notification, notification.userId);
+                if (prefs.downloadFailed.apprise) void appriseClient.send(notification);
               }
             }
 
@@ -1274,8 +1283,9 @@ export async function checkDownloadStatus() {
               link: `modal:game:${download.gameId}`,
               userId: game?.userId ?? undefined,
             });
-            if (missedPrefs.downloadFailed.inApp) notifyUser("notification", notification);
-            if (missedPrefs.downloadFailed.apprise) appriseClient.send(notification);
+            if (missedPrefs.downloadFailed.inApp)
+              notifyUser("notification", notification, notification.userId);
+            if (missedPrefs.downloadFailed.apprise) void appriseClient.send(notification);
           }
 
           igdbLogger.info(
@@ -1485,8 +1495,9 @@ export async function checkAutoSearch(
                           message: `${game.title}: ${aiHoldReason}. Please review and choose.`,
                           link: `modal:game:${game.id}`,
                         });
-                        if (prefs.multipleResults.inApp) notifyUser("notification", notification);
-                        if (prefs.multipleResults.apprise) appriseClient.send(notification);
+                        if (prefs.multipleResults.inApp)
+                          notifyUser("notification", notification, notification.userId);
+                        if (prefs.multipleResults.apprise) void appriseClient.send(notification);
                       } catch (error) {
                         igdbLogger.warn(
                           { gameTitle: game.title, error },
@@ -1532,6 +1543,7 @@ export async function checkAutoSearch(
                               downloadTitle: item.title,
                               status: "downloading",
                               downloadType: item.downloadType,
+                              category: "main",
                             });
                             await storage.updateGameStatus(
                               game.id,
@@ -1549,8 +1561,8 @@ export async function checkAutoSearch(
                                 message: `Started downloading ${game.title}${groupSuffix} via ${item.downloadType === "usenet" ? "Usenet" : "Torrent"}`,
                                 link: "/",
                               });
-                              notifyUser("notification", notification);
-                              if (prefs.autoDownload.apprise) appriseClient.send(notification);
+                              notifyUser("notification", notification, notification.userId);
+                              if (prefs.autoDownload.apprise) void appriseClient.send(notification);
                             }
 
                             igdbLogger.info(
@@ -1582,8 +1594,8 @@ export async function checkAutoSearch(
                     message: `${game.title} is now available for download`,
                     link: `modal:game:${game.id}`,
                   });
-                  notifyUser("notification", notification);
-                  if (prefs.gameAvailable.apprise) appriseClient.send(notification);
+                  notifyUser("notification", notification, notification.userId);
+                  if (prefs.gameAvailable.apprise) void appriseClient.send(notification);
                 }
               }
             } else if (mainItems.length > 1 && !wasAvailable && prefs.multipleResults.inApp) {
@@ -1595,8 +1607,8 @@ export async function checkAutoSearch(
                 message: `${mainItems.length} result(s) found for ${game.title}. Please review and choose.`,
                 link: `modal:game:${game.id}`,
               });
-              notifyUser("notification", notification);
-              if (prefs.multipleResults.apprise) appriseClient.send(notification);
+              notifyUser("notification", notification, notification.userId);
+              if (prefs.multipleResults.apprise) void appriseClient.send(notification);
             }
           } catch (error) {
             igdbLogger.error({ gameTitle: game.title, error }, "Error searching for game");
@@ -1640,7 +1652,12 @@ export async function checkAutoSearch(
               preferredGroups,
               settings.filterByPreferredGroups ?? false
             );
-            const updateItems = deduplicateByTitle(groupFilteredUpdate, indexerPriorityMap);
+            // Drop update releases whose version is provably not newer than the one the user
+            // has installed, so a game already on v1.5 isn't flagged for a v1.4 patch.
+            const versionFilteredUpdate = groupFilteredUpdate.filter((item) =>
+              isReleasePossiblyNewer(item.title, game.installedVersion)
+            );
+            const updateItems = deduplicateByTitle(versionFilteredUpdate, indexerPriorityMap);
 
             // Packs/add-ons are content for owned games, surfaced like updates.
             const platformFilteredPacks = applyPreferredPlatformFilter(
@@ -1664,6 +1681,14 @@ export async function checkAutoSearch(
               packs: packsItems.length > 0,
             });
 
+            // Keep availability badges current even when this status is muted.
+            if (
+              (game.status === "shelved" && prefs.gameUpdates.includeShelved === false) ||
+              (game.status === "completed" && prefs.gameUpdates.includeCompleted === false)
+            ) {
+              continue;
+            }
+
             if (updateItems.length > 0 && !wasUpdateAvailable && prefs.gameUpdates.inApp) {
               const notification = await storage.addNotification({
                 userId,
@@ -1672,8 +1697,8 @@ export async function checkAutoSearch(
                 message: `${updateItems.length} update(s) found for ${game.title}`,
                 link: `modal:game:${game.id}`,
               });
-              notifyUser("notification", notification);
-              if (prefs.gameUpdates.apprise) appriseClient.send(notification);
+              notifyUser("notification", notification, notification.userId);
+              if (prefs.gameUpdates.apprise) void appriseClient.send(notification);
             }
 
             if (packsItems.length > 0 && !wasPacksAvailable && prefs.gameUpdates.inApp) {
@@ -1684,8 +1709,8 @@ export async function checkAutoSearch(
                 message: `${packsItems.length} pack/add-on result(s) found for ${game.title}`,
                 link: `modal:game:${game.id}`,
               });
-              notifyUser("notification", notification);
-              if (prefs.gameUpdates.apprise) appriseClient.send(notification);
+              notifyUser("notification", notification, notification.userId);
+              if (prefs.gameUpdates.apprise) void appriseClient.send(notification);
             }
           } catch (error) {
             igdbLogger.error(
@@ -1811,8 +1836,8 @@ export async function checkXrelReleases() {
               message,
               link: `modal:game:${game.id}`,
             });
-            notifyUser("notification", notification);
-            if (xrelPrefs.xrelRelease.apprise) appriseClient.send(notification);
+            notifyUser("notification", notification, notification.userId);
+            if (xrelPrefs.xrelRelease.apprise) void appriseClient.send(notification);
           }
           igdbLogger.info(
             { gameTitle: game.title, dirname: rel.dirname },
@@ -2080,8 +2105,8 @@ export async function syncUserSteamWishlist(
         title: "Steam Wishlist Synced",
         message: `Successfully added ${addedGames.length} games from your Steam Wishlist.`,
       });
-      notifyUser("notification", notification);
-      if (steamPrefs.steamSync.apprise) appriseClient.send(notification);
+      notifyUser("notification", notification, notification.userId);
+      if (steamPrefs.steamSync.apprise) void appriseClient.send(notification);
     }
 
     return { success: true, addedCount: addedGames.length, games: addedGames };

@@ -13,6 +13,10 @@ If you mount `/data`, add a matching entry under **Settings → Path Mappings** 
 `/data` and **Remote Path** set to the exact path your download client reports for that root.
 Leave it unmounted if you import manually.
 
+The application container runs as a non-root UID/GID. Make sure `/app/data` is writable by
+the configured `PUID`/`PGID`; on Compose based installs these values also set the container
+user. Existing appdata keeps its ownership, so keep the same IDs when upgrading.
+
 | File                                       | Platform                        |
 | ------------------------------------------ | ------------------------------- |
 | `casaos/docker-compose.yml`                | CasaOS (AppFile; ID kept for upgrade compatibility) |
@@ -32,8 +36,8 @@ CasaOS installs custom apps from an AppFile — a Compose file carrying `x-casao
    `/DATA/Downloads` → `/data`.
 4. Click **Install**, then open Questarr from the CasaOS dashboard (port `5000`).
 
-The AppFile declares the supported amd64 architecture, the health check, and `PUID`/`PGID`/`UMASK` so files
-written into your shares stay owned by the right user.
+The AppFile declares the supported amd64 architecture, the health check, and `PUID`/`PGID`/`UMASK`.
+Set the CasaOS data directory owner to those IDs before the first start.
 
 ## Umbrel
 
@@ -62,6 +66,7 @@ Cosmos installs apps as _ServApps_ from a `cosmos-compose.json`.
 2. Paste:
    `https://raw.githubusercontent.com/snapetech/QuestarrNG/main/cosmos/questarr.cosmos-compose.json`
 3. Fill in the install form: **Data folder**, optional **Library folder**, and `PUID`/`PGID`.
+   Ensure the data folder is writable by those IDs.
 4. Install. Cosmos creates a route at `questarr.<your-server-hostname>` with SmartShield and bot
    blocking enabled, and handles HTTPS for you.
 

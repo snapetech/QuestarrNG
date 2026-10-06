@@ -2,13 +2,17 @@ name: CodeQL
 
 on:
   push:
-    branches: [main]
+    branches: [main, release/*]
   pull_request:
-    branches: [main]
+    branches: [main, release/*]
   schedule:
     # Weekly, catches new query-pack findings on unchanged code.
     - cron: "0 7 * * 1"
   workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

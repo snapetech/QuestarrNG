@@ -57,7 +57,7 @@ requests.
 
 ### Current capability status
 
-QuestarrNG 1.9.0 advertises `apiVersion: 1` and
+QuestarrNG 1.9.1 advertises `apiVersion: 1` and
 `requestContractVersion: 1`. It reports catalog, PC acquisition, retry/cancel,
 and asset-streaming support in its handshake, with emulation acquisition set
 to false. Its request asset-list response reports `bundleSupported: false`.

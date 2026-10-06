@@ -80,23 +80,39 @@ export function indexerAllowsApiKey(indexer: Pick<Indexer, "url" | "allowInsecur
 }
 
 /**
- * Explain an indexer 401 without encouraging credentials to be sent over HTTP.
- * A Prowlarr sync can import the credential while intentionally leaving the
- * per-indexer HTTP opt-in disabled, so the feed responds as if no key arrived.
- */
+* Explains an auth failure caused by our own transport policy: when an indexer
+* has a key but it was withheld because the URL is plain HTTP without the
+* insecure-LAN opt-in, a bare "401" sends users hunting for a wrong key.
+*
+* @returns A sentence to append to the error, or an empty string when the key
+* was sent (or the failure is not an auth one).
+*/
+export function withheldApiKeyHint(
+  indexer: Pick<Indexer, "url" | "apiKey" | "allowInsecureLan">,
+  status: number
+): string {
+  if ((status !== 401 && status !== 403) || !indexer.apiKey || indexerAllowsApiKey(indexer)) {
+    return "";
+  }
+  return (
+    " (API key withheld for this HTTP feed; it was not sent because this indexer uses plain HTTP: enable" +
+    " 'Allow insecure LAN connection' on the indexer, or switch it to HTTPS)"
+  );
+}
+
+/** Format indexer HTTP errors with a safe explanation when credentials were withheld. */
 export function formatIndexerHttpError(
   indexer: Pick<Indexer, "url" | "apiKey" | "allowInsecureLan">,
   status: number,
   statusText: string
 ): string {
   const message = `HTTP ${status}: ${statusText}`;
-  if (status !== 401) return message;
-
-  if (indexer.apiKey && !indexerAllowsApiKey(indexer)) {
-    return `${message} (API key withheld for this HTTP feed; enable Allow insecure LAN for this indexer or re-sync Prowlarr with “Send the API key to Prowlarr indexers over HTTP” enabled. This is separate from the downloader setting.)`;
+  const withheldHint = withheldApiKeyHint(indexer, status);
+  if (withheldHint) return `${message}${withheldHint}`;
+  if (status === 401 && indexer.apiKey) {
+    return `${message} (check the indexer API key; re-sync from Prowlarr if its key changed).`;
   }
-
-  return `${message} (check the indexer API key; re-sync from Prowlarr if its key changed).`;
+  return message;
 }
 
 /** Remove credentials from URLs before they enter application logs. */

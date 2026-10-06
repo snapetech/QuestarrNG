@@ -1,4 +1,4 @@
-# QuestarrNG — CVEs fixed per released tag (v1.2.0 → v1.9.0)
+# QuestarrNG — CVEs fixed per released tag (v1.2.0 → v1.9.1)
 
 Method: diffed `package.json`/`package-lock.json` at each tag boundary, then cross-checked every bumped package through OSV.dev's `querybatch` endpoint (query old-version vs new-version, take the set difference of returned GHSA IDs) and confirmed exact `fixed` boundaries via per-GHSA `/v1/vulns/{id}` lookups. All headline findings below — including axios, node-forge, and socket.io-parser — were verified through the same batch-diff method, not just by trusting commit messages. Only entries with a confirmed OSV `fixed` event landing inside the bump range are listed as fixes. OSV data was refreshed on 2026-10-04.
 
@@ -234,6 +234,12 @@ No dependency version changes.
 ## v1.8.3 → v1.9.0
 
 No dependency version changes.
+
+## v1.9.0 → v1.9.1
+
+### Development dependencies
+
+- **PyJWT** 2.13.0 → 2.15.0 in the hash-pinned Semgrep toolchain, resolving the open Dependabot security alerts for the scanner's transitive JWT parser.
 
 ---
 

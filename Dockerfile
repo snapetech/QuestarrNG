@@ -1,5 +1,5 @@
 # Build stage with shared dependencies
-FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS base
+FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS base
 WORKDIR /app
 
 # apk upgrade picks up Alpine's latest patched packages for this branch (e.g. openssl,
@@ -25,7 +25,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:26-alpine@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS production
+FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS production
 
 WORKDIR /app
 
@@ -105,14 +105,10 @@ RUN chmod +x /entrypoint.sh
 
 EXPOSE 5000
 
-# No USER instruction here by design: the container must start as root so
-# entrypoint.sh can chown/usermod /app and /app/data to the host-provided
-# PUID/PGID (LinuxServer.io convention for bind-mounted volumes), then it
-# drops privileges itself via `su-exec questarr` before exec'ing CMD (see
-# entrypoint.sh's final line).
-# nosemgrep: dockerfile.security.missing-user-entrypoint.missing-user-entrypoint
+# Run the application as the dedicated unprivileged account by default.
+# Bind-mounted data directories must be owned by the configured PUID/PGID.
+USER questarr:questarr
 ENTRYPOINT ["/entrypoint.sh"]
-# nosemgrep: dockerfile.security.missing-user.missing-user -- entrypoint.sh drops to the unprivileged questarr user via su-exec before this CMD ever runs
 CMD ["node", "dist/server/index.js"]
 
 LABEL org.opencontainers.image.title="QuestarrNG"
@@ -120,4 +116,4 @@ LABEL org.opencontainers.image.description="QuestarrNG game discovery and acquis
 LABEL org.opencontainers.image.authors="Doezer and Snapetech contributors"
 LABEL org.opencontainers.image.source="https://github.com/snapetech/QuestarrNG"
 LABEL org.opencontainers.image.licenses="GPL-3.0-only"
-LABEL org.opencontainers.image.version="1.9.0"
+LABEL org.opencontainers.image.version="1.9.1"

@@ -8,7 +8,7 @@ individual fixes and security updates.
 
 The Snapetech fork was created in September 2026. The v1.5.0 release was not
 published; its completed work shipped in v1.6.0. Fork releases from v1.6.0
-through [v1.9.0](https://github.com/snapetech/QuestarrNG/releases/tag/v1.9.0)
+through [v1.9.1](https://github.com/snapetech/QuestarrNG/releases/tag/v1.9.1)
 added the capabilities below.
 
 ## Product capabilities
@@ -63,15 +63,16 @@ added the capabilities below.
 - The maintained release image is published for `linux/amd64` and
   `linux/arm64`. QuestarrNG also maintains a self-contained .NET 10 Windows
   service host, a Helm chart, and home-server installation definitions.
-- Compose and Helm can run the service as a non-root user with a read-only
-  root filesystem and dropped Linux capabilities. Published images include
+- The production image and Compose templates run the service as a non-root
+  user by default; hardened Compose and Helm options add a read-only root
+  filesystem and dropped Linux capabilities. Published images include
   SBOM and provenance attestations. See the
   [security overview](THREAT_MODEL.md),
   [Proxmox guide](PROXMOX.md), and
   [home-server app guides](HOME_SERVER_APPS.md).
 - Releases use curated user-facing notes; dependency and code scanning are
   part of the maintained release process. See the
-  [security policy](../.github/SECURITY.md) and
+  [security policy](SECURITY.md) and
   [release-note guide](../release-notes/README.md).
 
 ## Release timeline
@@ -82,6 +83,7 @@ added the capabilities below.
 | **1.7.0–1.7.3** | Exact platform release dates in the SeerrNG catalog, clearer indexer/downloader diagnostics, hardened outbound and proxy requests, the .NET 10 Windows service, and maintained release-note publication. |
 | **1.8.0–1.8.3** | Versioned SeerrNG OpenAPI contract, scoped and expiring integration keys, bounded archive extraction, rootless container settings, SBOM/provenance attestations, and dependency/security maintenance.    |
 | **1.9.0**       | Platform-scoped library and discovery behavior, the Playing journal and Steam achievements, DLC/expansion details, a release-name blacklist, and optional pre-import VirusTotal/ClamAV checks.           |
+| **1.9.1**       | Upstream Questarr sync, per-file categories and installed versions, HTTPS-only Prowlarr sync by default, non-root container defaults, and patched security tooling.                            |
 
 For every released change, including fixes and action-required upgrade notes, use
 the [full changelog](CHANGELOG.md) and the
@@ -89,7 +91,7 @@ the [full changelog](CHANGELOG.md) and the
 
 ## Current SeerrNG provider compatibility
 
-QuestarrNG 1.9.0 advertises SeerrNG `apiVersion: 1` and
+QuestarrNG 1.9.1 advertises SeerrNG `apiVersion: 1` and
 `requestContractVersion: 1`. It supports the IGDB catalog, PC acquisition,
 request retry/cancel, and imported-file streaming. The handshake reports
 emulation acquisition as unsupported; the request asset-list response reports

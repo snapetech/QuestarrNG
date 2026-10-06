@@ -80,15 +80,29 @@ npm run test:e2e
 
 #### Running tests in CI
 
-The `build` job in `.github/workflows/ci.yml` runs on every push/PR to `main` (and can be triggered manually via `workflow_dispatch`). For each push it runs, in order: `npm run lint`, `npm run check` (TypeScript), then the test step:
+`.github/workflows/ci.yml` runs on every push and pull request to `main` and
+`release/*` branches and can be triggered manually. It checks documentation
+changes as well as code changes. Its jobs cover release-note validation,
+dependency and secret scanning, Windows service publishing, unit tests, linting,
+type checking, application builds, and Docker image builds:
 
-```bash
-npm test -- --coverage --reporter=junit --outputFile=test-report.junit.xml
-```
+- `release-notes`: verifies that each non-bot pull request adds a validated release-note fragment or explicitly opts out.
+- `sca-scan`: `npm run secretlint`, `npm run check:overrides`, the full dependency `npm audit` gate and the production license allow-list.
+- `windows-service`: restores and publishes the locked Windows service host.
+- `test`: the whole Vitest suite with coverage, in one job:
 
-This runs the same Vitest suite as locally, but with coverage collection and JUnit output enabled so results can be uploaded. A separate `secrets-scan` job runs `npm run secretlint` on every push. Playwright E2E tests are **not** currently run in CI — they're a local/manual check before opening a PR.
+  ```bash
+  npm test -- --coverage --reporter=default --reporter=junit --outputFile.junit=test-report.junit.xml
+  ```
 
-After tests pass, CI uploads both the coverage report and the JUnit test results to Codecov (`fail_ci_if_error: true`), then proceeds to `npm run build` and a Docker image build (`docker-build` job) to confirm the app still builds and packages correctly. **Interpreting a CI failure:** check the "Tests" step logs first for the failing test name and assertion; a failure in `lint` or `check` instead means a style or type error, not a broken test — fix those before re-pushing. If the Codecov upload step fails but the tests themselves passed, that's usually a Codecov/token issue rather than a code problem.
+  Coverage thresholds come from `vitest.config.ts`; coverage and JUnit results are uploaded to Codecov.
+
+- `build`: `npm run lint`, `npm run check` (TypeScript) and `npm run build`, on Node 22.19.0 (plus 26.x on pushes to `main`/`release/*`).
+- `docker-build`: builds the image. It always runs on pushes; on a PR it runs when the PR touches the `Dockerfile`, `.dockerignore`, `entrypoint.sh`, `package*.json`, `requirements/`, migrations or `ci.yml`.
+
+Playwright E2E tests run in `.github/workflows/e2e.yml`. A new push to a PR cancels the CI, E2E, CodeQL and SAST runs still going for its previous commit.
+
+**Interpreting a CI failure:** check the "Tests" step logs first for the failing test name and assertion; a failure in `lint` or `check` instead means a style or type error, not a broken test — fix those before re-pushing. If the Codecov upload step fails but the tests themselves passed, that's usually a Codecov/token issue rather than a code problem.
 
 #### Test policy for major changes
 
@@ -155,7 +169,7 @@ the versioned history in [`docs/CHANGELOG.md`](../docs/CHANGELOG.md).
 
 ## Collaborator Access
 
-Requests for elevated repository access (merge/write permissions, secrets, or infrastructure access) are subject to review and approval per our [Collaborator Access & Escalation Policy](./SECURITY.md#collaborator-access--escalation-policy). New contributors should start by submitting pull requests from a fork; escalated access is granted only after identity vetting and maintainer approval.
+Requests for elevated repository access (merge/write permissions, secrets, or infrastructure access) are subject to review and approval per our [Collaborator Access & Escalation Policy](../docs/SECURITY.md#collaborator-access--escalation-policy). New contributors should start by submitting pull requests from a fork; escalated access is granted only after identity vetting and maintainer approval.
 
 ## Code of Conduct
 

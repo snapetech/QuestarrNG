@@ -16,9 +16,9 @@
   <ReadMe>https://github.com/snapetech/QuestarrNG/blob/main/README.md</ReadMe>
   <Category>MediaApp:Other</Category>
   <ExtraSearchTerms>questarrng questarr pc game igdb seerrng</ExtraSearchTerms>
-  <Changes>1.7.3: Patched node-forge RSA signature validation and hardened reverse proxy headers.</Changes>
+  <Changes>1.9.1: Upstream sync, game file categories, installed-version tracking, and safer Prowlarr transport.</Changes>
   <Requires>Docker and persistent appdata. Configure this app independently before connecting it to SeerrNG.</Requires>
-  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <ExtraParams>--restart=unless-stopped --user=99:100</ExtraParams>
 
   <Config Name="Web UI Port" Target="5000" Default="5000" Mode="tcp" Description="Web UI Port for the standalone web interface." Type="Port" Display="always" Required="false" Mask="false">5000</Config>
   <Config Name="Appdata" Target="/app/data" Default="/mnt/user/appdata/questarrng" Mode="rw" Description="Persistent QuestarrNG database and settings." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/questarrng</Config>

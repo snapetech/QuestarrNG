@@ -59,7 +59,9 @@ describe("ProwlarrClient", () => {
       json: async () => mockProwlarrIndexers,
     });
 
-    const indexers = await prowlarrClient.getIndexers("http://prowlarr:9696", "apikey123");
+    const indexers = await prowlarrClient.getIndexers("http://prowlarr:9696", "apikey123", {
+      allowInsecureLan: true,
+    });
 
     expect(indexers).toHaveLength(2); // Should filter out "Unsupported Indexer"
 
@@ -81,7 +83,7 @@ describe("ProwlarrClient", () => {
       statusText: "Unauthorized",
     });
 
-    await expect(prowlarrClient.getIndexers("http://prowlarr:9696", "bad_key")).rejects.toThrow(
+    await expect(prowlarrClient.getIndexers("https://prowlarr:9696", "bad_key")).rejects.toThrow(
       "Failed to fetch indexers from Prowlarr: Unauthorized"
     );
   });
@@ -92,7 +94,9 @@ describe("ProwlarrClient", () => {
       json: async () => [],
     });
 
-    await prowlarrClient.getIndexers("prowlarr:9696/", "key"); // Missing http, trailing slash
+    await prowlarrClient.getIndexers("prowlarr:9696/", "key", {
+      allowInsecureLan: true,
+    }); // Missing http, trailing slash
 
     const callUrl = fetchMock.mock.calls[0][0] as string;
     expect(callUrl).toBe("http://prowlarr:9696/api/v1/indexer");
@@ -127,7 +131,11 @@ describe("ProwlarrClient", () => {
     });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("http://prowlarr:9696/api/v1/system/status");
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ requireHttps: false, allowPrivate: true });
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      requireHttps: false,
+      redirect: "manual",
+      allowPrivate: true,
+    });
   });
 
   it("reports inventory HTTP errors and invalid inventory payloads", async () => {
@@ -158,7 +166,7 @@ describe("ProwlarrClient", () => {
 
   it("reports management network failures before and after a response", async () => {
     fetchMock.mockRejectedValueOnce(new Error("offline"));
-    await expect(prowlarrClient.diagnose("prowlarr", "key")).resolves.toMatchObject({
+    await expect(prowlarrClient.diagnose("prowlarr", "key", true)).resolves.toMatchObject({
       management: {
         success: false,
         error: "Prowlarr management API could not be reached.",
@@ -168,7 +176,7 @@ describe("ProwlarrClient", () => {
 
     fetchMock.mockResolvedValueOnce(response({ json: { version: "1" } }));
     fetchMock.mockRejectedValueOnce(new Error("indexer request failed"));
-    await expect(prowlarrClient.diagnose("prowlarr", "key")).resolves.toMatchObject({
+    await expect(prowlarrClient.diagnose("prowlarr", "key", true)).resolves.toMatchObject({
       management: {
         success: false,
         status: 200,
@@ -207,7 +215,7 @@ describe("ProwlarrClient", () => {
       throw new Error("feed offline");
     });
 
-    const result = await prowlarrClient.diagnose("http://prowlarr:9696", "secret");
+    const result = await prowlarrClient.diagnose("http://prowlarr:9696", "secret", true);
 
     expect(result.management).toEqual({ success: true, version: "v".repeat(64) });
     expect(result.indexers.map(({ id }) => id)).toEqual([1, 2, 3, 4, 5]);
@@ -231,7 +239,11 @@ describe("ProwlarrClient", () => {
       error: "Prowlarr feed returned HTTP 502.",
     });
     for (const [, options] of fetchMock.mock.calls) {
-      expect(options).toMatchObject({ requireHttps: true, allowPrivate: true });
+      expect(options).toMatchObject({
+        requireHttps: false,
+        redirect: "manual",
+        allowPrivate: true,
+      });
     }
   });
 
@@ -251,12 +263,62 @@ describe("ProwlarrClient", () => {
 
   it("preserves allow-insecure LAN and logs non-Error sync failures", async () => {
     fetchMock.mockResolvedValueOnce(response({ json: [mockProwlarrIndexers[0]] }));
-    const indexers = await prowlarrClient.getIndexers("http://prowlarr", "key", true);
+    const indexers = await prowlarrClient.getIndexers("http://prowlarr", "key", {
+      allowInsecureLan: true,
+    });
     expect(indexers[0]?.allowInsecureLan).toBe(true);
 
     fetchMock.mockRejectedValueOnce("connection refused");
-    await expect(prowlarrClient.getIndexers("http://prowlarr", "key")).rejects.toBe(
+    await expect(prowlarrClient.getIndexers("https://prowlarr", "key")).rejects.toBe(
       "connection refused"
     );
+  });
+
+  it("does not infer the insecure LAN opt-in for indexer feeds", async () => {
+    await expect(prowlarrClient.getIndexers("http://prowlarr:9696", "apikey123")).rejects.toThrow(
+      "Refusing to send the Prowlarr API key over HTTP without explicit opt-in"
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockProwlarrIndexers });
+
+    const indexers = await prowlarrClient.getIndexers("https://prowlarr:9696", "apikey123");
+
+    expect(indexers.every((i) => !("allowInsecureLan" in i))).toBe(true);
+  });
+
+  it("applies an explicit insecure LAN opt-in to every indexer", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockProwlarrIndexers });
+
+    const indexers = await prowlarrClient.getIndexers("http://prowlarr:9696", "apikey123", {
+      allowInsecureLan: true,
+    });
+
+    expect(indexers.map((i) => i.allowInsecureLan)).toEqual([true, true]);
+  });
+
+  it("applies the sync dialog's global settings to every indexer", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockProwlarrIndexers });
+
+    const indexers = await prowlarrClient.getIndexers("https://prowlarr:9696", "apikey123", {
+      allowInsecureLan: false,
+      priority: 7,
+      categories: ["4050"],
+    });
+
+    for (const indexer of indexers) {
+      expect(indexer.allowInsecureLan).toBe(false);
+      expect(indexer.priority).toBe(7);
+      expect(indexer.categories).toEqual(["4050"]);
+    }
+  });
+
+  it("leaves categories out when none were chosen, so a re-sync keeps them", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => mockProwlarrIndexers });
+
+    const indexers = await prowlarrClient.getIndexers("https://prowlarr:9696", "apikey123");
+
+    expect(indexers.every((i) => !("categories" in i))).toBe(true);
+    expect(indexers.map((i) => i.priority)).toEqual([1, 2]);
   });
 });

@@ -38,6 +38,7 @@
   "services": {
     "questarr": {
       "image": "ghcr.io/snapetech/questarrng:latest",
+      "user": "{PUID}:{PGID}",
       "restart": "unless-stopped",
       "environment": [
         "PORT=5000",

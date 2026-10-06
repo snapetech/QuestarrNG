@@ -338,8 +338,7 @@ export class TorznabClient {
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => "No error details available");
-      throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
+      throw new Error(formatIndexerHttpError(indexer, response.status, response.statusText));
     }
 
     const xmlData = await response.text();

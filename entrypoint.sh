@@ -24,6 +24,14 @@ umask "$UMASK"
 # context. Keep the same data-path checks and umask, but skip account changes
 # and chown operations that require root.
 if [ "$(id -u)" -ne 0 ]; then
+  CURRENT_UID=$(id -u)
+  CURRENT_GID=$(id -g)
+  if [ "$CURRENT_UID" != "$PUID" ] || [ "$CURRENT_GID" != "$PGID" ]; then
+    echo "ERROR: the container is running as ${CURRENT_UID}:${CURRENT_GID}, but PUID/PGID are ${PUID}:${PGID}."
+    echo "  Configure the container user to match PUID/PGID, or set those variables to the container's UID/GID."
+    exit 1
+  fi
+
   if [ -z "$SQLITE_DB_PATH" ]; then
     export SQLITE_DB_PATH="/app/data/sqlite.db"
   fi

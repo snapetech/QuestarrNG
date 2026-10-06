@@ -85,7 +85,7 @@ links to setup, integration, API, database, and security guides.
 | **Real-time Notifications** | In-app alerts for releases and downloads, plus external notifications to 100+ providers via [Apprise](https://github.com/caronc/apprise).                                                                                                                                                                                             |
 | **Rich Game Metadata**      | Details enriched with IGDB, Steam, PCGamingWiki, and NexusMods, including trending mods where available.                                                                                                                                                                                                                              |
 | **Statistics**              | Review collection and download statistics, with sharing to Discord where supported.                                                                                                                                                                                                                                                   |
-| **Security Focused**        | General security hardening, SSL support, and [OpenSSF certified](https://www.bestpractices.dev/projects/13450) — see [SECURITY.md](.github/SECURITY.md) for the full process.                                                                                                                                                         |
+| **Security Focused**        | General security hardening and SSL support — see [SECURITY.md](docs/SECURITY.md) for the reporting and deployment hardening process.                                                                                                                                                                                                      |
 | **Deployment**              | Install through Unraid, CasaOS, Umbrel, Cosmos Cloud, Home Assistant, Windows, or Kubernetes; use published amd64/arm64 images and optional rootless container settings.                                                                                                                                                              |
 | **Integrations**            | Connect Playnite, RomM, and SeerrNG using the documented integration paths.                                                                                                                                                                                                                                                           |
 | **Design**                  | Clean, minimalist, dark-first UI built with mobile usage in mind.                                                                                                                                                                                                                                                                     |
@@ -114,7 +114,7 @@ Questarr restarts during a handoff before recording its download, it pauses the
 request for a duplicate-download check before retrying or cancelling. The retry
 or cancel endpoint returns `409` with `confirmationRequired` until the caller
 checks the download queue/history and sends `confirmNoExistingDownload: true`.
-QuestarrNG 1.9.0 advertises provider contract v1; emulation acquisition and
+QuestarrNG 1.9.1 advertises provider contract v1; emulation acquisition and
 multi-file bundle delivery are not currently supported. See the
 [compatibility guide](docs/SEERRNG-INTEGRATION.md#current-capability-status)
 for version details.
@@ -139,10 +139,13 @@ a Node.js application; the installer does not require a separate .NET runtime.
 
 **Supported architectures:** released QuestarrNG Docker images are published for `linux/amd64` and `linux/arm64`, so the app runs on a Raspberry Pi 4/5 with a 64-bit OS, other 64-bit ARM SBCs, and ARM-based NAS boxes as well as on x86 hardware. Docker selects the right architecture automatically — the commands below are identical on every platform. (32-bit ARM, e.g. `armv7`/a 32-bit OS on Raspberry Pi 3 and earlier, is not supported. The [Home Assistant add-on](#home-assistant-add-on) is `amd64`-only.)
 
-### Option 1: One-liner (Simplest but minimal)
+### Option 1: Quick start (direct Docker)
 
 ```bash
-docker run -d -p 5000:5000 -v ./data:/app/data --name questarrng ghcr.io/snapetech/questarrng:latest
+mkdir -p ./data
+docker run -d -p 5000:5000 --user "$(id -u):$(id -g)" \
+  -e PUID="$(id -u)" -e PGID="$(id -g)" \
+  -v ./data:/app/data --name questarrng ghcr.io/snapetech/questarrng:latest
 ```
 
 ### Option 2: Docker Compose (more detailed)
@@ -153,6 +156,7 @@ docker run -d -p 5000:5000 -v ./data:/app/data --name questarrng ghcr.io/snapete
    services:
      app:
        image: ghcr.io/snapetech/questarrng:latest
+       user: "${PUID:-1000}:${PGID:-1000}"
        ports:
          - "5000:5000"
        volumes:
@@ -165,13 +169,17 @@ docker run -d -p 5000:5000 -v ./data:/app/data --name questarrng ghcr.io/snapete
 2. **Start the application:**
 
    ```bash
-   docker compose up -d
+   mkdir -p ./data
+   PUID="$(id -u)" PGID="$(id -g)" docker compose up -d
    ```
 
 3. **Access the application:**
    Open your browser to `http://localhost:5000`
 
-For a non-root runtime with a read-only container filesystem, drop all Linux
+The image runs as a non-root user by default. Set `PUID` and `PGID` to the
+owner of the mounted data directory; the Compose file uses those values as the
+container user. Existing installs keep their data and should set these values
+to the current owner. For a read-only container filesystem, drop all Linux
 capabilities, and block privilege escalation, use the
 [`docker-compose.hardened.yml`](docker-compose.hardened.yml) overlay. It runs
 the app as the configured `PUID:PGID` directly, so prepare the bind-mounted
@@ -249,6 +257,10 @@ support, use the [SeerrNG issue tracker](https://github.com/snapetech/seerrng/is
    library is mounted at `/data` inside the container; add a matching entry under **Settings → Path Mappings**
    when the download client reports a different path.
 4. Apply, then open `http://<unraid-host>:5000` to access the UI.
+
+The image runs as a non-root user. The template maps that user to `99:100` by
+default; make sure the mounted folders are writable by that ID. If you change
+PUID/PGID, update the template's **Extra Parameters** `--user` value to match.
 
 </details>
 
@@ -551,7 +563,7 @@ If you run into an issue, go to the **Logs** page and click **Send Logs** before
 ## Contributing
 
 - See [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) for guidelines on how to contribute to this project.
-- See [MAINTAINERS.md](.github/MAINTAINERS.md) for how repository access and release permissions are managed.
+- See [MAINTAINERS.md](docs/MAINTAINERS.md) for how repository access and release permissions are managed.
 
 ### Contributors
 
@@ -567,10 +579,13 @@ QuestarrNG is a self-hosted game manager designed solely for organizing, trackin
 
 ## License
 
-GPL3 License - see [COPYING](COPYING) file for details.
+GPL-3.0-only - see [COPYING](COPYING) for the full license text.
 
 ## Acknowledgments
 
 - Inspired by [Sonarr](https://sonarr.tv/) and [GamezServer](https://github.com/05sonicblue/GamezServer)
 - Game metadata powered by [IGDB API](https://www.igdb.com/)
 - UI components from [shadcn/ui](https://ui.shadcn.com/)
+- Security scanning supported by [Snyk](https://snyk.io) through the Snyk Open Source program
+- AI code reviews by [CodeRabbit](https://coderabbit.ai), free for open source
+- This project is tested with BrowserStack

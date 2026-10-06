@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiFetch, queryClient, clearSearchCache } from "@/lib/queryClient";
 import { refreshIndexerQueries } from "@/lib/indexers-cache";
@@ -41,6 +41,43 @@ import { insertIndexerSchema, type Indexer, type InsertIndexer } from "@shared/s
 import { useToast } from "@/hooks/use-toast";
 import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
 import PageHeader from "@/components/PageHeader";
+
+// Standard Newznab/Torznab gaming categories offered when syncing from
+// Prowlarr, since no single indexer's caps apply to the whole batch.
+const PROWLARR_SYNC_CATEGORIES: MultiSelectOption[] = [
+  { value: "1000", label: "Console" },
+  { value: "1010", label: "Console > NDS" },
+  { value: "1020", label: "Console > PSP" },
+  { value: "1030", label: "Console > Wii" },
+  { value: "1040", label: "Console > Xbox" },
+  { value: "1050", label: "Console > Xbox 360" },
+  { value: "1080", label: "Console > PS3" },
+  { value: "1110", label: "Console > 3DS" },
+  { value: "1120", label: "Console > PS Vita" },
+  { value: "1130", label: "Console > Wii U" },
+  { value: "1140", label: "Console > Xbox One" },
+  { value: "1180", label: "Console > PS4" },
+  { value: "4000", label: "PC" },
+  { value: "4050", label: "PC > Games" },
+];
+
+// Marker the server sends instead of the saved Prowlarr API key; sending it
+// back means "use the saved key" (only accepted for the saved URL).
+const SAVED_KEY_PLACEHOLDER = "********";
+
+interface SavedProwlarrSettings {
+  url: string;
+  apiKey: string;
+  allowInsecureLan: boolean;
+  priority: number | null;
+  categories: string[];
+}
+
+function isPlainHttpUrl(url: string): boolean {
+  const trimmed = url.trim().toLowerCase();
+  // The server assumes http:// when no scheme is given.
+  return trimmed !== "" && !trimmed.startsWith("https://");
+}
 
 function PriorityControl({
   id,
@@ -103,7 +140,20 @@ export default function IndexersPage() {
   const [isProwlarrDialogOpen, setIsProwlarrDialogOpen] = useState(false);
   const [prowlarrUrl, setProwlarrUrl] = useState("");
   const [prowlarrApiKey, setProwlarrApiKey] = useState("");
-  const [prowlarrAllowInsecureLan, setProwlarrAllowInsecureLan] = useState(false);
+  const [prowlarrInsecureLan, setProwlarrInsecureLan] = useState(false);
+  // Set once the user toggles the box: from then on its state is a decision
+  // to apply, including unticking to revoke an earlier opt-in.
+  const [prowlarrInsecureLanTouched, setProwlarrInsecureLanTouched] = useState(false);
+  const [prowlarrPriority, setProwlarrPriority] = useState("");
+  const [prowlarrCategories, setProwlarrCategories] = useState<string[]>([]);
+  const prowlarrNeedsInsecureLan = isPlainHttpUrl(prowlarrUrl) && !prowlarrInsecureLan;
+  const prowlarrPriorityValue =
+    prowlarrPriority.trim() === "" ? undefined : Number(prowlarrPriority);
+  const prowlarrPriorityInvalid =
+    prowlarrPriorityValue !== undefined &&
+    (!Number.isInteger(prowlarrPriorityValue) ||
+      prowlarrPriorityValue < 1 ||
+      prowlarrPriorityValue > 100);
   const [editingIndexer, setEditingIndexer] = useState<Indexer | null>(null);
   const [testingIndexerId, setTestingIndexerId] = useState<string | null>(null);
   const [availableCategories, setAvailableCategories] = useState<MultiSelectOption[]>([]);
@@ -125,6 +175,45 @@ export default function IndexersPage() {
     queryKey: ["/api/indexers"],
   });
 
+  const { data: savedProwlarrSettings } = useQuery<SavedProwlarrSettings | null>({
+    queryKey: ["/api/indexers/prowlarr/settings"],
+    enabled: isProwlarrDialogOpen,
+  });
+  const [prowlarrPrefilled, setProwlarrPrefilled] = useState(false);
+
+  // Prefill the dialog once per opening with the last successful sync, so
+  // later refetches never overwrite what the user is typing. Any edit made
+  // before the saved settings arrive also counts as "done": the user's input
+  // wins over a slow response.
+  useEffect(() => {
+    if (!isProwlarrDialogOpen) {
+      setProwlarrPrefilled(false);
+      setProwlarrInsecureLanTouched(false);
+      return;
+    }
+    if (prowlarrPrefilled || !savedProwlarrSettings) return;
+    setProwlarrUrl(savedProwlarrSettings.url);
+    setProwlarrApiKey(savedProwlarrSettings.apiKey);
+    setProwlarrInsecureLan(savedProwlarrSettings.allowInsecureLan);
+    setProwlarrPriority(
+      savedProwlarrSettings.priority === null ? "" : String(savedProwlarrSettings.priority)
+    );
+    setProwlarrCategories(savedProwlarrSettings.categories);
+    setProwlarrPrefilled(true);
+  }, [isProwlarrDialogOpen, prowlarrPrefilled, savedProwlarrSettings]);
+
+  const handleProwlarrUrlChange = useCallback(
+    (value: string) => {
+      setProwlarrPrefilled(true);
+      setProwlarrUrl(value);
+      // The saved key is only valid for the saved URL; ask for it again elsewhere.
+      if (prowlarrApiKey === SAVED_KEY_PLACEHOLDER && value !== savedProwlarrSettings?.url) {
+        setProwlarrApiKey("");
+      }
+    },
+    [prowlarrApiKey, savedProwlarrSettings]
+  );
+
   const sortedIndexers = useMemo(() => {
     return [...indexers].sort(compareEnabledPriorityName);
   }, [indexers]);
@@ -139,7 +228,7 @@ export default function IndexersPage() {
         body: JSON.stringify({
           url: prowlarrUrl,
           apiKey: prowlarrApiKey,
-          allowInsecureLan: prowlarrAllowInsecureLan,
+          allowInsecureLan: prowlarrInsecureLan,
         }),
       });
       const result = await response.json();
@@ -165,20 +254,27 @@ export default function IndexersPage() {
         body: JSON.stringify({
           url: prowlarrUrl,
           apiKey: prowlarrApiKey,
-          allowInsecureLan: prowlarrAllowInsecureLan,
+          // A box left untouched and unticked keeps each indexer's own setting;
+          // ticking opts in, and unticking it revokes the opt-in.
+          ...(prowlarrInsecureLan || prowlarrInsecureLanTouched
+            ? { allowInsecureLan: prowlarrInsecureLan }
+            : {}),
+          ...(prowlarrPriorityValue === undefined ? {} : { priority: prowlarrPriorityValue }),
+          ...(prowlarrCategories.length > 0 ? { categories: prowlarrCategories } : {}),
         }),
       });
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to sync from Prowlarr");
+        throw new Error(error.details?.[0]?.msg || error.error || "Failed to sync from Prowlarr");
       }
       return response.json();
     },
     onSuccess: (data) => {
       void refreshIndexerQueries(queryClient);
+      void queryClient.invalidateQueries({ queryKey: ["/api/indexers/prowlarr/settings"] });
       clearSearchCache();
       setIsProwlarrDialogOpen(false);
-      setProwlarrAllowInsecureLan(false);
+      setProwlarrDiagnostics(null);
       toast({
         title: "Sync successful",
         description: data.message,
@@ -414,7 +510,7 @@ export default function IndexersPage() {
     });
     setIsDialogOpen(true);
     // Fetch available categories from the indexer
-    fetchCategories(indexer.id);
+    void fetchCategories(indexer.id);
   };
 
   const handleAdd = () => {
@@ -765,7 +861,7 @@ export default function IndexersPage() {
                         min="1"
                         max="100"
                         {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                        onChange={(e) => field.onChange(Number.parseInt(e.target.value) || 1)}
                         data-testid="input-indexer-priority"
                       />
                     </FormControl>
@@ -870,7 +966,7 @@ export default function IndexersPage() {
                 placeholder="http://localhost:9696"
                 value={prowlarrUrl}
                 onChange={(e) => {
-                  setProwlarrUrl(e.target.value);
+                  handleProwlarrUrlChange(e.target.value);
                   setProwlarrDiagnostics(null);
                 }}
               />
@@ -885,34 +981,115 @@ export default function IndexersPage() {
                 placeholder="Enter Prowlarr API Key"
                 value={prowlarrApiKey}
                 onChange={(e) => {
+                  setProwlarrPrefilled(true);
                   setProwlarrApiKey(e.target.value);
                   setProwlarrDiagnostics(null);
                 }}
+                aria-describedby={
+                  prowlarrApiKey === SAVED_KEY_PLACEHOLDER ? "prowlarr-apikey-saved" : undefined
+                }
               />
+              {prowlarrApiKey === SAVED_KEY_PLACEHOLDER && (
+                <p id="prowlarr-apikey-saved" className="text-xs text-muted-foreground">
+                  Using the saved key. Type a new one to replace it.
+                </p>
+              )}
             </div>
-            <div className="flex items-start gap-3 rounded-lg border p-3">
-              <Checkbox
-                id="prowlarr-allow-insecure-lan"
-                checked={prowlarrAllowInsecureLan}
-                onCheckedChange={(checked) => {
-                  setProwlarrAllowInsecureLan(checked === true);
-                  setProwlarrDiagnostics(null);
-                }}
-                data-testid="checkbox-prowlarr-allow-insecure-lan"
-              />
+            <section
+              aria-labelledby="prowlarr-defaults-heading"
+              className="space-y-3 rounded-lg border p-3"
+            >
               <div className="space-y-1">
-                <label
-                  htmlFor="prowlarr-allow-insecure-lan"
-                  className="text-sm font-medium leading-none"
-                >
-                  Send the API key to Prowlarr indexers over HTTP
-                </label>
-                <p className="text-muted-foreground text-xs">
-                  Needed when Prowlarr uses HTTP. Enable only for a trusted local network; the API
-                  key is sent without encryption.
+                <h3 id="prowlarr-defaults-heading" className="text-sm font-medium leading-none">
+                  Apply to all synced indexers
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Leave a field empty to keep what Prowlarr or the existing indexer already has.
                 </p>
               </div>
-            </div>
+              <div className="flex flex-row items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <label
+                    htmlFor="prowlarr-insecure-lan"
+                    className="text-sm font-medium leading-none"
+                  >
+                    Allow insecure LAN connection
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Required when Prowlarr is reached over plain HTTP, otherwise the API key is not
+                    sent and every indexer answers 401. Only for a trusted local network.
+                  </p>
+                </div>
+                <Checkbox
+                  id="prowlarr-insecure-lan"
+                  className="mt-0.5"
+                  checked={prowlarrInsecureLan}
+                  onCheckedChange={(checked) => {
+                    setProwlarrInsecureLan(checked === true);
+                    setProwlarrInsecureLanTouched(true);
+                    setProwlarrPrefilled(true);
+                    setProwlarrDiagnostics(null);
+                  }}
+                  aria-describedby={
+                    prowlarrNeedsInsecureLan ? "prowlarr-insecure-lan-warning" : undefined
+                  }
+                  data-testid="checkbox-prowlarr-insecure-lan"
+                />
+              </div>
+              {prowlarrNeedsInsecureLan && (
+                <p
+                  id="prowlarr-insecure-lan-warning"
+                  className="text-xs text-amber-700 in-[.dark]:text-amber-500"
+                  data-testid="text-prowlarr-insecure-lan-warning"
+                >
+                  This Prowlarr URL uses plain HTTP. Unless you tick the box above, Questarr will
+                  not send the API key and the synced indexers will answer 401.
+                </p>
+              )}
+              <div className="space-y-2">
+                <label htmlFor="prowlarr-priority" className="text-sm font-medium leading-none">
+                  Priority
+                </label>
+                <Input
+                  id="prowlarr-priority"
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max="100"
+                  placeholder="Keep Prowlarr's priority"
+                  value={prowlarrPriority}
+                  onChange={(e) => {
+                    setProwlarrPrefilled(true);
+                    setProwlarrPriority(e.target.value);
+                  }}
+                  aria-invalid={prowlarrPriorityInvalid}
+                  aria-describedby={prowlarrPriorityInvalid ? "prowlarr-priority-error" : undefined}
+                  data-testid="input-prowlarr-priority"
+                />
+                {prowlarrPriorityInvalid && (
+                  <p id="prowlarr-priority-error" className="text-xs text-destructive">
+                    Priority must be a whole number between 1 and 100.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-2">
+                <span id="prowlarr-categories-label" className="text-sm font-medium leading-none">
+                  Categories
+                </span>
+                <MultiSelect
+                  options={PROWLARR_SYNC_CATEGORIES}
+                  selected={prowlarrCategories}
+                  onChange={(selected) => {
+                    setProwlarrPrefilled(true);
+                    setProwlarrCategories(selected);
+                  }}
+                  placeholder="Keep existing categories"
+                  emptyMessage="No categories available"
+                  aria-labelledby="prowlarr-categories-label"
+                  data-testid="multi-select-prowlarr-categories"
+                />
+              </div>
+            </section>
             {prowlarrDiagnostics && (
               <div className="rounded-lg border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -981,7 +1158,12 @@ export default function IndexersPage() {
               </Button>
               <Button
                 onClick={() => syncProwlarrMutation.mutate()}
-                disabled={syncProwlarrMutation.isPending || !prowlarrUrl || !prowlarrApiKey}
+                disabled={
+                  syncProwlarrMutation.isPending ||
+                  !prowlarrUrl ||
+                  !prowlarrApiKey ||
+                  prowlarrPriorityInvalid
+                }
                 data-testid="button-sync-prowlarr-confirm"
               >
                 {syncProwlarrMutation.isPending ? (

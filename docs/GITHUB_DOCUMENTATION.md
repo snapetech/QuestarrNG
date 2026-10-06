@@ -44,11 +44,11 @@ documentation in this repository.
 - System architecture and background actors:
   [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md)
 - Contribution guide: [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md)
-- Code of conduct: [`.github/CODE_OF_CONDUCT.md`](../.github/CODE_OF_CONDUCT.md)
+- Code of conduct: [`docs/CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md)
 
 ## Security and supply chain
 
-- Security policy and reporting: [`.github/SECURITY.md`](../.github/SECURITY.md)
+- Security policy and reporting: [`docs/SECURITY.md`](./SECURITY.md)
 - Threat model: [`docs/THREAT_MODEL.md`](./THREAT_MODEL.md)
 - Security assessment: [`docs/SECURITY_ASSESSMENT.md`](./SECURITY_ASSESSMENT.md)
 - Vulnerability management and release gates:

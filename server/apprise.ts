@@ -25,6 +25,10 @@ export interface AppriseSettings {
   apiUrl: string | null;
   key: string | null;
   urls: string | null;
+  // HTTP Basic Auth credentials for an Apprise API server started with
+  // APPRISE_AUTH_REQUIRED=yes (API mode only; the username may be empty).
+  username: string | null;
+  password: string | null;
 }
 
 type ExecFileResult = { stdout: string; stderr: string };
@@ -37,6 +41,20 @@ type ExecFileError = Error & {
 };
 
 const APPRISE_CLI_TIMEOUT_MS = 15_000;
+
+class AppriseCliError extends Error {
+  readonly error: unknown;
+  readonly stdout: string;
+  readonly stderr: string;
+
+  constructor(error: unknown, stdout = "", stderr = "") {
+    super(error instanceof Error ? error.message : String(error));
+    this.name = "AppriseCliError";
+    this.error = error;
+    this.stdout = stdout;
+    this.stderr = stderr;
+  }
+}
 
 // Known absolute install locations for the Apprise CLI. Resolving to a fixed, unwriteable
 // path (rather than letting execFile search $PATH for a bare "apprise" command) avoids
@@ -103,19 +121,47 @@ export function isAppriseConfigured(settings: AppriseSettings): boolean {
 export async function readAppriseSettings(storage: {
   getSystemConfig(key: string): Promise<string | undefined>;
 }): Promise<AppriseSettings> {
-  const [mode, apiUrl, key, urls] = await Promise.all([
+  const [mode, apiUrl, key, urls, username, password] = await Promise.all([
     storage.getSystemConfig("apprise.mode"),
     storage.getSystemConfig("apprise.apiUrl"),
     storage.getSystemConfig("apprise.key"),
     storage.getSystemConfig("apprise.urls"),
+    storage.getSystemConfig("apprise.username"),
+    storage.getSystemConfig("apprise.password"),
   ]);
 
+  const normalizedMode = normalizeAppriseMode(mode);
   return {
-    mode: normalizeAppriseMode(mode),
+    mode: normalizedMode,
     apiUrl: trimToNull(apiUrl),
     key: trimToNull(key),
     urls: trimToNull(urls),
+    username: trimToNull(username),
+    // CLI mode never uses the API password, so a value that no longer decrypts must not block it.
+    password: normalizedMode === "api" ? await readApiPassword(password) : null,
   };
+}
+
+async function readApiPassword(stored: string | undefined): Promise<string | null> {
+  if (!stored) return null;
+  try {
+    // Loaded lazily: credential-crypto pulls in the database module, which modules that
+    // only send notifications through appriseClient should not have to initialize.
+    const { decryptCredential } = await import("./credential-crypto.js");
+    return (await decryptCredential(stored)) || null;
+  } catch (error) {
+    appriseLogger.warn({ error }, "Could not decrypt the saved Apprise API password");
+    return null;
+  }
+}
+
+function isHttpsUrl(value: string | null): boolean {
+  if (!value) return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 function formatCliError(error: unknown, stdout = "", stderr = ""): string {
@@ -138,11 +184,11 @@ function formatCliError(error: unknown, stdout = "", stderr = ""): string {
 function runAppriseCli(args: string[]): Promise<ExecFileResult> {
   const binary = resolveAppriseBinary();
   if (!binary) {
-    return Promise.reject({
-      error: Object.assign(new Error("Apprise CLI binary not found"), { code: "ENOENT" }),
-      stdout: "",
-      stderr: "",
-    });
+    return Promise.reject(
+      new AppriseCliError(
+        Object.assign(new Error("Apprise CLI binary not found"), { code: "ENOENT" })
+      )
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -157,7 +203,7 @@ function runAppriseCli(args: string[]): Promise<ExecFileResult> {
       },
       (error, stdout, stderr) => {
         if (error) {
-          reject({ error, stdout, stderr });
+          reject(new AppriseCliError(error, stdout, stderr));
           return;
         }
         resolve({ stdout, stderr });
@@ -186,6 +232,8 @@ class AppriseClient {
     apiUrl: null,
     key: null,
     urls: null,
+    username: null,
+    password: null,
   };
 
   configure(settings: Partial<AppriseSettings>): void {
@@ -194,6 +242,8 @@ class AppriseClient {
       apiUrl: trimToNull(settings.apiUrl),
       key: trimToNull(settings.key),
       urls: trimToNull(settings.urls),
+      username: trimToNull(settings.username),
+      password: settings.password || null,
     };
   }
 
@@ -203,6 +253,25 @@ class AppriseClient {
 
   isConfigured(): boolean {
     return isAppriseConfigured(this.settings);
+  }
+
+  private buildApiHeaders(): Record<string, string> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (this.hasApiCredentials()) {
+      const credentials = `${this.settings.username ?? ""}:${this.settings.password ?? ""}`;
+      headers.Authorization = `Basic ${Buffer.from(credentials, "utf8").toString("base64")}`;
+    }
+    return headers;
+  }
+
+  private hasApiCredentials(): boolean {
+    return !!(this.settings.username || this.settings.password);
+  }
+
+  // Once credentials are configured against an https:// server, never let a redirect
+  // downgrade the request (and its Authorization header) to plaintext http.
+  private requiresHttps(): boolean {
+    return this.hasApiCredentials() && isHttpsUrl(this.settings.apiUrl);
   }
 
   private buildApiRequest(
@@ -243,7 +312,8 @@ class AppriseClient {
       const res = await safeFetch(request.endpoint, {
         method: "POST",
         allowPrivate: true,
-        headers: { "Content-Type": "application/json" },
+        requireHttps: this.requiresHttps(),
+        headers: this.buildApiHeaders(),
         body: JSON.stringify(request.payload),
       });
 
@@ -276,11 +346,8 @@ class AppriseClient {
         type,
       ]);
     } catch (result) {
-      const { error, stdout, stderr } = result as {
-        error: unknown;
-        stdout?: string;
-        stderr?: string;
-      };
+      const { error, stdout, stderr } =
+        result instanceof AppriseCliError ? result : new AppriseCliError(result);
       appriseLogger.warn(
         { error: formatCliError(error, stdout, stderr), title: notification.title },
         "Apprise CLI send error"
@@ -321,11 +388,8 @@ class AppriseClient {
         ]);
         return { success: true };
       } catch (result) {
-        const { error, stdout, stderr } = result as {
-          error: unknown;
-          stdout?: string;
-          stderr?: string;
-        };
+        const { error, stdout, stderr } =
+          result instanceof AppriseCliError ? result : new AppriseCliError(result);
         return { success: false, error: formatCliError(error, stdout, stderr) };
       }
     }
@@ -339,7 +403,8 @@ class AppriseClient {
       const res = await safeFetch(request.endpoint, {
         method: "POST",
         allowPrivate: true,
-        headers: { "Content-Type": "application/json" },
+        requireHttps: this.requiresHttps(),
+        headers: this.buildApiHeaders(),
         body: JSON.stringify(request.payload),
       });
 

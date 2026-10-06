@@ -75,6 +75,44 @@ function makeSltOutput(
   ].join("\n\n");
 }
 
+// A real `unrar lt -v` transcript (trimmed of per-entry metadata lines that the parser
+// ignores) for a two-volume set: big.bin spans both volumes and is listed in each.
+const UNRAR_LT_OUTPUT = [
+  "UNRAR 7.12 freeware      Copyright (c) 1993-2025 Alexander Roshal",
+  "",
+  "Archive: /downloads/game.part1.rar",
+  "Details: RAR 5, volume 1",
+  "",
+  "        Name: Game/big.bin",
+  "        Type: File",
+  "        Size: 3000000",
+  " Packed size: 1048410",
+  "       Ratio: -->",
+  "",
+  "Archive: /downloads/game.part2.rar",
+  "Details: RAR 5, volume 2",
+  "",
+  "        Name: Game/big.bin",
+  "        Type: File",
+  "        Size: 3000000",
+  " Packed size: 1048409",
+  "       Ratio: <--",
+  "",
+  "        Name: Game/link",
+  "        Type: Unix symbolic link",
+  "      Target: ../a.txt",
+  "        Size: 8",
+  "",
+  "        Name: Game/a.txt",
+  "        Type: File",
+  "        Size: 6",
+  "",
+  "        Name: Game",
+  "        Type: Directory",
+  "  Attributes: drwxr-xr-x",
+  "",
+].join("\n");
+
 // Both binary resolvers cache their result at module scope. Tests that need a specific
 // resolution outcome (binary found vs. not found) load a fresh module instance instead of
 // relying on test execution order, mirroring apprise.test.ts's cache-reset pattern.
@@ -232,6 +270,37 @@ describe("ArchiveService", () => {
 
       expect(vi.mocked(execFile).mock.calls).toHaveLength(1);
       expect(emptyDirMock).not.toHaveBeenCalled();
+    });
+
+    it("does not treat empty link fields on ordinary entries as links", async () => {
+      const service = await freshArchiveService();
+      mockExecAlways(
+        null,
+        makeSltOutput([{ name: "game.rom", size: 12, extra: "Symbolic Link = \nHard Link = " }]),
+        ""
+      );
+      readdirMock.mockResolvedValueOnce([{ name: "game.rom", isDirectory: () => false }]);
+
+      const files = await service.extract("/downloads/game.tar", "/tmp/out"); // NOSONAR - mocked fs
+
+      expect(files).toHaveLength(1);
+    });
+
+    it("accepts an explicit root directory entry, as tar -cf archive.tar . produces", async () => {
+      const service = await freshArchiveService();
+      mockExecAlways(
+        null,
+        makeSltOutput([
+          { name: ".", size: 0, isDirectory: true },
+          { name: "./game.rom", size: 12 },
+        ]),
+        ""
+      );
+      readdirMock.mockResolvedValueOnce([{ name: "game.rom", isDirectory: () => false }]);
+
+      const files = await service.extract("/downloads/game.tar", "/tmp/out"); // NOSONAR - mocked fs
+
+      expect(files).toEqual([expect.stringMatching(/tmp[\\/]out[\\/]game\.rom$/)]);
     });
 
     it("rejects symbolic and hard links before extraction touches the destination", async () => {
@@ -477,8 +546,8 @@ describe("ArchiveService", () => {
 
       const calls = vi.mocked(execFile).mock.calls;
       expect(calls).toHaveLength(3);
-      expect(calls[0][0]).toBe(fakeSevenZipPath);
-      expect(calls[0][1]).toEqual(["l", "-slt", "-p-", "--", "/downloads/game.rar"]);
+      expect(calls[0][0]).toBe(fakeUnrarPath);
+      expect(calls[0][1]).toEqual(["lt", "-v", "-p-", "--", "/downloads/game.rar"]);
       expect(calls[1][0]).toBe(fakeUnrarPath);
       expect(calls[1][1]).toEqual(["t", "-y", "-p-", "--", "/downloads/game.rar"]);
       expect(calls[2][0]).toBe(fakeUnrarPath);
@@ -558,12 +627,8 @@ describe("ArchiveService", () => {
         service.extract("/downloads/game.rar", "/tmp/out") // NOSONAR - mocked fs
       ).rejects.toThrow("no unrar binary was found");
 
-      expect(execFile).toHaveBeenCalledExactlyOnceWith(
-        fakeSevenZipPath,
-        ["l", "-slt", "-p-", "--", "/downloads/game.rar"],
-        expect.any(Object),
-        expect.any(Function)
-      );
+      // Listing a RAR already needs unrar, so nothing runs at all.
+      expect(execFile).not.toHaveBeenCalled();
       expect(emptyDirMock).not.toHaveBeenCalled();
     });
 
@@ -649,7 +714,11 @@ describe("ArchiveService", () => {
         await service.extract(filePath, outDir, "hunter2"); // NOSONAR - mocked fs
 
         const calls = vi.mocked(execFile).mock.calls;
-        expect(calls[0][1]).toEqual(["l", "-slt", "-phunter2", "--", filePath]);
+        expect(calls[0][1]).toEqual(
+          filePath.endsWith(".rar")
+            ? ["lt", "-v", "-phunter2", "--", filePath]
+            : ["l", "-slt", "-phunter2", "--", filePath]
+        );
         expect(calls[1][1]).toEqual(expectedTestArgs);
         expect(calls[2][1]).toEqual(expectedExtractArgs);
       }
@@ -707,16 +776,98 @@ describe("ArchiveService", () => {
       expect(calls[0][1]).toEqual(["l", "-slt", "-p-", "--", "/downloads/test.zip"]);
     });
 
-    it("routes listing through 7-Zip even for a .rar path", async () => {
+    it("routes RAR listing through unrar, whose Alpine 7-Zip build lacks the RAR codec", async () => {
       const service = await freshArchiveService();
-      mockExecAlways(null, SLT_OUTPUT, "");
+      mockExecAlways(null, UNRAR_LT_OUTPUT, "");
 
-      await service.listEntries("/downloads/game.rar"); // NOSONAR - mocked fs
+      const entries = await service.listEntries("/downloads/game.part1.rar"); // NOSONAR - mocked fs
 
-      // Extraction routes .rar to unrar, but listing always goes through 7-Zip — its
-      // -slt format is the same regardless of archive type, unlike unrar's own
-      // column-aligned list commands.
-      expect(vi.mocked(execFile).mock.calls[0][0]).toBe(fakeSevenZipPath);
+      const call = vi.mocked(execFile).mock.calls[0];
+      expect(call[0]).toBe(fakeUnrarPath);
+      expect(call[1]).toEqual(["lt", "-v", "-p-", "--", "/downloads/game.part1.rar"]);
+      // The file split across both volumes is listed once; the link and directory keep
+      // their flags so extraction preflight can refuse or skip them.
+      expect(entries).toEqual([
+        { name: "Game/big.bin", size: 3000000 },
+        { name: "Game/link", size: 8, isLink: true },
+        { name: "Game/a.txt", size: 6 },
+        { name: "Game", size: 0, isDirectory: true },
+      ]);
+    });
+
+    it("keeps two same-named entries inside one volume, so neither escapes the size limit", async () => {
+      const service = await freshArchiveService();
+      mockExecAlways(
+        null,
+        [
+          "Archive: /downloads/dup.rar",
+          "Details: RAR 5",
+          "",
+          "        Name: a.bin",
+          "        Type: File",
+          "        Size: 10",
+          "",
+          "        Name: a.bin",
+          "        Type: File",
+          "        Size: 10",
+          "",
+        ].join("\n"),
+        ""
+      );
+
+      const entries = await service.listEntries("/downloads/dup.rar"); // NOSONAR - mocked fs
+
+      expect(entries).toHaveLength(2);
+    });
+
+    it("keeps unsplit same-named entries that meet at a volume boundary", async () => {
+      const service = await freshArchiveService();
+      mockExecAlways(
+        null,
+        [
+          "Archive: /downloads/dup.part1.rar",
+          "",
+          "        Name: a.bin",
+          "        Type: File",
+          "        Size: 10",
+          "       Ratio: 100%",
+          "",
+          "Archive: /downloads/dup.part2.rar",
+          "",
+          "        Name: a.bin",
+          "        Type: File",
+          "        Size: 10",
+          "       Ratio: 100%",
+          "",
+        ].join("\n"),
+        ""
+      );
+
+      const entries = await service.listEntries("/downloads/dup.part1.rar"); // NOSONAR - mocked fs
+
+      expect(entries).toHaveLength(2);
+    });
+
+    it("reads 7z directories from their attributes, since 7z blocks carry no Folder field", async () => {
+      const service = await freshArchiveService();
+      mockExecAlways(
+        null,
+        [
+          "Path = /downloads/game.7z\nType = 7z\nPhysical Size = 900",
+          "----------\nPath = Game\nSize = 0\nAttributes = D drwxr-xr-x",
+          "Path = Game/a.txt\nSize = 6\nAttributes = A -rw-r--r--",
+          "Path = Game/link\nSize = 8\nAttributes = A lrwxrwxrwx",
+        ].join("\n\n"),
+        ""
+      );
+
+      const entries = await service.listEntries("/downloads/game.7z"); // NOSONAR - mocked fs
+
+      expect(entries).toEqual([
+        { name: "Game", size: 0, isDirectory: true },
+        { name: "Game/a.txt", size: 6 },
+        { name: "Game/link", size: 8, isLink: true },
+      ]);
     });
 
     it("rejects when 7-Zip fails to list the archive", async () => {
