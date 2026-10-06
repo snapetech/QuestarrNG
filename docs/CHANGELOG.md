@@ -19,7 +19,7 @@ upstream baseline, see [What changed in QuestarrNG](FORK_CHANGES.md).
 #### Security
 
 - **Indexers:** Prowlarr sync requires HTTPS by default and blocks HTTP redirects, preventing API keys from being forwarded without explicit opt-in to trusted local network transport.
-- **Containers:** The production image now starts as the unprivileged `questarr` user. Set the container UID/GID to the owner of the mounted data directory; see the [home-server app guide](HOME_SERVER_APPS.md).
+- **Containers:** The production and Home Assistant images now run Questarr as the unprivileged `questarr` user. Set the container UID/GID to the owner of the mounted data directory; see the [home-server app guide](HOME_SERVER_APPS.md).
 - **Security tooling:** Semgrep and its hash-pinned PyJWT dependency are updated to patched releases, and the vendored HTTP cache header parser no longer uses the reported whitespace regular expression.
 
 ## [1.9.0] - 2026-10-04

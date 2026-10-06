@@ -1,8 +1,15 @@
-# Home Assistant Supervisor mounts /data as root-owned; the init script fixes that
-# ownership, then the base entrypoint drops to questarr before Node starts.
-FROM ghcr.io/snapetech/questarrng:1.9.0@sha256:f862662e6f3239d0afa60a42ad3771159b361c6a6108dc5b804a1e55ebee458d
+# Build a small Alpine helper whose only elevated operation is correcting ownership
+# inside Home Assistant's writable /data mount.
+ARG QUESTARR_IMAGE=ghcr.io/snapetech/questarrng:1.9.1
+FROM node:26-alpine@sha256:aadf416b2cdce311a8811ba3f0608a61b77dbf997500e2eafe781b51f6a0b019 AS data-owner-builder
+RUN apk add --no-cache build-base
+COPY fix-data-owner.c /tmp/fix-data-owner.c
+RUN cc -Os -Wall -Wextra -Werror -static -o /questarr-fix-data-owner /tmp/fix-data-owner.c
+
+FROM ${QUESTARR_IMAGE}
+USER root
 ARG BUILD_ARCH=amd64
-ARG QUESTARR_VERSION=1.9.0
+ARG QUESTARR_VERSION=1.9.1
 
 LABEL \
     io.hass.name="Questarr" \
@@ -19,8 +26,14 @@ RUN if [ -d /app/data ] && [ ! -L /app/data ]; then cp -a /app/data/. /data/ && 
 RUN ln -sfn /data /app/data
 
 COPY ha-entrypoint.sh /ha-entrypoint.sh
-RUN chmod +x /ha-entrypoint.sh
+COPY --from=data-owner-builder /questarr-fix-data-owner /usr/local/bin/questarr-fix-data-owner
+RUN chmod +x /ha-entrypoint.sh && \
+    apk add --no-cache libcap-utils && \
+    setcap cap_chown+ep /usr/local/bin/questarr-fix-data-owner && \
+    test "$(getcap /usr/local/bin/questarr-fix-data-owner)" = \
+      "/usr/local/bin/questarr-fix-data-owner cap_chown=ep" && \
+    apk del libcap-utils
 
-USER root
+USER questarr:questarr
 ENTRYPOINT ["/ha-entrypoint.sh"]
 CMD ["node", "dist/server/index.js"]
