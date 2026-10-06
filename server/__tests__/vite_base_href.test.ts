@@ -9,7 +9,7 @@ import { relativeBaseHref, serveStatic, withBaseHref } from "../vite.js";
 const builtIndex = `<!doctype html>
 <html lang="en">
   <head>
-    <script type="module" crossorigin src="./assets/index-abc.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/index-abc.js" />
   </head>
   <body><div id="root"></div></body>
 </html>`;
