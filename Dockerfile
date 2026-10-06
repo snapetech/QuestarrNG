@@ -33,6 +33,7 @@ WORKDIR /app
 ENV SQLITE_DB_PATH=/app/data/sqlite.db
 ENV NODE_ENV=production
 ENV PORT=5000
+ENV HOME=/home/questarr
 ENV PUID=1000
 ENV PGID=1000
 ENV UMASK=022
@@ -93,9 +94,11 @@ COPY --from=builder /app/migrations-pg ./migrations-pg
 COPY --from=builder /app/shared ./shared
 COPY --from=builder /app/package.json ./
 
-# Create user, group, data directory, and set ownership
-RUN addgroup questarr && \
-    adduser -G questarr -s /bin/sh -D questarr && \
+# Reuse the Alpine base image's 1000:1000 account so the default PUID/PGID
+# matches the non-root runtime identity instead of allocating the next free ID.
+RUN groupmod -n questarr node && \
+    usermod -l questarr node && \
+    usermod -d /home/questarr -m questarr && \
     mkdir -p /app/data && \
     chown -R questarr:questarr /app
 
