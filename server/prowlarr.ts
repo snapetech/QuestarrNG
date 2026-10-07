@@ -211,7 +211,8 @@ export class ProwlarrClient {
       return {
         management: {
           success: false,
-          error: "Prowlarr uses plain HTTP; enable the insecure LAN option only on a trusted network.",
+          error:
+            "Prowlarr uses plain HTTP; enable the insecure LAN option only on a trusted network.",
         },
         indexers: [],
       };

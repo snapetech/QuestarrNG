@@ -8,6 +8,14 @@ Discord announcement while this file remains the chronological changelog.
 For a reader-oriented summary of the Snapetech fork's additions since the
 upstream baseline, see [What changed in QuestarrNG](FORK_CHANGES.md).
 
+## [1.9.2] - 2026-10-06
+
+### User-facing changes
+
+#### Added
+
+- **SeerrNG:** The provider now advertises request-contract v2 and can stream a request-scoped `.tar.gz` bundle for multi-file game imports. Single-file delivery remains available.
+
 ## [1.9.1] - 2026-10-06
 
 ### User-facing changes

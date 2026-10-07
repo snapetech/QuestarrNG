@@ -118,6 +118,7 @@ export function createStorageMock() {
     getTrackedDownloadKeys: vi.fn().mockResolvedValue(new Set()),
     getTrackedDownloadGameStatuses: vi.fn().mockResolvedValue(new Map()),
     getGameByIgdbId: vi.fn(),
+    getIntegrationRequest: vi.fn(),
     createImportTask: vi.fn(),
     startImportTask: vi.fn(),
     updateImportTask: vi.fn(),

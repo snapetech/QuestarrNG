@@ -8,7 +8,7 @@ individual fixes and security updates.
 
 The Snapetech fork was created in September 2026. The v1.5.0 release was not
 published; its completed work shipped in v1.6.0. Fork releases from v1.6.0
-through [v1.9.1](https://github.com/snapetech/QuestarrNG/releases/tag/v1.9.1)
+through [v1.9.2](https://github.com/snapetech/QuestarrNG/releases/tag/v1.9.2)
 added the capabilities below.
 
 ## Product capabilities
@@ -83,7 +83,8 @@ added the capabilities below.
 | **1.7.0–1.7.3** | Exact platform release dates in the SeerrNG catalog, clearer indexer/downloader diagnostics, hardened outbound and proxy requests, the .NET 10 Windows service, and maintained release-note publication. |
 | **1.8.0–1.8.3** | Versioned SeerrNG OpenAPI contract, scoped and expiring integration keys, bounded archive extraction, rootless container settings, SBOM/provenance attestations, and dependency/security maintenance.    |
 | **1.9.0**       | Platform-scoped library and discovery behavior, the Playing journal and Steam achievements, DLC/expansion details, a release-name blacklist, and optional pre-import VirusTotal/ClamAV checks.           |
-| **1.9.1**       | Upstream Questarr sync, per-file categories and installed versions, HTTPS-only Prowlarr sync by default, non-root container defaults, and patched security tooling.                            |
+| **1.9.1**       | Upstream Questarr sync, per-file categories and installed versions, HTTPS-only Prowlarr sync by default, non-root container defaults, and patched security tooling.                                      |
+| **1.9.2**       | SeerrNG request-contract v2 handshake and authenticated request-scoped bundles for multi-file game imports.                                                                                              |
 
 For every released change, including fixes and action-required upgrade notes, use
 the [full changelog](CHANGELOG.md) and the
@@ -91,15 +92,10 @@ the [full changelog](CHANGELOG.md) and the
 
 ## Current SeerrNG provider compatibility
 
-QuestarrNG 1.9.1 advertises SeerrNG `apiVersion: 1` and
-`requestContractVersion: 1`. It supports the IGDB catalog, PC acquisition,
-request retry/cancel, and imported-file streaming. The handshake reports
-emulation acquisition as unsupported; the request asset-list response reports
-`bundleSupported: false`.
-
-SeerrNG's v3.51.0 release adds PC play-time and multi-file download behavior
-that requests provider contract version 2. Until QuestarrNG implements and
-advertises that version, consumers should treat those v2-specific capabilities
-as unavailable. See the
+QuestarrNG 1.9.2 advertises SeerrNG `apiVersion: 1` and
+`requestContractVersion: 2`. It supports the IGDB catalog, PC acquisition,
+request retry/cancel, single-file streaming, and request-scoped `.tar.gz`
+bundles for multi-file imports. The handshake reports emulation acquisition as
+unsupported. See the
 [SeerrNG release note](https://github.com/snapetech/seerrng/blob/main/release-notes/questarr-catalog-estimates-and-bundles.md)
-and the current [QuestarrNG provider contract](contracts/seerrng-v1.openapi.yaml).
+and the current [QuestarrNG provider contract](contracts/seerrng-v2.openapi.yaml).
