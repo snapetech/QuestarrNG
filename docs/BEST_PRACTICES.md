@@ -2,7 +2,7 @@
 
 This document records repository evidence for the [OpenSSF Best Practices Badge](https://www.bestpractices.dev/)
 criteria relevant to QuestarrNG. It describes the `snapetech/QuestarrNG` fork as
-it stood on **2026-10-06**. It is an evidence ledger, not a submitted OpenSSF
+it stood on **2026-10-07**. It is an evidence ledger, not a submitted OpenSSF
 profile or a claim that every criterion is met.
 
 QuestarrNG is derived from [Doezer/Questarr](https://github.com/Doezer/Questarr),
@@ -115,13 +115,16 @@ They were open in GitHub Code Scanning at the assessment date:
 
 | Finding | Fork-specific evidence and status |
 | --- | --- |
-| [CodeReviewID #10](https://github.com/snapetech/QuestarrNG/security/code-scanning/10) | The latest [Scorecard run](https://github.com/snapetech/QuestarrNG/actions/runs/37547164771) still reports 0/20 reviewed changesets. PRs [#17](https://github.com/snapetech/QuestarrNG/pull/17) and [#18](https://github.com/snapetech/QuestarrNG/pull/18) have maintainer reviews submitted after they merged; those retrospective reviews are recorded transparently and are not pre-merge approvals. The `main` branch currently requires one approving review and enforces the rule for administrators. That protects future pull requests but does not rewrite the review history of already merged changes. |
+| [CodeReviewID #10](https://github.com/snapetech/QuestarrNG/security/code-scanning/10) | The latest [Scorecard run](https://github.com/snapetech/QuestarrNG/actions/runs/37551160492) still reports 0/20 reviewed changesets. PRs [#17](https://github.com/snapetech/QuestarrNG/pull/17) and [#18](https://github.com/snapetech/QuestarrNG/pull/18) have maintainer reviews submitted after they merged; those retrospective reviews are recorded transparently and are not pre-merge approvals. The `main` branch currently requires one approving review and enforces the rule for administrators. That protects future pull requests but does not rewrite the review history of already merged changes. |
 | [MaintainedID #11](https://github.com/snapetech/QuestarrNG/security/code-scanning/11) | GitHub records the repository creation date as 2026-09-25. The fork published [v1.9.1](https://github.com/snapetech/QuestarrNG/releases/tag/v1.9.1) on 2026-10-06 and has active CI and security workflows, but its public history is less than 90 days old. The age signal is a project-maturity heuristic, not a vulnerability finding. |
 | [CIIBestPracticesID #12](https://github.com/snapetech/QuestarrNG/security/code-scanning/12) | No QuestarrNG OpenSSF Best Practices profile was registered as of this assessment. This file gathers repository evidence but does not create or attest to a profile. |
 
 The repository's current branch-protection rule requires one approving review,
-enforces that rule for administrators, and requires CI/security status checks.
-See [GitHub branch protection settings](https://github.com/snapetech/QuestarrNG/settings/branches).
+enforces that rule for administrators, and requires the 12 status checks emitted
+by the current PR workflows. Obsolete check names left over from an earlier CI
+layout were removed; the active required checks include CI tests/builds, SCA,
+CodeQL, and both Semgrep gates. See [GitHub branch protection
+settings](https://github.com/snapetech/QuestarrNG/settings/branches).
 The open Code Scanning findings remain visible until Scorecard reports that their
 underlying conditions have changed.
 
