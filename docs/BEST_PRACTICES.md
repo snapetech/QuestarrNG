@@ -1,157 +1,147 @@
-# OpenSSF Best Practices Badge Evidence
+# OpenSSF Best Practices Evidence for QuestarrNG
 
-This document records the evidence behind Questarr's self-assessment against the
-[OpenSSF Best Practices Badge](https://www.bestpractices.dev/) criteria. Each section is
-named after the criterion ID used in the badge questionnaire, so it can be linked directly
-as the justification for that question.
+This document records repository evidence for the [OpenSSF Best Practices Badge](https://www.bestpractices.dev/)
+criteria relevant to QuestarrNG. It describes the `snapetech/QuestarrNG` fork as
+it stood on **2026-10-07**. It is an evidence ledger, not a submitted OpenSSF
+profile or a claim that every criterion is met.
 
-This is evidence, not policy — for the underlying process/config being evidenced, see the
-linked files in each section.
+QuestarrNG is derived from [Doezer/Questarr](https://github.com/Doezer/Questarr),
+but the two repositories have separate maintainers, issue trackers, release
+histories, and review records. Upstream activity is not counted as QuestarrNG
+evidence here.
 
 ## [report_responses]
 
-> The project MUST acknowledge a majority of bug reports submitted in the last 2-12 months
-> (inclusive); the response need not include a fix.
+**Status: Not yet assessable from QuestarrNG history.**
 
-**Status: Met.**
+The fork was created on 2026-09-25. At this assessment, its issue tracker has no
+issues, and the repository has not existed for the full 2-to-12-month response
+window. There are no QuestarrNG bug reports in that window from which to measure
+acknowledgement. The response statistics previously recorded for Doezer/Questarr
+are upstream-only and do not apply to this criterion for QuestarrNG.
 
-Assessed 2026-07-06 against issues labeled `bug` created 2025-07-06 to 2026-05-06 on
-[Doezer/Questarr](https://github.com/Doezer/Questarr):
-
-- 51 bug-labeled issues in the window; 42 filed by outside users (9 were the maintainer's own).
-- 41 of 42 (98%) external reports show a maintainer/contributor response: a direct comment
-  from the maintainer (38), a substantive reply from an active contributor (2), or clear
-  maintainer action — assignment, milestone, and closure (1).
-- Only one report (#544) has no visible acknowledgement on GitHub; it was closed within
-  minutes by an automation bot, which may reflect off-platform triage that doesn't surface
-  as a comment.
+Evidence: [QuestarrNG issue tracker](https://github.com/snapetech/QuestarrNG/issues)
+and [repository](https://github.com/snapetech/QuestarrNG).
 
 ## [enhancement_responses]
 
-> The project SHOULD respond to a majority (>50%) of enhancement requests in the last 2-12
-> months (inclusive).
+**Status: Not yet assessable from QuestarrNG history.**
 
-**Status: Met.**
+The fork has no issue history covering the criterion's 2-to-12-month window, so
+there are no QuestarrNG enhancement requests on which to assess responses. The
+enhancement statistics previously recorded for Doezer/Questarr are upstream-only
+and are not attributed to this fork.
 
-Assessed 2026-07-06 against issues labeled `enhancement` created 2025-07-06 to 2026-05-06:
-
-- 79 enhancement issues in the window; 25 filed by outside users (54 were the maintainer's
-  own roadmap items).
-- 24 of 25 (96%) external requests show some form of response: a maintainer comment (19),
-  implementation without a comment — assigned, milestoned, and closed as completed (3), or
-  self-resolution by the reporter/community before a maintainer response was needed (2).
-- One request (#271) was closed by its own reporter two minutes after filing with no visible
-  engagement from anyone.
-- The 4 enhancement issues still open in this window each have active comment threads
-  (6-25 comments), indicating ongoing discussion rather than neglect.
+Evidence: [QuestarrNG issue tracker](https://github.com/snapetech/QuestarrNG/issues).
 
 ## [warnings_strict]
 
-> It is SUGGESTED that projects be maximally strict with warnings in the software produced by
-> the project, where practical.
+**Status: Met.**
 
-**Status: Met**, with room to tighten further.
+- [`tsconfig.json`](../tsconfig.json) enables TypeScript `strict` mode and the
+  additional checks `noUnusedLocals`, `noUnusedParameters`,
+  `noFallthroughCasesInSwitch`, `noImplicitReturns`,
+  `exactOptionalPropertyTypes`, and `noUncheckedIndexedAccess`.
+- [`eslint.config.js`](../eslint.config.js) includes recommended JavaScript and
+  TypeScript rules plus project-specific rules. Some rules are warnings, but
+  `npm run lint` invokes ESLint with `--max-warnings 0`, so a warning fails the
+  command.
+- [`package.json`](../package.json) defines `check` as `tsc` and `lint` as the
+  zero-warning ESLint command. The CI workflow runs both as blocking checks for
+  pushes and pull requests.
 
-Assessed 2026-07-06 against `tsconfig.json`, `eslint.config.js`, and `.github/workflows/ci.yml`:
-
-- `tsconfig.json` sets `"strict": true` (the full strict bundle: `strictNullChecks`,
-  `noImplicitAny`, `strictFunctionTypes`, `strictBindCallApply`,
-  `strictPropertyInitialization`, `noImplicitThis`, `alwaysStrict`), applied uniformly across
-  client, server, and shared code.
-- `eslint.config.js` layers `@eslint/js` recommended + `typescript-eslint` recommended rules,
-  plus project additions (`no-var: error`, `react-hooks/rules-of-hooks: error`,
-  `no-unused-vars`, `no-explicit-any`, `exhaustive-deps` as warnings).
-- CI (`ci.yml`) runs `npm run lint` and `npm run check` (tsc) as unconditional, blocking steps
-  on every push, plus project-specific checks with no off-the-shelf equivalent
-  (`check:overrides`, `check:deprecated`) and separate SAST/vulnerability-scan workflows.
-- Not yet enabled: the opt-in strictness flags beyond the `strict` bundle — `noUnusedLocals`,
-  `noUnusedParameters`, `noImplicitReturns`, `noFallthroughCasesInSwitch`,
-  `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`.
-- `npm run lint` has no `--max-warnings 0`, so ESLint warnings don't fail CI — only hard
-  errors do.
+Evidence: [`ci.yml`](../.github/workflows/ci.yml),
+[`tsconfig.json`](../tsconfig.json),
+[`eslint.config.js`](../eslint.config.js), and
+[`package.json`](../package.json).
 
 ## [dynamic_analysis]
 
-> It is SUGGESTED that at least one dynamic analysis tool be applied to any proposed major
-> production release of the software before its release.
+**Status: Routine analysis is active; release-specific timing is recorded below.**
 
-**Status: Met.**
+[`dast.yml`](../.github/workflows/dast.yml) builds and starts the production
+server, waits for its health endpoint, and runs the OWASP ZAP baseline scan
+against that live instance. It runs on pushes to `main` and `release/*`, weekly,
+and by manual dispatch. `fail_action: true` makes unignored scan alerts fail the
+workflow; accepted rule IDs and their rationale are recorded in
+[`.zap/rules.tsv`](../.zap/rules.tsv).
 
-[`.github/workflows/dast.yml`](../.github/workflows/dast.yml) runs an
-[OWASP ZAP](https://www.zaproxy.org/) baseline scan against a live instance of the app:
-
-- Builds the production bundle, boots it on the runner (`npm start`), and waits on
-  `/api/health` before scanning — the same production code path that ships in the Docker
-  image, not a mock target.
-- `zaproxy/action-baseline` spiders the running app and passively checks every response for
-  common runtime issues (missing security headers, verbose error output, cookie flags,
-  outdated libraries, etc.) — varying inputs by construction, satisfying the criterion
-  independent of the project's static coverage numbers.
-- Runs on every push to `main`/`release/*` (so it's applied ahead of any tag cut from those
-  branches) plus a weekly schedule and manual dispatch, mirroring the cadence already used by
-  [vulnerability-scan.yml](../.github/workflows/vulnerability-scan.yml).
-- `fail_action: true`, `rules_file_name: .zap/rules.tsv`: blocking, matching the gate
-  [sast.yml](../.github/workflows/sast.yml) already has for Semgrep. See
-  [`dynamic_analysis_fixed`](#dynamic_analysis_fixed) below for current findings and their
-  disposition.
-
-This is independent of `warnings_strict`'s test-coverage numbers above (branch coverage
-threshold is currently 76%, short of the criterion's 80% automated-test-suite alternative) —
-the ZAP scan satisfies `dynamic_analysis` on its own via the "tool that varies inputs" path,
-regardless of coverage.
+The successful DAST run on the `main` commit for v1.9.1 is
+[run 37546640378](https://github.com/snapetech/QuestarrNG/actions/runs/37546640378).
+The v1.9.1 release was published at 23:17 UTC on 2026-10-06, and this run
+started at 23:27 UTC. It is evidence of routine scanning, not evidence that the
+scan completed before that release was published. No major release occurred in
+this evidence period.
 
 ## [dynamic_analysis_enable_assertions]
 
-> It is SUGGESTED that the project use a configuration for at least some dynamic analysis
-> (such as testing or fuzzing) which enables many assertions. In many cases these assertions
-> should _not_ be enabled in production builds.
-
 **Status: Met.**
 
-Questarr's dynamic analysis is its Vitest suite (`server/__tests__/`, `client/__tests__/`),
-which is nothing but assertions — `expect()` calls that fail the run the moment observed
-behavior diverges from expected behavior:
+The project uses Vitest for unit and integration tests. The CI workflow runs
+`npm test -- --coverage`; failing assertions or configured coverage thresholds
+fail the job. Vitest is a development dependency, and the production
+[`Dockerfile`](../Dockerfile) runs `npm prune --omit=dev` before assembling the
+runtime image, keeping the test framework out of the shipped application.
 
-- 4,088+ `expect()` assertions across 153 test files (3,040 in `server/__tests__/`, 1,048 in
-  `client/__tests__/`) as of 2026-07-14, run on every push via the `build` job in
-  [`ci.yml`](../.github/workflows/ci.yml) (`npm test -- --coverage`).
-- This is the JS/TS analogue of the C/C++ `NDEBUG` concern the criterion warns about:
-  `vitest` and `supertest` are `devDependencies` only (never `dependencies`) in
-  `package.json`, and the production Docker image runs `npm prune --omit=dev`
-  ([`Dockerfile`](https://github.com/Doezer/Questarr/blob/main/Dockerfile)) before copying in the built `dist/` output — so the assertion
-  layer is structurally excluded from what ships, not just conventionally disabled.
-- There is no runtime `assert()`-equivalent left enabled in shipped code either: neither
-  `server/` nor `shared/` import Node's `assert` module outside of test files, so there's
-  nothing production-side that could throw on an assertion failure or leak internal state
-  the way the criterion warns about.
-- This is distinct from the request-input validation Questarr _does_ run in production
-  (express-validator, Zod schemas in `shared/schema.ts`) — that's boundary validation of
-  untrusted input, not the test-only correctness assertions this criterion is about.
+Evidence: [`ci.yml`](../.github/workflows/ci.yml),
+[`package.json`](../package.json), [`vitest.config.ts`](../vitest.config.ts),
+and [`Dockerfile`](../Dockerfile).
 
 ## [dynamic_analysis_fixed]
 
-> All medium and higher severity exploitable vulnerabilities discovered with dynamic code
-> analysis MUST be fixed in a timely way after they are confirmed.
+**Status: Enforcement is active; see the limits below.**
 
-**Status: Met.**
+The DAST workflow uses `fail_action: true` and a checked-in ZAP rules file.
+[`docs/VULNERABILITY_MANAGEMENT.md`](VULNERABILITY_MANAGEMENT.md) records the
+triage process and ZAP rule dispositions. Its initial-scan narrative is dated
+before the QuestarrNG repository was created, so it is inherited baseline
+history rather than a QuestarrNG-originated finding report. The current fork
+also retains the documented limitation that ZAP rule 10055 covers both the
+accepted `style-src unsafe-inline` alert and the wildcard-directive check. The
+latter has a compensating regression assertion in
+[`server/__tests__/security.test.ts`](../server/__tests__/security.test.ts).
+The latest successful fork-hosted DAST run is linked under
+[`dynamic_analysis`](#dynamic_analysis).
 
-Full policy and results table: [`docs/VULNERABILITY_MANAGEMENT.md` §3.3](./VULNERABILITY_MANAGEMENT.md#33-first-scan-and-current-enforcement-status).
+This evidence describes the configured gate and recorded dispositions; it does
+not claim that dynamic analysis can discover every exploitable vulnerability.
+The rule-level suppression and its compensating test should be reviewed if ZAP
+changes its alert IDs or behavior.
 
-- `dast.yml` runs with `fail_action: true`: any unignored WARN or FAIL alert fails the build,
-  stricter than this criterion's "medium or higher" bar.
-- The one Medium-severity finding to date (`CSP: Wildcard Directive`) is fixed, not merely
-  accepted: `font-src`/`style-src` are scoped to `'self'` rather than Helmet's default
-  `https:` wildcard (`server/routes.ts:360-361`).
-- Three Low/Informational findings are accepted with reasoning recorded in
-  [`.zap/rules.tsv`](https://github.com/Doezer/Questarr/blob/main/.zap/rules.tsv), and, for the one with a real security tradeoff (COEP), in
-  the [`docs/SECURITY_ASSESSMENT.md`](./SECURITY_ASSESSMENT.md) risk register per the
-  accept-risk path §3.2 defines.
-- One finding (`CSP: style-src unsafe-inline`) shares a ZAP plugin ID with the fixed
-  wildcard-directive check, so its `.zap/rules.tsv` entry also suppresses that check's DAST
-  coverage; a dedicated Vitest assertion
-  (`server/__tests__/security.test.ts`) covers that regression instead. See
-  [§3.3](./VULNERABILITY_MANAGEMENT.md#33-first-scan-and-current-enforcement-status) for
-  the full results table and reasoning.
+## Current OpenSSF Scorecard findings
 
-**Update policy:** revisit each entry when the underlying tooling changes, or roughly every
-6 months to keep the 2-12 month evidence windows current.
+These repository-level findings are separate from the Badge criteria above.
+They were open in GitHub Code Scanning at the assessment date:
+
+| Finding | Fork-specific evidence and status |
+| --- | --- |
+| [CodeReviewID #10](https://github.com/snapetech/QuestarrNG/security/code-scanning/10) | The latest [Scorecard run](https://github.com/snapetech/QuestarrNG/actions/runs/37551160492) still reports 0/20 reviewed changesets. PRs [#17](https://github.com/snapetech/QuestarrNG/pull/17) and [#18](https://github.com/snapetech/QuestarrNG/pull/18) have maintainer reviews submitted after they merged; those retrospective reviews are recorded transparently and are not pre-merge approvals. The `main` branch currently requires one approving review and enforces the rule for administrators. That protects future pull requests but does not rewrite the review history of already merged changes. |
+| [MaintainedID #11](https://github.com/snapetech/QuestarrNG/security/code-scanning/11) | GitHub records the repository creation date as 2026-09-25. The fork published [v1.9.1](https://github.com/snapetech/QuestarrNG/releases/tag/v1.9.1) on 2026-10-06 and has active CI and security workflows, but its public history is less than 90 days old. The age signal is a project-maturity heuristic, not a vulnerability finding. |
+| [CIIBestPracticesID #12](https://github.com/snapetech/QuestarrNG/security/code-scanning/12) | An [in-progress OpenSSF profile](https://www.bestpractices.dev/en/projects/15269/passing) is now registered for QuestarrNG. Scorecard run [37551160492](https://github.com/snapetech/QuestarrNG/actions/runs/37551160492) detects it and scores the check 2, but alert #12 remains open. The questionnaire is incomplete; a passing-level badge is needed to clear the finding. This file records evidence but does not substitute for the badge's maintainer attestations. |
+
+The repository's current branch-protection rule requires one approving review,
+enforces that rule for administrators, and requires the 12 status checks emitted
+by the current PR workflows. Obsolete check names left over from an earlier CI
+layout were removed; the active required checks include CI tests/builds, SCA,
+CodeQL, and both Semgrep gates. See [GitHub branch protection
+settings](https://github.com/snapetech/QuestarrNG/settings/branches).
+The open Code Scanning findings remain visible until Scorecard reports that their
+underlying conditions have changed.
+
+## Repository evidence index
+
+- Project identity, fork changes, and user support: [README](../README.md)
+- Security reporting and access policy: [SECURITY.md](SECURITY.md)
+- Threat model and security risk assessment: [THREAT_MODEL.md](THREAT_MODEL.md),
+  [SECURITY_ASSESSMENT.md](SECURITY_ASSESSMENT.md)
+- Vulnerability triage and scan policy: [VULNERABILITY_MANAGEMENT.md](VULNERABILITY_MANAGEMENT.md)
+- API and integration contract: [API.md](API.md) and
+  [OpenAPI contract](contracts/seerrng-v1.openapi.yaml)
+- License: [COPYING](../COPYING)
+- Current release history: [CHANGELOG.md](CHANGELOG.md) and
+  [GitHub releases](https://github.com/snapetech/QuestarrNG/releases)
+- CI, CodeQL, SAST, DAST, and Scorecard workflows: [workflow directory](../.github/workflows)
+
+**Update this record** when the repository's public history, CI/security gates,
+or the cited criteria evidence changes. Recheck time-window criteria against
+QuestarrNG's own issue tracker; do not substitute upstream statistics.

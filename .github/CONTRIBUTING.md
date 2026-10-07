@@ -1,11 +1,13 @@
-# Contributing to Questarr
+# Contributing to QuestarrNG
 
-Thank you for your interest in contributing to Questarr! We welcome contributions from the community.
+Thank you for your interest in contributing to QuestarrNG! We welcome contributions from the community.
+
+Report bugs and request enhancements in the [QuestarrNG issue tracker](https://github.com/snapetech/QuestarrNG/issues). Contributions are submitted as pull requests against `main`; include a clear summary, link related issues, and wait for the required checks and maintainer review before merging.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/Questarr.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/QuestarrNG.git`
 3. Create a new branch: `git checkout -b feature/your-feature-name`
 4. Make your changes
 5. Test your changes thoroughly
@@ -123,7 +125,7 @@ The same categories of "major changes" listed above (new/changed API endpoints, 
 
 ### Dependencies
 
-See [docs/DEPENDENCIES.md](../docs/DEPENDENCIES.md) for how Questarr selects, obtains, and tracks its dependencies. New dependencies are reviewed as part of the normal PR process.
+See [docs/DEPENDENCIES.md](../docs/DEPENDENCIES.md) for how QuestarrNG selects, obtains, and tracks its dependencies. New dependencies are reviewed as part of the normal PR process.
 
 ### Commit Messages
 
@@ -178,4 +180,4 @@ Requests for elevated repository access (merge/write permissions, secrets, or in
 - Help create a welcoming environment for all contributors
 - Use of AI is welcome
 
-Thank you for contributing to Questarr!
+Thank you for contributing to QuestarrNG!
