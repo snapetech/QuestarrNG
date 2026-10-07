@@ -1,7 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import express from "express";
+import type { Server } from "node:http";
 import request from "supertest";
 import jwt from "jsonwebtoken";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { gunzipSync } from "node:zlib";
 import {
   mockConfig,
   createStorageMock,
@@ -51,8 +56,14 @@ const USER = { id: "user-1", username: "testuser" };
 
 type Mock = ReturnType<typeof vi.fn>;
 
+const startTestServer = (app: express.Express) =>
+  new Promise<Server>((resolve, reject) => {
+    const server = app.listen(0, "127.0.0.1", () => resolve(server));
+    server.once("error", reject);
+  });
+
 describe("integration API", () => {
-  let app: express.Express;
+  let app: Server;
   let storage: Awaited<typeof import("../storage.js")>["storage"];
   let keyHash: string;
 
@@ -86,13 +97,92 @@ describe("integration API", () => {
     (db.get as Mock).mockResolvedValue({ result: 1 });
 
     const { registerRoutes } = await import("../routes.js");
-    app = express();
-    app.use(express.json());
-    await registerRoutes(app);
+    const testApp = express();
+    testApp.use(express.json());
+    await registerRoutes(testApp);
+    app = await startTestServer(testApp);
+  });
+
+  afterEach(async () => {
+    if (!app.listening) return;
+    await new Promise<void>((resolve, reject) => {
+      app.close((error) => (error ? reject(error) : resolve()));
+    });
   });
 
   const withKey = (req: request.Test) => req.set("X-Api-Key", RAW_KEY);
   const tokenFor = (id: string) => jwt.sign({ id, username: "testuser" }, JWT_SECRET);
+
+  it("advertises and streams a request-scoped multi-file bundle", async () => {
+    const libraryRoot = await mkdtemp(path.join(os.tmpdir(), "questarr-seerr-assets-"));
+    try {
+      const firstPath = path.join(libraryRoot, "first.bin");
+      const secondPath = path.join(libraryRoot, "second.bin");
+      await writeFile(firstPath, "first asset payload");
+      await writeFile(secondPath, "second asset payload");
+
+      (storage.getIntegrationRequest as Mock).mockResolvedValue({ gameId: "game-1" });
+      (storage.getGame as Mock).mockResolvedValue({
+        id: "game-1",
+        userId: USER.id,
+        seerrExternalRequestId: "seerrng:request:bundle",
+      });
+      (storage.getImportConfig as Mock).mockResolvedValue({ libraryRoot });
+      (storage.getGameFiles as Mock).mockResolvedValue([
+        {
+          id: "file-1",
+          originalName: "../first\u0000.bin",
+          storedName: "first.bin",
+          filePath: firstPath,
+        },
+        {
+          id: "file-2",
+          originalName: "second.bin",
+          storedName: "second.bin",
+          filePath: secondPath,
+        },
+      ]);
+
+      expect(app.listening).toBe(true);
+      expect(app.address()).not.toBeNull();
+      const ping = await withKey(request(app).get("/api/integration/seerrng/v1/ping"));
+      expect(ping.status).toBe(200);
+      expect(ping.body.requestContractVersion).toBe(2);
+
+      const assets = await withKey(
+        request(app).get("/api/integration/seerrng/v1/requests/seerrng%3Arequest%3Abundle/assets")
+      );
+      expect(assets.status).toBe(200);
+      expect(assets.body).toMatchObject({
+        bundleSupported: true,
+        bundleName: "questarr-assets.tar.gz",
+      });
+
+      const bundle = await withKey(
+        request(app).get(
+          "/api/integration/seerrng/v1/requests/seerrng%3Arequest%3Abundle/assets/bundle"
+        )
+      )
+        .buffer(true)
+        .parse((stream, callback) => {
+          const chunks: Buffer[] = [];
+          stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+          stream.on("end", () => callback(null, Buffer.concat(chunks)));
+        });
+      expect(bundle.status).toBe(200);
+      expect(bundle.headers["content-type"]).toContain("application/gzip");
+      expect(bundle.headers["content-disposition"]).toContain("questarr-assets.tar.gz");
+      expect(bundle.headers["cache-control"]).toBe("no-store");
+      const tar = gunzipSync(bundle.body as Buffer);
+      expect(tar.includes(Buffer.from("first.bin"))).toBe(true);
+      expect(tar.includes(Buffer.from("../first"))).toBe(false);
+      expect(tar.includes(Buffer.from("second.bin"))).toBe(true);
+      expect(tar.includes(Buffer.from("first asset payload"))).toBe(true);
+      expect(tar.includes(Buffer.from("second asset payload"))).toBe(true);
+    } finally {
+      await rm(libraryRoot, { recursive: true, force: true });
+    }
+  });
 
   it("limits a SeerrNG key to the versioned provider routes", async () => {
     (storage.getApiKeyByHash as Mock).mockImplementation(async (hash: string) =>
@@ -855,13 +945,17 @@ describe("integrationRouter's own auth guard", () => {
   // real auth stack, to prove it actually blocks an unauthenticated request.
   it("returns 401 when mounted without an authentication middleware in front of it", async () => {
     const { integrationRouter } = await import("../routes/integration.js");
-    const app = express();
-    app.use(express.json());
-    app.use("/api/integration", integrationRouter);
+    const testApp = express();
+    testApp.use(express.json());
+    testApp.use("/api/integration", integrationRouter);
+    const server = await startTestServer(testApp);
 
-    const res = await request(app).get("/api/integration/ping");
+    const res = await request(server).get("/api/integration/ping");
 
     expect(res.status).toBe(401);
     expect(res.body.error).toBe("Unauthorized");
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
   });
 });

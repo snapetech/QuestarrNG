@@ -8,6 +8,14 @@ Discord announcement while this file remains the chronological changelog.
 For a reader-oriented summary of the Snapetech fork's additions since the
 upstream baseline, see [What changed in QuestarrNG](FORK_CHANGES.md).
 
+## [1.9.2] - 2026-10-06
+
+### User-facing changes
+
+#### Added
+
+- **SeerrNG:** The provider now advertises request-contract v2 and can stream a request-scoped `.tar.gz` bundle for multi-file game imports. Single-file delivery remains available.
+
 ## [1.9.1] - 2026-10-06
 
 ### User-facing changes
@@ -21,7 +29,6 @@ upstream baseline, see [What changed in QuestarrNG](FORK_CHANGES.md).
 - **Indexers:** Prowlarr sync requires HTTPS by default and blocks HTTP redirects, preventing API keys from being forwarded without explicit opt-in to trusted local network transport.
 - **Deployment:** **Breaking:** Production and Home Assistant images now run the app as the unprivileged questarr user; Compose definitions map it to PUID/PGID, and the Home Assistant startup helper can change ownership only within its persistent /data volume. The scanner toolchain and HTTP cache parser also received fixes for the open PyJWT and ReDoS alerts.
   - **Action required:** For direct Docker installs or custom PUID/PGID values, match the runtime user to the mounted data owner before upgrading.
-
 
 ## [1.9.0] - 2026-10-04
 

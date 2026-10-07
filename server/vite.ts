@@ -131,8 +131,7 @@ export function serveStatic(
     const lowerPath = pathname.toLowerCase();
     const lowerBasePath = normalizedBasePath.toLowerCase();
     const mounted =
-      lowerBasePath &&
-      (lowerPath === lowerBasePath || lowerPath.startsWith(`${lowerBasePath}/`));
+      lowerBasePath && (lowerPath === lowerBasePath || lowerPath.startsWith(`${lowerBasePath}/`));
     const appPath = mounted ? pathname.slice(normalizedBasePath.length) : pathname;
     res.type("html").send(withBaseHref(indexHtml, relativeBaseHref(appPath || "/")));
   });

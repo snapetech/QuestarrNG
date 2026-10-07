@@ -37,8 +37,8 @@ documentation in this repository.
   [`docs/API.md`](./API.md)
 - SeerrNG setup, authentication, request lifecycle, and compatibility:
   [`docs/SEERRNG-INTEGRATION.md`](./SEERRNG-INTEGRATION.md)
-- Machine-readable SeerrNG provider contract:
-  [`docs/contracts/seerrng-v1.openapi.yaml`](./contracts/seerrng-v1.openapi.yaml)
+- Machine-readable current SeerrNG provider contract:
+  [`docs/contracts/seerrng-v2.openapi.yaml`](./contracts/seerrng-v2.openapi.yaml)
 - Playnite library synchronization and request extension:
   [`extensions/playnite-questarr/README.md`](../extensions/playnite-questarr/README.md)
 - System architecture and background actors:

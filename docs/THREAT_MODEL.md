@@ -2,7 +2,7 @@
 
 **Version:** 1.0
 **Date:** 2026-10-04
-**Last reviewed:** 2026-10-04
+**Last reviewed:** 2026-10-06
 **Author:** Snapetech maintainers
 **Audience:** Maintainers, contributors, security reviewers
 
@@ -202,25 +202,38 @@ When enabled, `SecurityScanService` checks a completed download before it is imp
 Scanning is optional defense in depth, not a guarantee that every file is safe. It should not
 replace operator review or host-level endpoint protection.
 
+### 4.6 SeerrNG imported asset delivery
+
+The versioned SeerrNG provider API can stream one imported file or a gzip tar
+bundle of multiple imported files to the authenticated SeerrNG caller. Every
+asset lookup is scoped to the request and game owned by the API-key/JWT user;
+QuestarrNG resolves both the configured library root and file paths before
+requiring the file to remain beneath that root. Bundle entries use sanitized,
+unique basenames and the response is marked `no-store`. The bundle route
+streams at most 100 registered files, and the existing provider rate limit
+applies. A compromised SeerrNG credential can retrieve files available to its
+QuestarrNG account, so operators should keep that scoped key private and
+dedicated to SeerrNG.
+
 ---
 
 ## 5. External Integration Trust Table
 
-| Integration                                                         | Host source                    | Auth surface                                      | SSRF-checked?                                                                              | Notes                                                     |
-| ------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| Indexers (Torznab/Newznab/Prowlarr)                                 | user-configured                | API key (AES-256-GCM encrypted at rest)           | Yes                                                                                        | highest risk — user-supplied host                         |
-| Download clients (qBittorrent/Transmission/rTorrent/SABnzbd/NZBGet) | user-configured, typically LAN | username/password (AES-256-GCM encrypted at rest) | Payload-URL fetches: yes. Control-plane calls to the configured client: N/A (trust anchor) | see 4.1                                                   |
-| RSS feeds                                                           | user-configured                | none                                              | Yes (`server/rss.ts`)                                                                      |                                                           |
-| IGDB / Twitch                                                       | hardcoded                      | client ID/secret (`system_config`)                | Yes (fixed in this revision)                                                               | see 4.2                                                   |
-| Steam                                                               | hardcoded                      | none (public endpoint)                            | Yes (`server/steam.ts`)                                                                    | wishlist import only                                      |
-| HowLongToBeat                                                       | hardcoded                      | none                                              | Yes (`server/hltb.ts`)                                                                     |                                                           |
-| NexusMods                                                           | hardcoded                      | API key (`system_config`)                         | Yes (`server/nexusmods.ts`)                                                                |                                                           |
-| xREL                                                                | hardcoded allowlist            | none                                              | Yes (`server/xrel.ts`)                                                                     | only `api.xrel.to`/`xrel-api.nfos.to` permitted           |
-| PCGamingWiki                                                        | hardcoded                      | none                                              | Yes (`server/pcgamingwiki-router.ts`)                                                      |                                                           |
-| SeerrNG                                                             | configured peer                | scoped, expiring integration API key or JWT       | Not applicable                                                                             | provider version 1; caller-owned account scope            |
-| RomM library destination                                            | configured local/shared path   | filesystem permissions of QuestarrNG process      | Not applicable                                                                             | file routing only; QuestarrNG does not call RomM's API    |
-| VirusTotal                                                          | fixed HTTPS API                | API key in server-side system config              | Yes (`safeFetch`, HTTPS)                                                                   | hash lookup only; file data is not uploaded               |
-| ClamAV daemon                                                       | user-configured host and port  | local network trust; ClamAV INSTREAM protocol     | Yes (DNS-validated pinned address)                                                         | optional file-content stream; trusted network recommended |
+| Integration                                                         | Host source                    | Auth surface                                      | SSRF-checked?                                                                              | Notes                                                                              |
+| ------------------------------------------------------------------- | ------------------------------ | ------------------------------------------------- | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Indexers (Torznab/Newznab/Prowlarr)                                 | user-configured                | API key (AES-256-GCM encrypted at rest)           | Yes                                                                                        | highest risk — user-supplied host                                                  |
+| Download clients (qBittorrent/Transmission/rTorrent/SABnzbd/NZBGet) | user-configured, typically LAN | username/password (AES-256-GCM encrypted at rest) | Payload-URL fetches: yes. Control-plane calls to the configured client: N/A (trust anchor) | see 4.1                                                                            |
+| RSS feeds                                                           | user-configured                | none                                              | Yes (`server/rss.ts`)                                                                      |                                                                                    |
+| IGDB / Twitch                                                       | hardcoded                      | client ID/secret (`system_config`)                | Yes (fixed in this revision)                                                               | see 4.2                                                                            |
+| Steam                                                               | hardcoded                      | none (public endpoint)                            | Yes (`server/steam.ts`)                                                                    | wishlist import only                                                               |
+| HowLongToBeat                                                       | hardcoded                      | none                                              | Yes (`server/hltb.ts`)                                                                     |                                                                                    |
+| NexusMods                                                           | hardcoded                      | API key (`system_config`)                         | Yes (`server/nexusmods.ts`)                                                                |                                                                                    |
+| xREL                                                                | hardcoded allowlist            | none                                              | Yes (`server/xrel.ts`)                                                                     | only `api.xrel.to`/`xrel-api.nfos.to` permitted                                    |
+| PCGamingWiki                                                        | hardcoded                      | none                                              | Yes (`server/pcgamingwiki-router.ts`)                                                      |                                                                                    |
+| SeerrNG                                                             | configured peer                | scoped, expiring integration API key or JWT       | Not applicable                                                                             | provider version 2; caller-owned account scope; imported asset streams and bundles |
+| RomM library destination                                            | configured local/shared path   | filesystem permissions of QuestarrNG process      | Not applicable                                                                             | file routing only; QuestarrNG does not call RomM's API                             |
+| VirusTotal                                                          | fixed HTTPS API                | API key in server-side system config              | Yes (`safeFetch`, HTTPS)                                                                   | hash lookup only; file data is not uploaded                                        |
+| ClamAV daemon                                                       | user-configured host and port  | local network trust; ClamAV INSTREAM protocol     | Yes (DNS-validated pinned address)                                                         | optional file-content stream; trusted network recommended                          |
 
 ---
 

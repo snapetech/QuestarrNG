@@ -30,7 +30,7 @@ Create a dedicated key with **SeerrNG provider only** access. New keys expire
 automatically (90 days by default, configurable up to one year); a SeerrNG-only
 key is denied access to legacy integration routes. Existing keys keep their
 current all-integration access until revoked. The canonical machine-readable
-contract is [`contracts/seerrng-v1.openapi.yaml`](contracts/seerrng-v1.openapi.yaml).
+contract is [`contracts/seerrng-v2.openapi.yaml`](contracts/seerrng-v2.openapi.yaml).
 
 ## Handshake
 
@@ -41,7 +41,7 @@ contract is [`contracts/seerrng-v1.openapi.yaml`](contracts/seerrng-v1.openapi.y
   "service": "QuestarrNG",
   "version": "<installed-version>",
   "apiVersion": 1,
-  "requestContractVersion": 1,
+  "requestContractVersion": 2,
   "capabilities": {
     "catalog": true,
     "pcAcquisition": true,
@@ -57,16 +57,17 @@ requests.
 
 ### Current capability status
 
-QuestarrNG 1.9.1 advertises `apiVersion: 1` and
-`requestContractVersion: 1`. It reports catalog, PC acquisition, retry/cancel,
-and asset-streaming support in its handshake, with emulation acquisition set
-to false. Its request asset-list response reports `bundleSupported: false`.
-Current provider behavior is defined by the
-[v1 OpenAPI contract](contracts/seerrng-v1.openapi.yaml).
+QuestarrNG advertises `apiVersion: 1` and `requestContractVersion: 2`. It
+reports catalog, PC acquisition, retry/cancel, and asset-streaming support in
+its handshake, with emulation acquisition set to false. The request asset-list
+response advertises `bundleSupported: true` and `bundleName` when at least two
+deliverable files are registered; a single-file request continues to use the
+individual asset stream route. Current provider behavior is defined by the
+[v2 OpenAPI contract](contracts/seerrng-v2.openapi.yaml).
 
-SeerrNG v3.51.0 adds PC play-time and multi-file download behavior that asks
-providers to implement request contract v2. Until QuestarrNG implements and
-advertises v2, treat those v2-specific capabilities as unavailable. See the
+SeerrNG v3.51.0 adds PC play-time and multi-file download behavior using
+request contract v2. QuestarrNG's v2 bundle route streams a gzip-compressed tar
+archive through the authenticated provider connection. See the
 [SeerrNG release note](https://github.com/snapetech/seerrng/blob/main/release-notes/questarr-catalog-estimates-and-bundles.md).
 
 ## Compatibility and release discipline
@@ -187,15 +188,19 @@ configured library root:
       "url": "/api/integration/seerrng/v1/requests/seerrng%3Arequest%3A123/assets/opaque-game-file-id"
     }
   ],
-  "bundleSupported": false
+  "bundleSupported": true,
+  "bundleName": "questarr-assets.tar.gz"
 }
 ```
 
 The asset route rechecks request ownership, file registration, and library-root
 containment, then streams a single file with a safe attachment filename,
-`Cache-Control: no-store`, and single-range byte support. Asset IDs are
-request-scoped by lookup: an ID from another game or request is not accepted.
-QuestarrNG does not claim to bundle multi-file games in this contract version.
+`Cache-Control: no-store`, and single-range byte support. The bundle route is
+available only when at least two deliverable files remain after the same
+ownership and containment checks. It streams a gzip-compressed tar archive,
+uses safe unique entry names, and does not buffer the files in memory. Asset
+IDs are request-scoped by lookup: an ID from another game or request is not
+accepted.
 
 SeerrNG must authorize its own request before using this API, then proxy the
 stream through its requester-scoped download route. The browser receives only
