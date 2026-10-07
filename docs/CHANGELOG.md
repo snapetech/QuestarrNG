@@ -14,7 +14,8 @@ upstream baseline, see [What changed in QuestarrNG](FORK_CHANGES.md).
 
 #### Added
 
-- **SeerrNG:** The provider now advertises request-contract v2 and can stream a request-scoped `.tar.gz` bundle for multi-file game imports. Single-file delivery remains available.
+- **Integration:** SeerrNG requests can now retrieve a request-scoped `.tar.gz` bundle when an imported game has multiple registered files, while single-file downloads keep using the existing stream route.
+
 
 ## [1.9.1] - 2026-10-06
 
