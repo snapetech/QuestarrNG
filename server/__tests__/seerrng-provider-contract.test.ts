@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express, { type Request } from "express";
+import type { Server } from "node:http";
 import request from "supertest";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -78,6 +79,12 @@ const USER = { id: "user-1", username: "tester" };
 const REQUEST_ID = "questarr-request-1";
 const USER_VARIANT = { operatingSystem: "linux", architecture: "x64" };
 
+const startTestServer = (app: express.Express) =>
+  new Promise<Server>((resolve, reject) => {
+    const server = app.listen(0, "127.0.0.1", () => resolve(server));
+    server.once("error", reject);
+  });
+
 type TestGame = {
   id: string;
   userId: string;
@@ -117,7 +124,7 @@ function makeGame(overrides: Partial<TestGame> = {}): TestGame {
 }
 
 describe("SeerrNG software-provider contract", () => {
-  let app: express.Express;
+  let app: Server;
   let games: TestGame[];
   let ledger: Record<string, unknown> | undefined;
   let gameFiles: Array<Record<string, unknown>>;
@@ -219,16 +226,22 @@ describe("SeerrNG software-provider contract", () => {
       }
     );
 
-    app = express();
-    app.use(express.json());
-    app.use((req: Request, _res, next) => {
+    const testApp = express();
+    testApp.use(express.json());
+    testApp.use((req: Request, _res, next) => {
       req.user = USER as never;
       next();
     });
-    app.use("/api/integration", integrationRouter);
+    testApp.use("/api/integration", integrationRouter);
+    app = await startTestServer(testApp);
   });
 
   afterEach(async () => {
+    if (app.listening) {
+      await new Promise<void>((resolve, reject) => {
+        app.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
     await fs.rm(libraryRoot, { recursive: true, force: true });
   });
 
@@ -240,7 +253,7 @@ describe("SeerrNG software-provider contract", () => {
       service: "QuestarrNG",
       version: expect.any(String),
       apiVersion: 1,
-      requestContractVersion: 1,
+      requestContractVersion: 2,
       capabilities: {
         catalog: true,
         pcAcquisition: true,
@@ -251,7 +264,7 @@ describe("SeerrNG software-provider contract", () => {
     });
 
     const openApiText = await fs.readFile(
-      path.resolve(process.cwd(), "docs/contracts/seerrng-v1.openapi.yaml"),
+      path.resolve(process.cwd(), "docs/contracts/seerrng-v2.openapi.yaml"),
       "utf8"
     );
     const contract = loadYaml(openApiText) as {

@@ -3,6 +3,7 @@ import { createReadStream, promises as fs, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { createHash } from "node:crypto";
+import { TarArchive, type ArchiverError } from "archiver";
 import { storage } from "../storage.js";
 import { routesLogger as logger } from "../logger.js";
 import { igdbClient, matchesCatalogMetadataFilters, type CatalogSearchCursor } from "../igdb.js";
@@ -24,7 +25,7 @@ const { version: APP_VERSION } = JSON.parse(
  * an already-released extension. Clients check it during the ping handshake so
  * a mismatched pair fails loudly instead of misbehaving halfway through a sync.
  */
-export const INTEGRATION_API_VERSION = 1;
+export const INTEGRATION_API_VERSION = 2;
 
 /** Upper bound on a single library sync payload, to keep one request bounded. */
 const MAX_SYNC_GAMES = 5000;
@@ -225,6 +226,25 @@ const getSeerrAssets = async (userId: string, gameId: string) => {
   return assets;
 };
 
+const safeArchiveEntryName = (name: string, index: number, used: Set<string>) => {
+  const basename = name
+    .split(/[\\/]/)
+    .pop()
+    ?.replace(/\p{Cc}/gu, "")
+    .trim();
+  const original =
+    basename && basename !== "." && basename !== ".." ? basename : `asset-${index + 1}`;
+  let candidate = original;
+  let suffix = 2;
+  while (used.has(candidate.toLocaleLowerCase("en-US"))) {
+    const extension = path.extname(original);
+    const stem = extension ? original.slice(0, -extension.length) : original;
+    candidate = `${stem} (${suffix++})${extension}`;
+  }
+  used.add(candidate.toLocaleLowerCase("en-US"));
+  return candidate;
+};
+
 const getSeerrRequest = async (userId: string, externalRequestId: string) => {
   const ledger = await storage.getIntegrationRequest(userId, externalRequestId);
   const game = await findSeerrGame(userId, externalRequestId);
@@ -324,7 +344,7 @@ integrationRouter.get("/seerrng/v1/ping", (_req: Request, res: Response) => {
     service: "QuestarrNG",
     version: APP_VERSION,
     apiVersion: 1,
-    requestContractVersion: 1,
+    requestContractVersion: INTEGRATION_API_VERSION,
     capabilities: {
       catalog: true,
       pcAcquisition: true,
@@ -861,11 +881,69 @@ integrationRouter.get(
           size,
           url: `/api/integration/seerrng/v1/requests/${encodeURIComponent(externalRequestId.data)}/assets/${encodeURIComponent(id)}`,
         })),
-        bundleSupported: false,
+        bundleSupported: assets.length > 1,
+        ...(assets.length > 1 ? { bundleName: "questarr-assets.tar.gz" } : {}),
       });
     } catch (error) {
       logger.error({ error }, "SeerrNG software assets lookup failed");
       return res.status(500).json({ error: "Assets are unavailable." });
+    }
+  }
+);
+
+integrationRouter.get(
+  "/seerrng/v1/requests/:externalRequestId/assets/bundle",
+  async (req: Request, res: Response) => {
+    const externalRequestId = seerrRequestIdSchema.safeParse(req.params.externalRequestId);
+    if (!externalRequestId.success) return res.status(400).json({ error: "Invalid request ID." });
+    const game = await findSeerrGame(req.user!.id, externalRequestId.data);
+    if (!game) return res.status(404).json({ error: "Request not found." });
+
+    try {
+      const assets = await getSeerrAssets(req.user!.id, game.id);
+      if (assets.length < 2) {
+        return res
+          .status(409)
+          .json({ error: "At least two deliverable assets are required for a bundle." });
+      }
+
+      res.set({
+        "Content-Type": "application/gzip",
+        "Content-Disposition": "attachment; filename*=UTF-8''questarr-assets.tar.gz",
+      });
+      const archive = new TarArchive({ gzip: true, gzipOptions: { level: 6 } });
+      archive.on("warning", (error: ArchiverError) => {
+        logger.warn(
+          { error, externalRequestId: externalRequestId.data },
+          "SeerrNG asset bundle warning"
+        );
+      });
+      archive.on("error", (error: ArchiverError) => {
+        logger.error(
+          { error, externalRequestId: externalRequestId.data },
+          "SeerrNG asset bundle failed"
+        );
+        if (!res.headersSent) res.status(500).json({ error: "Assets could not be bundled." });
+        else res.destroy(error);
+      });
+
+      archive.pipe(res);
+      const usedNames = new Set<string>();
+      assets.forEach((asset, index) => {
+        archive.append(createReadStream(asset.path), {
+          name: safeArchiveEntryName(asset.name, index, usedNames),
+          date: new Date(0),
+        });
+      });
+      await archive.finalize();
+      return undefined;
+    } catch (error) {
+      logger.error(
+        { error, externalRequestId: externalRequestId.data },
+        "SeerrNG software asset bundle failed"
+      );
+      if (!res.headersSent) return res.status(500).json({ error: "Assets could not be bundled." });
+      return res.destroy(error as Error);
     }
   }
 );

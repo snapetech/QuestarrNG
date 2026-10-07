@@ -85,7 +85,7 @@ links to setup, integration, API, database, and security guides.
 | **Real-time Notifications** | In-app alerts for releases and downloads, plus external notifications to 100+ providers via [Apprise](https://github.com/caronc/apprise).                                                                                                                                                                                             |
 | **Rich Game Metadata**      | Details enriched with IGDB, Steam, PCGamingWiki, and NexusMods, including trending mods where available.                                                                                                                                                                                                                              |
 | **Statistics**              | Review collection and download statistics, with sharing to Discord where supported.                                                                                                                                                                                                                                                   |
-| **Security Focused**        | General security hardening and SSL support — see [SECURITY.md](docs/SECURITY.md) for the reporting and deployment hardening process.                                                                                                                                                                                                      |
+| **Security Focused**        | General security hardening and SSL support — see [SECURITY.md](docs/SECURITY.md) for the reporting and deployment hardening process.                                                                                                                                                                                                  |
 | **Deployment**              | Install through Unraid, CasaOS, Umbrel, Cosmos Cloud, Home Assistant, Windows, or Kubernetes; use published amd64/arm64 images and optional rootless container settings.                                                                                                                                                              |
 | **Integrations**            | Connect Playnite, RomM, and SeerrNG using the documented integration paths.                                                                                                                                                                                                                                                           |
 | **Design**                  | Clean, minimalist, dark-first UI built with mobile usage in mind.                                                                                                                                                                                                                                                                     |
@@ -114,10 +114,10 @@ Questarr restarts during a handoff before recording its download, it pauses the
 request for a duplicate-download check before retrying or cancelling. The retry
 or cancel endpoint returns `409` with `confirmationRequired` until the caller
 checks the download queue/history and sends `confirmNoExistingDownload: true`.
-QuestarrNG 1.9.1 advertises provider contract v1; emulation acquisition and
-multi-file bundle delivery are not currently supported. See the
-[compatibility guide](docs/SEERRNG-INTEGRATION.md#current-capability-status)
-for version details.
+QuestarrNG 1.9.2 advertises provider contract v2 and supports authenticated,
+request-scoped `.tar.gz` bundles for games with multiple imported files. Single-
+file requests continue using the existing asset stream route. Emulation
+acquisition remains unsupported. See the [compatibility guide](docs/SEERRNG-INTEGRATION.md#current-capability-status).
 
 ### Import processing and file safety
 

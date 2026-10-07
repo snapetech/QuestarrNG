@@ -48,6 +48,6 @@ Every published Docker image ships with a generated Software Bill of Materials l
 
 Tracked here so a blocked Dependabot PR doesn't get silently re-proposed and re-investigated from scratch. Remove an entry once its update is unblocked and merged.
 
-_Reviewed 2026-10-06 against `main` at v1.9.1: the older React 19 and resolver blockers recorded against the v1.4.0 release branch are resolved._
+_Reviewed 2026-10-06 against `main` at v1.9.2: the older React 19 and resolver blockers recorded against the v1.4.0 release branch are resolved._
 
 - **TypeScript 7** — remains blocked by the current TypeScript ESLint parser peer range (`typescript <6.1.0`). QuestarrNG currently uses TypeScript 6.0.3; revisit when `typescript-eslint` and `@typescript-eslint/parser` support TypeScript 7.
